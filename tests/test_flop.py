@@ -50,4 +50,6 @@ class TestAuctionKeeperFlopper:
         # when
         keeper.check_all_auctions()
         # then
-        assert self.flopper.bids(self.flopper.kicks()).lot < Wad.from_number(2)
+        auction = self.flopper.bids(self.flopper.kicks())
+        assert auction.lot < Wad.from_number(2)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(824.50), 2)
