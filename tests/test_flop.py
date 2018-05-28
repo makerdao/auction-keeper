@@ -21,9 +21,10 @@ from auction_keeper.main import AuctionKeeper
 from pymaker import Address
 from pymaker.approval import directly
 from pymaker.auctions import Flopper
+from pymaker.auth import DSGuard
 from pymaker.numeric import Wad
 from pymaker.token import DSToken
-from tests.helper import args
+from tests.helper import args, time_travel_by
 
 
 class TestAuctionKeeperFlopper:
@@ -35,6 +36,11 @@ class TestAuctionKeeperFlopper:
         self.dai.mint(Wad.from_number(10000000)).transact()
         self.mkr = DSToken.deploy(self.web3, 'MKR')
         self.flopper = Flopper.deploy(self.web3, self.dai.address, self.mkr.address)
+
+        # so the Flopper can mint MKR
+        dad = DSGuard.deploy(self.web3)
+        dad.permit(self.flopper.address, self.mkr.address, DSGuard.ANY).transact()
+        self.mkr.set_authority(dad.address).transact()
 
     def test_should_make_initial_bid(self):
         # given
@@ -53,3 +59,29 @@ class TestAuctionKeeperFlopper:
         auction = self.flopper.bids(self.flopper.kicks())
         assert auction.lot < Wad.from_number(2)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(824.50), 2)
+        assert self.mkr.balance_of(self.our_address) == Wad(0)
+
+    def test_should_make_initial_bid_and_deal_when_auction_ends(self):
+        # given
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
+                                         f"--flopper {self.flopper.address} "
+                                         f"--price 850.0 "
+                                         f"--spread 0.03"), web3=self.web3)
+
+        # and
+        self.flopper.approve(directly())
+        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        keeper.check_all_auctions()
+        # then
+        auction = self.flopper.bids(self.flopper.kicks())
+        assert auction.lot < Wad.from_number(2)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(824.50), 2)
+
+        # when
+        time_travel_by(self.web3, self.flopper.ttl() + 5)
+        # and
+        keeper.check_all_auctions()
+        # then
+        assert self.mkr.balance_of(self.our_address) > Wad(0)

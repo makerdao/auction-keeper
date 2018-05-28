@@ -83,15 +83,29 @@ class AuctionKeeper:
     def check_auction(self, auction_id: int):
         assert(isinstance(auction_id, int))
 
+        # Read auction information
         auction = self.flopper.bids(auction_id)
-        auction_price = auction.bid / auction.lot
-        auction_price_min_increment = auction_price * self.flopper.beg()
 
-        our_price = self.price * (Wad.from_number(1) - self.spread)
-        if our_price >= auction_price_min_increment:
-            our_lot = auction.bid / our_price
+        # Check if the auction is finished.
+        # If it is finished and we are the winner, `deal` the auction.
+        # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
+        auction_finished = (auction.tic < self.flopper.era() and auction.tic != 0) or (auction.end < self.flopper.era())
 
-            self.flopper.dent(auction_id, our_lot, auction.bid).transact(gas_price=self.gas_price())
+        if auction_finished:
+            if auction.guy == self.our_address:
+                self.flopper.deal(auction_id).transact()
+
+        if not auction_finished:
+            # Check if we can bid.
+            # If we can, bid.
+            auction_price = auction.bid / auction.lot
+            auction_price_min_increment = auction_price * self.flopper.beg()
+
+            our_price = self.price * (Wad.from_number(1) - self.spread)
+            if our_price >= auction_price_min_increment:
+                our_lot = auction.bid / our_price
+
+                self.flopper.dent(auction_id, our_lot, auction.bid).transact(gas_price=self.gas_price())
 
     def gas_price(self):
         if self.arguments.gas_price:
