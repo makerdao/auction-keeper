@@ -45,15 +45,15 @@ class TestAuctionKeeperFlopper:
     def test_should_make_initial_bid(self):
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
-                                         f"--flopper {self.flopper.address} "
-                                         f"--price 850.0 "
-                                         f"--spread 0.03"), web3=self.web3)
+                                         f"--flopper {self.flopper.address}"), web3=self.web3)
 
         # and
         self.flopper.approve(directly())
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
+        keeper.drive(1, Wad.from_number(850.0), Wad.from_number(0.03))
+        # and
         keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(self.flopper.kicks())
@@ -64,15 +64,15 @@ class TestAuctionKeeperFlopper:
     def test_should_make_initial_bid_and_deal_when_auction_ends(self):
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
-                                         f"--flopper {self.flopper.address} "
-                                         f"--price 850.0 "
-                                         f"--spread 0.03"), web3=self.web3)
+                                         f"--flopper {self.flopper.address}"), web3=self.web3)
 
         # and
         self.flopper.approve(directly())
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
+        keeper.drive(1, Wad.from_number(850.0), Wad.from_number(0.03))
+        # and
         keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(self.flopper.kicks())

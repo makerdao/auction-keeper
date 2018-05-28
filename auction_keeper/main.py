@@ -21,6 +21,7 @@ import sys
 
 from web3 import Web3, HTTPProvider
 
+from auction_keeper.model import Participation
 from pymaker import Address, Wad
 from pymaker.auctions import Flopper
 from pymaker.gas import FixedGasPrice, DefaultGasPrice
@@ -46,12 +47,6 @@ class AuctionKeeper:
         parser.add_argument("--flopper", type=str, required=True,
                             help="Ethereum address of the Flopper contract")
 
-        parser.add_argument("--price", type=float, required=True,
-                            help="Our price")
-
-        parser.add_argument("--spread", type=float, required=True,
-                            help="Our spread")
-
         parser.add_argument("--gas-price", type=int, default=0,
                             help="Gas price (in Wei)")
 
@@ -66,8 +61,8 @@ class AuctionKeeper:
         self.our_address = Address(self.arguments.eth_from)
 
         self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper))
-        self.price = Wad.from_number(self.arguments.price)
-        self.spread = Wad.from_number(self.arguments.spread)
+
+        self.participations = {}
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -75,6 +70,13 @@ class AuctionKeeper:
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_block(self.check_all_auctions)
+
+    def drive(self, auction_id: int, price, spread: Wad):
+        assert(isinstance(auction_id, int))
+        assert(isinstance(price, Wad))
+        assert(isinstance(spread, Wad))
+
+        self.participations[auction_id] = Participation(price, spread, -1)
 
     def check_all_auctions(self):
         for auction_id in range(1, self.flopper.kicks()+1):
@@ -101,7 +103,7 @@ class AuctionKeeper:
             auction_price = auction.bid / auction.lot
             auction_price_min_increment = auction_price * self.flopper.beg()
 
-            our_price = self.price * (Wad.from_number(1) - self.spread)
+            our_price = self.participations[auction_id].price * (Wad.from_number(1) - self.participations[auction_id].spread)
             if our_price >= auction_price_min_increment:
                 our_lot = auction.bid / our_price
 
