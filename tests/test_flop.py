@@ -31,7 +31,7 @@ class TestAuctionKeeperFlopper:
     def setup_method(self):
         self.web3 = Web3(EthereumTesterProvider())
         self.web3.eth.defaultAccount = self.web3.eth.accounts[0]
-        self.our_address = Address(self.web3.eth.defaultAccount)
+        self.keeper_address = Address(self.web3.eth.defaultAccount)
         self.other_address = Address(self.web3.eth.accounts[2])
         self.dai = DSToken.deploy(self.web3, 'DAI')
         self.dai.mint(Wad.from_number(10000000)).transact()
@@ -46,7 +46,7 @@ class TestAuctionKeeperFlopper:
 
     def test_should_make_initial_bid(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
         # and
         keeper.approve()
@@ -61,11 +61,11 @@ class TestAuctionKeeperFlopper:
         auction = self.flopper.bids(self.flopper.kicks())
         assert auction.lot < Wad.from_number(2)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
-        assert self.mkr.balance_of(self.our_address) == Wad(0)
+        assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
     def test_should_bid_even_if_there_is_already_a_bidder(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
         # and
         keeper.approve()
@@ -83,11 +83,11 @@ class TestAuctionKeeperFlopper:
         auction = self.flopper.bids(self.flopper.kicks())
         assert auction.lot < Wad.from_number(1.5)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
-        assert self.mkr.balance_of(self.our_address) == Wad(0)
+        assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
     def test_should_deal_when_we_won_the_auction(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
         # and
         keeper.approve()
@@ -108,11 +108,11 @@ class TestAuctionKeeperFlopper:
         # and
         keeper.check_all_auctions()
         # then
-        assert self.mkr.balance_of(self.our_address) > Wad(0)
+        assert self.mkr.balance_of(self.keeper_address) > Wad(0)
 
     def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
         # and
         keeper.approve()
@@ -127,4 +127,4 @@ class TestAuctionKeeperFlopper:
         # and
         keeper.check_all_auctions()
         # then
-        assert self.mkr.balance_of(self.our_address) == Wad(0)
+        assert self.mkr.balance_of(self.keeper_address) == Wad(0)
