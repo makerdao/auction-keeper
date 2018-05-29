@@ -55,11 +55,9 @@ class TestAuctionKeeperFlopper:
 
         # when
         keeper.drive(1, Wad.from_number(825.0))
-        # and
         keeper.check_all_auctions()
         # then
-        auction = self.flopper.bids(self.flopper.kicks())
-        assert auction.lot < Wad.from_number(2)
+        auction = self.flopper.bids(1)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
@@ -73,15 +71,13 @@ class TestAuctionKeeperFlopper:
         self.flopper.approve(directly(from_address=self.other_address))
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
-        assert self.flopper.bids(self.flopper.kicks()).lot == Wad.from_number(1.5)
+        assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
         # when
         keeper.drive(1, Wad.from_number(825.0))
-        # and
         keeper.check_all_auctions()
         # then
-        auction = self.flopper.bids(self.flopper.kicks())
-        assert auction.lot < Wad.from_number(1.5)
+        auction = self.flopper.bids(1)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
@@ -96,16 +92,13 @@ class TestAuctionKeeperFlopper:
 
         # when
         keeper.drive(1, Wad.from_number(825.0))
-        # and
         keeper.check_all_auctions()
         # then
-        auction = self.flopper.bids(self.flopper.kicks())
-        assert auction.lot < Wad.from_number(2)
+        auction = self.flopper.bids(1)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
-        # and
         keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) > Wad(0)
@@ -120,11 +113,10 @@ class TestAuctionKeeperFlopper:
         self.flopper.approve(directly(from_address=self.other_address))
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
-        assert self.flopper.bids(self.flopper.kicks()).lot == Wad.from_number(1.5)
+        assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
-        # and
         keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
