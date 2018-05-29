@@ -105,16 +105,17 @@ class AuctionKeeper:
                 self.flopper.deal(auction_id).transact()
 
         if not auction_finished:
-            # Check if we can bid.
-            # If we can, bid.
-            auction_price = auction.bid / auction.lot
-            auction_price_min_increment = auction_price * self.flopper.beg()
+            if auction.guy != self.our_address:
+                # Check if we can bid.
+                # If we can, bid.
+                auction_price = auction.bid / auction.lot
+                auction_price_min_increment = auction_price * self.flopper.beg()
 
-            our_price = self.participations[auction_id].bid
-            if our_price >= auction_price_min_increment:
-                our_lot = auction.bid / our_price
+                our_price = self.participations[auction_id].bid
+                if our_price >= auction_price_min_increment:
+                    our_lot = auction.bid / our_price
 
-                self.flopper.dent(auction_id, our_lot, auction.bid).transact(gas_price=self.gas_price())
+                    self.flopper.dent(auction_id, our_lot, auction.bid).transact(gas_price=self.gas_price())
 
     def gas_price(self):
         if self.arguments.gas_price:

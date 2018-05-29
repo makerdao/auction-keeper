@@ -81,6 +81,24 @@ class TestAuctionKeeperFlopper:
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
+    def test_should_not_overbid_itself(self):
+        # given
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                         f"--flopper {self.flopper.address}"), web3=self.web3)
+        # and
+        keeper.approve()
+        # and
+        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+        self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact()
+        assert self.flopper.bids(1).lot == Wad.from_number(1.5)
+
+        # when
+        keeper.drive(1, Wad.from_number(825.0))
+        keeper.check_all_auctions()
+        # then
+        auction = self.flopper.bids(1)
+        assert self.flopper.bids(1).lot == Wad.from_number(1.5)
+
     def test_should_deal_when_we_won_the_auction(self):
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
