@@ -23,6 +23,7 @@ from web3 import Web3, HTTPProvider
 
 from auction_keeper.model import Participation
 from pymaker import Address, Wad
+from pymaker.approval import directly
 from pymaker.auctions import Flopper
 from pymaker.gas import FixedGasPrice, DefaultGasPrice
 from pymaker.lifecycle import Lifecycle
@@ -69,7 +70,14 @@ class AuctionKeeper:
 
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
+            lifecycle.on_startup(self.startup)
             lifecycle.on_block(self.check_all_auctions)
+
+    def startup(self):
+        self.approve()
+
+    def approve(self):
+        self.flopper.approve(directly())
 
     def drive(self, auction_id: int, bid: Wad):
         assert(isinstance(auction_id, int))

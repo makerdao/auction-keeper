@@ -48,9 +48,9 @@ class TestAuctionKeeperFlopper:
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
-
         # and
-        self.flopper.approve(directly())
+        keeper.approve()
+        # and
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
@@ -67,10 +67,10 @@ class TestAuctionKeeperFlopper:
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
-
+        # and
+        keeper.approve()
         # and
         self.flopper.approve(directly(from_address=self.other_address))
-        self.flopper.approve(directly())
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
         assert self.flopper.bids(self.flopper.kicks()).lot == Wad.from_number(1.5)
@@ -89,9 +89,9 @@ class TestAuctionKeeperFlopper:
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
-
         # and
-        self.flopper.approve(directly())
+        keeper.approve()
+        # and
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
@@ -114,10 +114,10 @@ class TestAuctionKeeperFlopper:
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
-
+        # and
+        keeper.approve()
         # and
         self.flopper.approve(directly(from_address=self.other_address))
-        self.flopper.approve(directly())
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
         assert self.flopper.bids(self.flopper.kicks()).lot == Wad.from_number(1.5)
