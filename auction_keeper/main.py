@@ -71,12 +71,11 @@ class AuctionKeeper:
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_block(self.check_all_auctions)
 
-    def drive(self, auction_id: int, price, spread: Wad):
+    def drive(self, auction_id: int, bid: Wad):
         assert(isinstance(auction_id, int))
-        assert(isinstance(price, Wad))
-        assert(isinstance(spread, Wad))
+        assert(isinstance(bid, Wad))
 
-        self.participations[auction_id] = Participation(price, spread, -1)
+        self.participations[auction_id] = Participation(bid, -1)
 
     def check_all_auctions(self):
         for auction_id in range(1, self.flopper.kicks()+1):
@@ -103,7 +102,7 @@ class AuctionKeeper:
             auction_price = auction.bid / auction.lot
             auction_price_min_increment = auction_price * self.flopper.beg()
 
-            our_price = self.participations[auction_id].price * (Wad.from_number(1) - self.participations[auction_id].spread)
+            our_price = self.participations[auction_id].bid
             if our_price >= auction_price_min_increment:
                 our_lot = auction.bid / our_price
 

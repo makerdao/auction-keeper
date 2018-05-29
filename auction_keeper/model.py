@@ -21,9 +21,8 @@ from pymaker import Wad
 
 
 class Participation:
-    def __init__(self, price: Wad, spread: Wad, gas_price: int):
-        self.price = price
-        self.spread = spread
+    def __init__(self, bid: Wad, gas_price: int):
+        self.bid = bid
         self.gas_price = gas_price
 
         #TODO we will implement locking later

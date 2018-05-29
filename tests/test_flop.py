@@ -52,13 +52,13 @@ class TestAuctionKeeperFlopper:
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        keeper.drive(1, Wad.from_number(850.0), Wad.from_number(0.03))
+        keeper.drive(1, Wad.from_number(825.0))
         # and
         keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(self.flopper.kicks())
         assert auction.lot < Wad.from_number(2)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(824.50), 2)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.our_address) == Wad(0)
 
     def test_should_make_initial_bid_and_deal_when_auction_ends(self):
@@ -71,13 +71,13 @@ class TestAuctionKeeperFlopper:
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        keeper.drive(1, Wad.from_number(850.0), Wad.from_number(0.03))
+        keeper.drive(1, Wad.from_number(825.0))
         # and
         keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(self.flopper.kicks())
         assert auction.lot < Wad.from_number(2)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(824.50), 2)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
