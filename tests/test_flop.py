@@ -61,7 +61,7 @@ class TestAuctionKeeperFlopper:
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.our_address) == Wad(0)
 
-    def test_should_make_initial_bid_and_deal_when_auction_ends(self):
+    def test_should_deal_when_auction_ends(self):
         # given
         keeper = AuctionKeeper(args=args(f"--eth-from {self.web3.eth.defaultAccount} "
                                          f"--flopper {self.flopper.address}"), web3=self.web3)
