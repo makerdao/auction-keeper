@@ -87,11 +87,11 @@ class AuctionKeeper:
     def approve(self):
         self.flopper.approve(directly())
 
-    def drive(self, auction_id: int, bid: Wad):
+    def drive(self, auction_id: int, price: Wad):
         assert(isinstance(auction_id, int))
-        assert(isinstance(bid, Wad))
+        assert(isinstance(price, Wad))
 
-        self.participations[auction_id] = Participation(bid, -1)
+        self.participations[auction_id] = Participation(price, -1)
 
     def check_all_auctions(self):
         for auction_id in range(1, self.flopper.kicks()+1):
@@ -119,7 +119,7 @@ class AuctionKeeper:
                 auction_price = auction.bid / auction.lot
                 auction_price_min_increment = auction_price * self.flopper.beg()
 
-                our_price = self.participations[auction_id].bid
+                our_price = self.participations[auction_id].price
                 if our_price >= auction_price_min_increment:
                     our_lot = auction.bid / our_price
 
