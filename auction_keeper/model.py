@@ -17,13 +17,71 @@
 
 from threading import RLock
 
-from pymaker import Wad
+from pymaker import Wad, Address
 
 
-class Participation:
+class OutputMessage:
+    def __init__(self, bid: Wad, lot: Wad, guy: Address, tic: int, end: int, price: Wad):
+        assert(isinstance(bid, Wad))
+        assert(isinstance(lot, Wad))
+        assert(isinstance(guy, Address))
+        assert(isinstance(tic, int))
+        assert(isinstance(end, int))
+        assert(isinstance(price, Wad))
+
+        self.bid = bid
+        self.lot = lot
+        self.guy = guy
+        self.tic = tic
+        self.end = end
+        self.price = price
+
+    def __eq__(self, other):
+        assert(isinstance(other, OutputMessage))
+
+
+
+
+class InputMessage:
+    def __init__(self, price: Wad, gas_price: Wad):
+        assert(isinstance(price, Wad))
+        assert(isinstance(gas_price, Wad))
+
+        self.price = price
+        self.gas_price = gas_price
+
+
+class Auction:
     def __init__(self, price: Wad, gas_price: int):
+        self.output = None
+        self.output_lock = RLock()
+        self.model = None
+        self.transaction = None
+        self.transaction_price = None
+
+        #TODO these two will ultimately go away
         self.price = price
         self.gas_price = gas_price
 
         #TODO we will implement locking later
         self.lock = RLock()
+
+    def x(self):
+        pass
+
+    def update_output(self, output: OutputMessage):
+        assert(isinstance(output, OutputMessage))
+
+        with self.output_lock:
+            self.output = output
+        print(self.output)
+
+    def get_input(self):
+        pass
+
+        #TODO 1) first fetch the most recent from model, if there is any
+        #           and save to self.input
+        #TODO 2) return self.input
+
+    def remove(self):
+        self.model.stop()
