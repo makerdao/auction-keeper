@@ -63,10 +63,18 @@ class AuctionKeeper:
 
         self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper))
 
+        #TODO three sources of info
+        #1) auction = self.flopper.bids(auction_id)
+        #  -> plus a thread which keeps refreshing it
+        #2) output to the model
+        #3) input to the model
         self.participations = {}
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
+
+        #TODO rename `bid` to `price`
+        #TODO mutually exclusive flipper|flapper|flopper
 
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
