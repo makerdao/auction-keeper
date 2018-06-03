@@ -40,28 +40,12 @@ class Auction:
         #TODO we will implement locking later
         self.lock = RLock()
 
-    def x(self):
-        pass
-
     def update_output(self, output: ModelInput):
         assert(isinstance(output, ModelInput))
 
         with self.output_lock:
             self.output = output
         print(self.output)
-
-    def drive(self, output: ModelOutput):
-        assert(isinstance(output, ModelOutput))
-
-        self.price = output.price
-        self.gas_price = output.gas_price
-
-    def get_input(self):
-        pass
-
-        #TODO 1) first fetch the most recent from model, if there is any
-        #           and save to self.input
-        #TODO 2) return self.input
 
     def model_output(self) -> Optional[ModelOutput]:
         return self.model.output()

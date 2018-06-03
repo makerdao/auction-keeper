@@ -92,12 +92,6 @@ class AuctionKeeper:
     def approve(self):
         self.flopper.approve(directly())
 
-    def drive(self, auction_id: int, price: Wad):
-        assert(isinstance(auction_id, int))
-        assert(isinstance(price, Wad))
-
-        self.auctions.get_auction(auction_id).drive(ModelOutput(price, Wad.from_number(-1)))
-
     def check_all_auctions(self):
         for auction_id in range(1, self.flopper.kicks()+1):
             self.check_auction(auction_id)
