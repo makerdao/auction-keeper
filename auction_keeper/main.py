@@ -21,7 +21,8 @@ import sys
 
 from web3 import Web3, HTTPProvider
 
-from auction_keeper.model import Auction, ModelInput, Auctions, ModelOutput
+from auction_keeper.external_model import ExternalModelFactory
+from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
 from pymaker import Address, Wad
 from pymaker.approval import directly
 from pymaker.auctions import Flopper
@@ -72,7 +73,7 @@ class AuctionKeeper:
         #3) input to the model
         self.participations = {}
 
-        self.auctions = Auctions()
+        self.auctions = Auctions(model_factory=ExternalModelFactory())
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -140,11 +141,13 @@ class AuctionKeeper:
                 auction_price = auction.bid / auction.lot
                 auction_price_min_increment = auction_price * self.flopper.beg()
 
-                our_price = self.auctions.get_auction(auction_id).price
-                if our_price >= auction_price_min_increment:
-                    our_lot = auction.bid / our_price
+                output = self.auctions.get_auction(auction_id).model_output()
+                if output is not None:
+                    our_price = output.price
+                    if our_price >= auction_price_min_increment:
+                        our_lot = auction.bid / our_price
 
-                    self.flopper.dent(auction_id, our_lot, auction.bid).transact(gas_price=self.gas_price())
+                        self.flopper.dent(auction_id, our_lot, auction.bid).transact(gas_price=self.gas_price())
 
     def gas_price(self):
         if self.arguments.gas_price:
