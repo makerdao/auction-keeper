@@ -52,11 +52,25 @@ class TestAuctionKeeperFlopper:
         self.keeper.approve()
 
         self.model = MagicMock()
+        self.model.output = MagicMock(return_value=None)
         self.model_factory = self.keeper.auctions.model_factory
         self.model_factory.create_model = MagicMock(return_value=self.model)
 
     def simulate_model_output(self, price: Wad):
         self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=Wad.from_number(-1)))
+
+    def test_should_not_do_anything_if_no_output_from_model(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        previous_block_number = self.web3.eth.blockNumber
+
+        # when
+        # [no output from model]
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.blockNumber == previous_block_number
 
     def test_should_make_initial_bid(self):
         # given
@@ -64,6 +78,7 @@ class TestAuctionKeeperFlopper:
 
         # when
         self.simulate_model_output(price=Wad.from_number(825.0))
+        # and
         self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
@@ -80,6 +95,7 @@ class TestAuctionKeeperFlopper:
 
         # when
         self.simulate_model_output(price=Wad.from_number(825.0))
+        # and
         self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
@@ -94,6 +110,7 @@ class TestAuctionKeeperFlopper:
 
         # when
         self.simulate_model_output(price=Wad.from_number(100.0))
+        # and
         self.keeper.check_all_auctions()
         # then
         assert self.flopper.bids(1).lot == Wad.from_number(0.1)
@@ -110,6 +127,7 @@ class TestAuctionKeeperFlopper:
 
         # when
         self.simulate_model_output(price=Wad.from_number(825.0))
+        # and
         self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
@@ -117,6 +135,7 @@ class TestAuctionKeeperFlopper:
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
+        # and
         self.keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) > Wad(0)
@@ -131,6 +150,7 @@ class TestAuctionKeeperFlopper:
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
+        # and
         self.keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
