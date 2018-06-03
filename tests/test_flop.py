@@ -55,13 +55,15 @@ class TestAuctionKeeperFlopper:
         self.model_factory = self.keeper.auctions.model_factory
         self.model_factory.create_model = MagicMock(return_value=self.model)
 
+    def simulate_model_output(self, price: Wad):
+        self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=Wad.from_number(-1)))
+
     def test_should_make_initial_bid(self):
         # given
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
-        # keeper.drive(1, Wad.from_number(825.0))
+        self.simulate_model_output(price=Wad.from_number(825.0))
         self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
@@ -77,7 +79,7 @@ class TestAuctionKeeperFlopper:
         assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
         # when
-        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
+        self.simulate_model_output(price=Wad.from_number(825.0))
         self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
@@ -91,13 +93,13 @@ class TestAuctionKeeperFlopper:
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(100.0), gas_price=Wad.from_number(-1)))
+        self.simulate_model_output(price=Wad.from_number(100.0))
         self.keeper.check_all_auctions()
         # then
         assert self.flopper.bids(1).lot == Wad.from_number(0.1)
 
         # when
-        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(200.0), gas_price=Wad.from_number(-1)))
+        self.simulate_model_output(price=Wad.from_number(200.0))
         self.keeper.check_all_auctions()
         # then
         assert self.flopper.bids(1).lot == Wad.from_number(0.1)
@@ -107,7 +109,7 @@ class TestAuctionKeeperFlopper:
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
+        self.simulate_model_output(price=Wad.from_number(825.0))
         self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
