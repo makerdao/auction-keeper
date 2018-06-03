@@ -44,6 +44,7 @@ class ModelInput:
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
         assert(isinstance(guy, Address))
+        assert(isinstance(era, int))
         assert(isinstance(tic, int))
         assert(isinstance(end, int))
         assert(isinstance(price, Wad))
