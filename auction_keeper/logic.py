@@ -40,12 +40,10 @@ class Auction:
         #TODO we will implement locking later
         self.lock = RLock()
 
-    def update_output(self, output: ModelInput):
-        assert(isinstance(output, ModelInput))
+    def feed_model(self, input: ModelInput):
+        assert(isinstance(input, ModelInput))
 
-        with self.output_lock:
-            self.output = output
-        print(self.output)
+        self.model.input(input)
 
     def model_output(self) -> Optional[ModelOutput]:
         return self.model.output()

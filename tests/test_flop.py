@@ -20,6 +20,7 @@ from web3 import Web3, EthereumTesterProvider
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.logic import ModelOutput
+from auction_keeper.risk_model import ModelParameters, ModelInput
 from pymaker import Address
 from pymaker.approval import directly
 from pymaker.auctions import Flopper
@@ -59,6 +60,22 @@ class TestAuctionKeeperFlopper:
 
     def simulate_model_output(self, price: Wad):
         self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=Wad.from_number(-1)))
+
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        self.model.start.assert_called_once_with(ModelParameters(id=1))
+        assert self.model.input.call_args[0][0].bid == Wad.from_number(10)
+        assert self.model.input.call_args[0][0].lot == Wad.from_number(2)
+        assert self.model.input.call_args[0][0].guy == self.gal_address
+        assert self.model.input.call_args[0][0].era > 0
+        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 1000
+        assert self.model.input.call_args[0][0].tic == 0
+        assert self.model.input.call_args[0][0].price == Wad.from_number(5.0)
 
     def test_should_not_do_anything_if_no_output_from_model(self):
         # given
