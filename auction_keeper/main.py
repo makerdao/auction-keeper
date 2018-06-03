@@ -107,12 +107,13 @@ class AuctionKeeper:
 
         # Feed the model with current state
         input = ModelInput(bid=bid.bid,
-                            lot=bid.lot,
-                            guy=bid.guy,
-                            era=self.flopper.era(),
-                            tic=bid.tic,
-                            end=bid.end,
-                            price=bid.bid / bid.lot)
+                           lot=bid.lot,
+                           beg=self.flopper.beg(),
+                           guy=bid.guy,
+                           era=self.flopper.era(),
+                           tic=bid.tic,
+                           end=bid.end,
+                           price=bid.bid / bid.lot)
 
         auction.feed_model(input)
 

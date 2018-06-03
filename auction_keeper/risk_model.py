@@ -40,9 +40,10 @@ class ModelParameters:
 
 
 class ModelInput:
-    def __init__(self, bid: Wad, lot: Wad, guy: Address, era: int, tic: int, end: int, price: Wad):
+    def __init__(self, bid: Wad, lot: Wad, beg: Wad, guy: Address, era: int, tic: int, end: int, price: Wad):
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
+        assert(isinstance(beg, Wad))
         assert(isinstance(guy, Address))
         assert(isinstance(era, int))
         assert(isinstance(tic, int))
@@ -51,6 +52,7 @@ class ModelInput:
 
         self.bid = bid
         self.lot = lot
+        self.beg = beg
         self.guy = guy
         self.era = era
         self.tic = tic
@@ -62,6 +64,7 @@ class ModelInput:
 
         return self.bid == other.bid and \
                self.lot == other.lot and \
+               self.beg == other.beg and \
                self.guy == other.guy and \
                self.era == other.era and \
                self.tic == other.tic and \
@@ -69,7 +72,7 @@ class ModelInput:
                self.price == other.price
 
     def __hash__(self):
-        return hash((self.bid, self.lot, self.guy, self.era, self.tic, self.end, self.price))
+        return hash((self.bid, self.lot, self.beg, self.guy, self.era, self.tic, self.end, self.price))
 
     def __repr__(self):
         return pformat(vars(self))

@@ -72,6 +72,7 @@ class TestAuctionKeeperFlopper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(2)
+        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.gal_address
         assert self.model.input.call_args[0][0].era > 0
         assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
@@ -98,6 +99,7 @@ class TestAuctionKeeperFlopper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(0.2)
+        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.keeper_address
         assert self.model.input.call_args[0][0].era > 0
         assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
