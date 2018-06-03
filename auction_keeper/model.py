@@ -14,14 +14,32 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+from pprint import pformat
 from threading import RLock
 
 from pymaker import Wad, Address
 
 
-class OutputMessage:
-    def __init__(self, bid: Wad, lot: Wad, guy: Address, tic: int, end: int, price: Wad):
+class ModelParameters:
+    def __init__(self, id: int):
+        assert(isinstance(id, int))
+
+        self.id = id
+
+    def __eq__(self, other):
+        assert(isinstance(other, ModelParameters))
+
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __repr__(self):
+        return pformat(vars(self))
+
+
+class ModelInput:
+    def __init__(self, bid: Wad, lot: Wad, guy: Address, era: int, tic: int, end: int, price: Wad):
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
         assert(isinstance(guy, Address))
@@ -32,17 +50,30 @@ class OutputMessage:
         self.bid = bid
         self.lot = lot
         self.guy = guy
+        self.era = era
         self.tic = tic
         self.end = end
         self.price = price
 
     def __eq__(self, other):
-        assert(isinstance(other, OutputMessage))
+        assert(isinstance(other, ModelInput))
+
+        return self.bid == other.bid and \
+               self.lot == other.lot and \
+               self.guy == other.guy and \
+               self.era == other.era and \
+               self.tic == other.tic and \
+               self.end == other.end and \
+               self.price == other.price
+
+    def __hash__(self):
+        return hash((self.bid, self.lot, self.guy, self.era, self.tic, self.end, self.price))
+
+    def __repr__(self):
+        return pformat(vars(self))
 
 
-
-
-class InputMessage:
+class ModelOutput:
     def __init__(self, price: Wad, gas_price: Wad):
         assert(isinstance(price, Wad))
         assert(isinstance(gas_price, Wad))
@@ -50,9 +81,24 @@ class InputMessage:
         self.price = price
         self.gas_price = gas_price
 
+    def __eq__(self, other):
+        assert(isinstance(other, ModelOutput))
+
+        return self.price == other.price and \
+               self.gas_price == other.gas_price
+
+    def __hash__(self):
+        return hash((self.price, self.gas_price))
+
+    def __repr__(self):
+        return pformat(vars(self))
+
 
 class Auction:
-    def __init__(self, price: Wad, gas_price: int):
+    #TODO ultimately `id` should be the only parameter left here
+    def __init__(self, id: int, price: Wad, gas_price: int):
+        assert(isinstance(id, int))
+
         self.output = None
         self.output_lock = RLock()
         self.model = None
@@ -69,8 +115,8 @@ class Auction:
     def x(self):
         pass
 
-    def update_output(self, output: OutputMessage):
-        assert(isinstance(output, OutputMessage))
+    def update_output(self, output: ModelInput):
+        assert(isinstance(output, ModelInput))
 
         with self.output_lock:
             self.output = output
@@ -85,3 +131,10 @@ class Auction:
 
     def remove(self):
         self.model.stop()
+
+
+class Auctions:
+    def __init__(self):
+        self.auctions = {}
+
+    # def

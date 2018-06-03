@@ -21,7 +21,7 @@ import sys
 
 from web3 import Web3, HTTPProvider
 
-from auction_keeper.model import Auction, OutputMessage
+from auction_keeper.model import Auction, ModelInput
 from pymaker import Address, Wad
 from pymaker.approval import directly
 from pymaker.auctions import Flopper
@@ -91,7 +91,7 @@ class AuctionKeeper:
         assert(isinstance(auction_id, int))
         assert(isinstance(price, Wad))
 
-        self.participations[auction_id] = Auction(price, -1)
+        self.participations[auction_id] = Auction(auction_id, price, -1)
 
     def check_all_auctions(self):
         for auction_id in range(1, self.flopper.kicks()+1):
@@ -104,12 +104,13 @@ class AuctionKeeper:
         auction = self.flopper.bids(auction_id)
 
         # Produce output
-        output = OutputMessage(bid=auction.bid,
-                               lot=auction.lot,
-                               guy=auction.guy,
-                               tic=auction.tic,
-                               end=auction.end,
-                               price=auction.bid / auction.lot)
+        output = ModelInput(bid=auction.bid,
+                            lot=auction.lot,
+                            guy=auction.guy,
+                            era=self.flopper.era(),
+                            tic=auction.tic,
+                            end=auction.end,
+                            price=auction.bid / auction.lot)
 
         self.participations[auction_id].update_output(output)
 
