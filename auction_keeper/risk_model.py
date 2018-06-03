@@ -18,15 +18,24 @@
 from threading import RLock
 from typing import Optional
 
+from auction_keeper.model import ModelParameters, ModelOutput, ModelInput
 from pymaker import Wad, Address
 
 
-class RiskModel:
-    def read(self) -> Optional[dict]:
+class Model:
+    def read(self) -> Optional[ModelOutput]:
         raise NotImplementedError
 
-    def write(self, message: dict):
+    def write(self, input: ModelInput):
+        raise NotImplementedError
+
+    def start(self, parameters: ModelParameters):
         raise NotImplementedError
 
     def stop(self):
+        raise NotImplementedError
+
+
+class ModelFactory:
+    def create_model(self) -> Model:
         raise NotImplementedError

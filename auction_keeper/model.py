@@ -14,6 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 from pprint import pformat
 from threading import RLock
 
@@ -76,7 +77,7 @@ class ModelInput:
 class ModelOutput:
     def __init__(self, price: Wad, gas_price: Wad):
         assert(isinstance(price, Wad))
-        assert(isinstance(gas_price, Wad))
+        assert(isinstance(gas_price, Wad)) #TODO I think `gas_price` should be optional, then we should default to node default.
 
         self.price = price
         self.gas_price = gas_price
@@ -96,7 +97,7 @@ class ModelOutput:
 
 class Auction:
     #TODO ultimately `id` should be the only parameter left here
-    def __init__(self, id: int, price: Wad, gas_price: int):
+    def __init__(self, id: int):
         assert(isinstance(id, int))
 
         self.output = None
@@ -106,8 +107,8 @@ class Auction:
         self.transaction_price = None
 
         #TODO these two will ultimately go away
-        self.price = price
-        self.gas_price = gas_price
+        self.price = None
+        self.gas_price = None
 
         #TODO we will implement locking later
         self.lock = RLock()
@@ -121,6 +122,12 @@ class Auction:
         with self.output_lock:
             self.output = output
         print(self.output)
+
+    def drive(self, output: ModelOutput):
+        assert(isinstance(output, ModelOutput))
+
+        self.price = output.price
+        self.gas_price = output.gas_price
 
     def get_input(self):
         pass
@@ -137,4 +144,27 @@ class Auctions:
     def __init__(self):
         self.auctions = {}
 
-    # def
+    #TODO this won't be publicly accessible
+    def create_auction(self, id: int):
+        assert(isinstance(id, int))
+
+        #TODO should spin up a new model here
+
+        self.auctions[id] = Auction(id)
+
+    def get_auction(self, id: int):
+        assert(isinstance(id, int))
+
+        if id not in self.auctions:
+            #TODO should spin up a new model here
+
+            self.auctions[id] = Auction(id)
+
+        return self.auctions[id]
+
+    def remove_auction(self, id: int):
+        assert(isinstance(id, int))
+
+        #TODO should take down the model here
+
+        del self.auctions[id]
