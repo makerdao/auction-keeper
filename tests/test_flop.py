@@ -100,15 +100,19 @@ class TestAuctionKeeperFlopper:
         keeper.auctions.model_factory.create_model = MagicMock(return_value=model)
         # and
         self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
-        self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact()
-        assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
         # when
-        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
+        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(100.0), gas_price=Wad.from_number(-1)))
+        keeper.check_all_auctions()
+        # ten
+        assert self.flopper.bids(1).lot == Wad.from_number(0.1)
+
+        # when
+        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(200.0), gas_price=Wad.from_number(-1)))
         keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
-        assert self.flopper.bids(1).lot == Wad.from_number(1.5)
+        assert self.flopper.bids(1).lot == Wad.from_number(0.1)
 
     def test_should_deal_when_we_won_the_auction(self):
         # given
