@@ -33,6 +33,7 @@ class TestAuctionKeeperFlopper:
         self.web3 = Web3(EthereumTesterProvider())
         self.web3.eth.defaultAccount = self.web3.eth.accounts[0]
         self.keeper_address = Address(self.web3.eth.defaultAccount)
+        self.gal_address = Address(self.web3.eth.accounts[1])
         self.other_address = Address(self.web3.eth.accounts[2])
         self.dai = DSToken.deploy(self.web3, 'DAI')
         self.dai.mint(Wad.from_number(10000000)).transact()
@@ -45,22 +46,23 @@ class TestAuctionKeeperFlopper:
         dad.permit(self.flopper.address, self.mkr.address, DSGuard.ANY).transact()
         self.mkr.set_authority(dad.address).transact()
 
+        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                              f"--flopper {self.flopper.address}"), web3=self.web3)
+
+        self.keeper.approve()
+
+        self.model = MagicMock()
+        self.model_factory = self.keeper.auctions.model_factory
+        self.model_factory.create_model = MagicMock(return_value=self.model)
+
     def test_should_make_initial_bid(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--flopper {self.flopper.address}"), web3=self.web3)
-        # and
-        keeper.approve()
-        # and
-        model = MagicMock()
-        keeper.auctions.model_factory.create_model = MagicMock(return_value=model)
-        # and
-        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
+        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
         # keeper.drive(1, Wad.from_number(825.0))
-        keeper.check_all_auctions()
+        self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
@@ -68,94 +70,65 @@ class TestAuctionKeeperFlopper:
 
     def test_should_bid_even_if_there_is_already_a_bidder(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--flopper {self.flopper.address}"), web3=self.web3)
-        # and
-        keeper.approve()
-        # and
-        model = MagicMock()
-        keeper.auctions.model_factory.create_model = MagicMock(return_value=model)
-        # and
         self.flopper.approve(directly(from_address=self.other_address))
-        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+        # and
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
         assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
         # when
-        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
-        keeper.check_all_auctions()
+        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
+        self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
+    #TODO pls reconsider if this is really the behaviour we expect from `auction-keeper`
+    #TODO because I don't think it is
     def test_should_not_overbid_itself(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--flopper {self.flopper.address}"), web3=self.web3)
-        # and
-        keeper.approve()
-        # and
-        model = MagicMock()
-        keeper.auctions.model_factory.create_model = MagicMock(return_value=model)
-        # and
-        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(100.0), gas_price=Wad.from_number(-1)))
-        keeper.check_all_auctions()
-        # ten
+        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(100.0), gas_price=Wad.from_number(-1)))
+        self.keeper.check_all_auctions()
+        # then
         assert self.flopper.bids(1).lot == Wad.from_number(0.1)
 
         # when
-        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(200.0), gas_price=Wad.from_number(-1)))
-        keeper.check_all_auctions()
+        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(200.0), gas_price=Wad.from_number(-1)))
+        self.keeper.check_all_auctions()
         # then
-        auction = self.flopper.bids(1)
         assert self.flopper.bids(1).lot == Wad.from_number(0.1)
 
     def test_should_deal_when_we_won_the_auction(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--flopper {self.flopper.address}"), web3=self.web3)
-        # and
-        keeper.approve()
-        # and
-        model = MagicMock()
-        keeper.auctions.model_factory.create_model = MagicMock(return_value=model)
-        # and
-        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
         # when
-        model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
-        keeper.check_all_auctions()
+        self.model.output = MagicMock(return_value=ModelOutput(price=Wad.from_number(825.0), gas_price=Wad.from_number(-1)))
+        self.keeper.check_all_auctions()
         # then
         auction = self.flopper.bids(1)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
-        keeper.check_all_auctions()
+        self.keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) > Wad(0)
 
     def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
         # given
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--flopper {self.flopper.address}"), web3=self.web3)
-        # and
-        keeper.approve()
-        # and
-        model = MagicMock()
-        keeper.auctions.model_factory.create_model = MagicMock(return_value=model)
-        # and
         self.flopper.approve(directly(from_address=self.other_address))
-        self.flopper.kick(Address(self.web3.eth.accounts[1]), Wad.from_number(2), Wad.from_number(10)).transact()
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+        # and
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
         assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 5)
-        keeper.check_all_auctions()
+        self.keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
