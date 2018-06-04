@@ -64,6 +64,7 @@ class Auctions:
         self.flipper = flipper
         self.flapper = flapper
         self.flopper = flopper
+        self.lock = RLock()
         self.model_factory = model_factory
 
     def get_auction(self, id: int):

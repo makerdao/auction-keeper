@@ -62,24 +62,13 @@ class AuctionKeeper:
         self.web3.eth.defaultAccount = self.arguments.eth_from
         self.our_address = Address(self.arguments.eth_from)
 
+        #TODO mutually exclusive flipper|flapper|flopper
         self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper))
-
-
-
-        #TODO three sources of info
-        #1) auction = self.flopper.bids(auction_id)
-        #  -> plus a thread which keeps refreshing it
-        #2) output to the model
-        #3) input to the model
-        self.participations = {}
 
         self.auctions = Auctions(flipper=None, flapper=None, flopper=self.flopper.address, model_factory=ExternalModelFactory())
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
-
-        #TODO rename `bid` to `price`
-        #TODO mutually exclusive flipper|flapper|flopper
 
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
@@ -99,49 +88,51 @@ class AuctionKeeper:
     def check_auction(self, auction_id: int):
         assert(isinstance(auction_id, int))
 
-        # Read auction information
-        bid = self.flopper.bids(auction_id)
-
         # Read our auction state
         auction = self.auctions.get_auction(auction_id)
+        #TODO detecting auctions which are gone. not recreating them
 
-        # Feed the model with current state
-        input = ModelInput(bid=bid.bid,
-                           lot=bid.lot,
-                           beg=self.flopper.beg(),
-                           guy=bid.guy,
-                           era=self.flopper.era(),
-                           tic=bid.tic,
-                           end=bid.end,
-                           price=bid.bid / bid.lot)
+        with auction.lock:
+            # Read auction information
+            bid = self.flopper.bids(auction_id)
 
-        auction.feed_model(input)
+            # Feed the model with current state
+            input = ModelInput(bid=bid.bid,
+                               lot=bid.lot,
+                               beg=self.flopper.beg(),
+                               guy=bid.guy,
+                               era=self.flopper.era(),
+                               tic=bid.tic,
+                               end=bid.end,
+                               price=bid.bid / bid.lot)
 
-        # Check if the auction is finished.
-        # If it is finished and we are the winner, `deal` the auction.
-        # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
-        auction_finished = (bid.tic < self.flopper.era() and bid.tic != 0) or (bid.end < self.flopper.era())
+            auction.feed_model(input)
 
-        if auction_finished:
-            if bid.guy == self.our_address:
-                # TODO this should happen asynchronously
-                self.flopper.deal(auction_id).transact()
+            # Check if the auction is finished.
+            # If it is finished and we are the winner, `deal` the auction.
+            # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
+            auction_finished = (bid.tic < self.flopper.era() and bid.tic != 0) or (bid.end < self.flopper.era())
 
-        if not auction_finished:
-            if bid.guy != self.our_address:
-                # Check if we can bid.
-                # If we can, bid.
-                auction_price = bid.bid / bid.lot
-                auction_price_min_increment = auction_price * self.flopper.beg()
+            if auction_finished:
+                if bid.guy == self.our_address:
+                    # TODO this should happen asynchronously
+                    self.flopper.deal(auction_id).transact()
 
-                input = auction.model_output()
-                if input is not None:
-                    our_price = input.price
-                    if our_price >= auction_price_min_increment:
-                        our_lot = bid.bid / our_price
+            if not auction_finished:
+                if bid.guy != self.our_address:
+                    # Check if we can bid.
+                    # If we can, bid.
+                    auction_price = bid.bid / bid.lot
+                    auction_price_min_increment = auction_price * self.flopper.beg()
 
-                        # TODO this should happen asynchronously
-                        self.flopper.dent(auction_id, our_lot, bid.bid).transact(gas_price=self.gas_price())
+                    input = auction.model_output()
+                    if input is not None:
+                        our_price = input.price
+                        if our_price >= auction_price_min_increment:
+                            our_lot = bid.bid / our_price
+
+                            # TODO this should happen asynchronously
+                            self.flopper.dent(auction_id, our_lot, bid.bid).transact(gas_price=self.gas_price())
 
     def gas_price(self):
         if self.arguments.gas_price:
