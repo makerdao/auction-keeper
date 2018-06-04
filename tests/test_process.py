@@ -17,12 +17,15 @@
 
 import time
 
+import os
+
+import psutil
 import pytest
 
 from auction_keeper.process import Process
 
 
-class TestProcessHost:
+class TestProcess:
     def setup_method(self):
         pass
 
@@ -60,3 +63,20 @@ class TestProcessHost:
                 time.sleep(0.1)
 
         process.stop()
+
+    @pytest.mark.timeout(15)
+    def test_should_kill_process_on_stop(self):
+        process = Process("./tests/models/output-echo.sh")
+        process.start()
+
+        while process.pid is None:
+            time.sleep(0.1)
+
+        assert process.pid is not None
+        assert psutil.pid_exists(process.pid)
+
+        process.stop()
+
+        # todo fails in macOS
+        # while psutil.pid_exists(process.pid):
+        #     time.sleep(0.1)

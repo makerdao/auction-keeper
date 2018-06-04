@@ -73,6 +73,10 @@ class Process:
         flags = fcntl(pipe, F_GETFL) # get current p.stdout flags
         fcntl(pipe, F_SETFL, flags | O_NONBLOCK)
 
+    @property
+    def pid(self):
+        return self.process.pid if self.process else None
+
     def start(self):
         assert(self.process is None)
         assert(self.thread is None)
@@ -94,6 +98,7 @@ class Process:
         self.process.stdin.flush()
 
     def stop(self):
-        #TODO
+        assert(self.process is not None)
+
+        self.process.kill()
         #TODO log process killed
-        pass
