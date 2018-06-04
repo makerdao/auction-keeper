@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 echo "{\"key1\": \"value1\", \"key2\": 2}"
 

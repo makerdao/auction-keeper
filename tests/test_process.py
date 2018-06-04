@@ -45,3 +45,18 @@ class TestProcessHost:
             time.sleep(0.1)
 
         process.stop()
+
+    @pytest.mark.timeout(15)
+    def test_should_read_and_write(self):
+        process = Process("./tests/models/output-echo.sh")
+        process.start()
+
+        time.sleep(1)
+        assert process.read() is None
+
+        for value in ['value1', 'value2', 'value3']:
+            process.write({'key': value})
+            while process.read() != {'key': value}:
+                time.sleep(0.1)
+
+        process.stop()

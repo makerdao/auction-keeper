@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 echo "{\"key\": \"value1\"}"
 sleep 0.2
