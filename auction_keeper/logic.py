@@ -19,6 +19,7 @@ from threading import RLock
 from typing import Optional
 
 from auction_keeper.risk_model import ModelFactory, Model, ModelOutput, ModelParameters, ModelInput
+from pymaker import Address
 
 
 class Auction:
@@ -53,19 +54,29 @@ class Auction:
 
 
 class Auctions:
-    def __init__(self, model_factory: ModelFactory):
+    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], model_factory: ModelFactory):
+        assert(isinstance(flipper, Address) or (flipper is None))
+        assert(isinstance(flapper, Address) or (flapper is None))
+        assert(isinstance(flopper, Address) or (flopper is None))
         assert(isinstance(model_factory, ModelFactory))
 
         self.auctions = {}
+        self.flipper = flipper
+        self.flapper = flapper
+        self.flopper = flopper
         self.model_factory = model_factory
 
     def get_auction(self, id: int):
         assert(isinstance(id, int))
 
         if id not in self.auctions:
-            # Start the model
-            model_parameters = ModelParameters(id=id)
+            # Prepare model startup parameters
+            model_parameters = ModelParameters(flipper=self.flipper,
+                                               flapper=self.flapper,
+                                               flopper=self.flopper,
+                                               id=id)
 
+            # Start the model
             model = self.model_factory.create_model()
             model.start(model_parameters)
 

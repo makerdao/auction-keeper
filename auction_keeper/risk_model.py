@@ -22,18 +22,27 @@ from pymaker import Wad, Address
 
 
 class ModelParameters:
-    def __init__(self, id: int):
+    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], id: int):
+        assert(isinstance(flipper, Address) or (flipper is None))
+        assert(isinstance(flapper, Address) or (flapper is None))
+        assert(isinstance(flopper, Address) or (flopper is None))
         assert(isinstance(id, int))
 
+        self.flipper = flipper
+        self.flapper = flapper
+        self.flopper = flopper
         self.id = id
 
     def __eq__(self, other):
         assert(isinstance(other, ModelParameters))
 
-        return self.id == other.id
+        return self.flipper == other.flipper and \
+               self.flapper == other.flapper and \
+               self.flopper == other.flopper and \
+               self.id == other.id
 
     def __hash__(self):
-        return hash(self.id)
+        return hash((self.flipper, self.flapper, self.flopper, self.id))
 
     def __repr__(self):
         return pformat(vars(self))

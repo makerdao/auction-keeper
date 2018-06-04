@@ -73,7 +73,7 @@ class AuctionKeeper:
         #3) input to the model
         self.participations = {}
 
-        self.auctions = Auctions(model_factory=ExternalModelFactory())
+        self.auctions = Auctions(flipper=None, flapper=None, flopper=self.flopper.address, model_factory=ExternalModelFactory())
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
