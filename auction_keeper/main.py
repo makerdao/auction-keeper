@@ -22,6 +22,7 @@ import sys
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.external_model import ExternalModelFactory
+from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
 from auction_keeper.strategy import FlopperStrategy
 from pymaker import Address, Wad
@@ -49,9 +50,6 @@ class AuctionKeeper:
 
         parser.add_argument("--flopper", type=str, required=True,
                             help="Ethereum address of the Flopper contract")
-
-        parser.add_argument("--gas-price", type=int, default=0,
-                            help="Gas price (in Wei)")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -110,7 +108,9 @@ class AuctionKeeper:
             if auction_finished:
                 if input.guy == self.our_address:
                     # TODO this should happen asynchronously
-                    self.flopper.deal(auction_id).transact()
+
+                    # Always using default gas price for `deal`
+                    self.flopper.deal(auction_id).transact(gas_price=DefaultGasPrice())
 
             if not auction_finished:
                 if input.guy != self.our_address:
@@ -125,14 +125,10 @@ class AuctionKeeper:
                         if our_price >= auction_price_min_increment:
                             our_lot = input.bid / our_price
 
-                            # TODO this should happen asynchronously
-                            self.flopper.dent(auction_id, our_lot, input.bid).transact(gas_price=self.gas_price())
+                            gas_price = UpdatableGasPrice(output.gas_price)
 
-    def gas_price(self):
-        if self.arguments.gas_price:
-            return FixedGasPrice(self.arguments.gas_price)
-        else:
-            return DefaultGasPrice()
+                            # TODO this should happen asynchronously
+                            self.flopper.dent(auction_id, our_lot, input.bid).transact(gas_price=gas_price)
 
 
 if __name__ == '__main__':

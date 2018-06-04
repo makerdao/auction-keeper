@@ -88,9 +88,9 @@ class ModelInput:
 
 
 class ModelOutput:
-    def __init__(self, price: Wad, gas_price: Wad):
+    def __init__(self, price: Wad, gas_price: Optional[int]):
         assert(isinstance(price, Wad))
-        assert(isinstance(gas_price, Wad)) #TODO I think `gas_price` should be optional, then we should default to node default.
+        assert(isinstance(gas_price, int) or (gas_price is None))
 
         self.price = price
         self.gas_price = gas_price

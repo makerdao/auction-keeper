@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from typing import Optional
+
+from ethereum.tester import GAS_PRICE
 from mock import MagicMock
 from web3 import Web3, EthereumTesterProvider
 
@@ -58,8 +61,8 @@ class TestAuctionKeeperFlopper:
         self.model_factory = self.keeper.auctions.model_factory
         self.model_factory.create_model = MagicMock(return_value=self.model)
 
-    def simulate_model_output(self, price: Wad):
-        self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=Wad.from_number(-1)))
+    def simulate_model_output(self, price: Wad, gas_price: Optional[int] = None):
+        self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=gas_price))
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self):
         # given
@@ -204,3 +207,25 @@ class TestAuctionKeeperFlopper:
         self.keeper.check_all_auctions()
         # then
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
+
+    def test_should_obey_gas_price_provided_by_the_model(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(825.0), gas_price=175000)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
+
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(825.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == GAS_PRICE

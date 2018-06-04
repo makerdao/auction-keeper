@@ -17,17 +17,17 @@
 
 from typing import Optional
 
-from pymaker import Wad, GasPrice
+from pymaker.gas import GasPrice
 
 
 class UpdatableGasPrice(GasPrice):
-    def __init__(self, gas_price: int):
-        assert(isinstance(gas_price, int))
+    def __init__(self, gas_price: Optional[int]):
+        assert(isinstance(gas_price, int) or (gas_price is None))
 
         self.gas_price = gas_price
 
-    def update_gas_price(self, gas_price: int):
-        assert(isinstance(gas_price, int))
+    def update_gas_price(self, gas_price: Optional[int]):
+        assert(isinstance(gas_price, int) or (gas_price is None))
 
         self.gas_price = gas_price
 
