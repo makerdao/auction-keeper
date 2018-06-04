@@ -35,44 +35,6 @@ class ExternalModel(Model):
     #     self.thread = threading.Thread(target=self._run, daemon=True)
     #     self.thread.start()
     #
-    # def _run(self):
-    #     self.process = Popen(['node', 'main.js', self.api_server], cwd='utils/etherdelta-socket',
-    #                          stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
-    #     self._set_nonblock(self.process.stdout)
-    #     self._set_nonblock(self.process.stderr)
-    #
-    #     while True:
-    #         try:
-    #             lines = read(self.process.stdout.fileno(), 1024).decode('utf-8').splitlines()
-    #             for line in lines:
-    #                 self.logger.info(f"EtherDelta interface: {line}")
-    #         except OSError:
-    #             pass  # the os throws an exception if there is no data
-    #
-    #         try:
-    #             lines = read(self.process.stderr.fileno(), 1024).decode('utf-8').splitlines()
-    #             for line in lines:
-    #                 self.logger.info(f"EtherDelta interface error: {line}")
-    #         except OSError:
-    #             pass  # the os throws an exception if there is no data
-    #
-    #         time.sleep(0.1)
-    #
-    # @staticmethod
-    # def _set_nonblock(pipe):
-    #     flags = fcntl(pipe, F_GETFL) # get current p.stdout flags
-    #     fcntl(pipe, F_SETFL, flags | O_NONBLOCK)
-    #
-    # def publish_offchain_order(self, order: OffChainOrder):
-    #     assert(isinstance(order, OffChainOrder))
-    #
-    #     self.logger.info(f"Sending off-chain EtherDelta order {order}")
-    #
-    #     self.process.stdin.write((json.dumps(order.to_json(self.contract_address)) + '\n').encode('ascii'))
-    #     self.process.stdin.flush()
-    #
-    # def __repr__(self):
-    #     return f"EtherDeltaApi()"
 
 
 class ExternalModelFactory(ModelFactory):
