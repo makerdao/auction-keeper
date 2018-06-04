@@ -23,6 +23,7 @@ from web3 import Web3, HTTPProvider
 
 from auction_keeper.external_model import ExternalModelFactory
 from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
+from auction_keeper.strategy import FlopperStrategy
 from pymaker import Address, Wad
 from pymaker.approval import directly
 from pymaker.auctions import Flopper
@@ -65,6 +66,8 @@ class AuctionKeeper:
         #TODO mutually exclusive flipper|flapper|flopper
         self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper))
 
+        self.strategy = FlopperStrategy(self.flopper)
+
         self.auctions = Auctions(flipper=None, flapper=None, flopper=self.flopper.address, model_factory=ExternalModelFactory())
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
@@ -94,45 +97,36 @@ class AuctionKeeper:
 
         with auction.lock:
             # Read auction information
-            bid = self.flopper.bids(auction_id)
+            input = self.strategy.get_input(auction_id)
 
             # Feed the model with current state
-            input = ModelInput(bid=bid.bid,
-                               lot=bid.lot,
-                               beg=self.flopper.beg(),
-                               guy=bid.guy,
-                               era=self.flopper.era(),
-                               tic=bid.tic,
-                               end=bid.end,
-                               price=bid.bid / bid.lot)
-
             auction.feed_model(input)
 
             # Check if the auction is finished.
             # If it is finished and we are the winner, `deal` the auction.
             # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
-            auction_finished = (bid.tic < self.flopper.era() and bid.tic != 0) or (bid.end < self.flopper.era())
+            auction_finished = (input.tic < self.flopper.era() and input.tic != 0) or (input.end < self.flopper.era())
 
             if auction_finished:
-                if bid.guy == self.our_address:
+                if input.guy == self.our_address:
                     # TODO this should happen asynchronously
                     self.flopper.deal(auction_id).transact()
 
             if not auction_finished:
-                if bid.guy != self.our_address:
+                if input.guy != self.our_address:
                     # Check if we can bid.
                     # If we can, bid.
-                    auction_price = bid.bid / bid.lot
+                    auction_price = input.bid / input.lot
                     auction_price_min_increment = auction_price * self.flopper.beg()
 
-                    input = auction.model_output()
-                    if input is not None:
-                        our_price = input.price
+                    output = auction.model_output()
+                    if output is not None:
+                        our_price = output.price
                         if our_price >= auction_price_min_increment:
-                            our_lot = bid.bid / our_price
+                            our_lot = input.bid / our_price
 
                             # TODO this should happen asynchronously
-                            self.flopper.dent(auction_id, our_lot, bid.bid).transact(gas_price=self.gas_price())
+                            self.flopper.dent(auction_id, our_lot, input.bid).transact(gas_price=self.gas_price())
 
     def gas_price(self):
         if self.arguments.gas_price:
