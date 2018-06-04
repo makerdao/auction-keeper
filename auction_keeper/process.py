@@ -92,10 +92,16 @@ class Process:
 
         data_str = json.dumps(data, indent=None)
 
-        self.logger.debug(f"Sending data to the model process: {data_str}")
+        if self.process is not None:
+            self.logger.debug(f"Sending data to the model process: {data_str}")
 
-        self.process.stdin.write((data_str + '\n').encode('ascii'))
-        self.process.stdin.flush()
+            self.process.stdin.write((data_str + '\n').encode('ascii'))
+            self.process.stdin.flush()
+
+        else:
+            #TODO this isn't clean. think about changing
+            #TODO maybe messages should be queued and sent from the thread we use to read them?
+            self.logger.warning(f"Cannot send data to process as process hasn't started yet: {data_str}")
 
     def stop(self):
         assert(self.process is not None)

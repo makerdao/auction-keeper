@@ -17,8 +17,6 @@
 
 import time
 
-import os
-
 import psutil
 import pytest
 

@@ -23,7 +23,7 @@ from web3 import Web3, EthereumTesterProvider
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.logic import ModelOutput
-from auction_keeper.risk_model import ModelParameters, ModelInput
+from auction_keeper.model import ModelParameters, ModelInput
 from pymaker import Address
 from pymaker.approval import directly
 from pymaker.auctions import Flopper

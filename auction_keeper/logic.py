@@ -18,7 +18,7 @@
 from threading import RLock
 from typing import Optional
 
-from auction_keeper.risk_model import ModelFactory, Model, ModelOutput, ModelParameters, ModelInput
+from auction_keeper.model import ModelFactory, Model, ModelOutput, ModelParameters, ModelInput
 from pymaker import Address
 
 
