@@ -38,7 +38,7 @@ class Process:
         self._last_read_lock = threading.RLock()
 
     def _run(self):
-        self.process = Popen(self.command, stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
+        self.process = Popen(self.command.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
         self._set_nonblock(self.process.stdout)
         self._set_nonblock(self.process.stderr)
 
@@ -62,7 +62,7 @@ class Process:
             try:
                 lines = read(self.process.stderr.fileno(), 1024).decode('utf-8').splitlines()
                 for line in lines:
-                    self.logger.info(f"Model process output: {line}")
+                    self.logger.debug(f"Model process output: {line}")
             except OSError:
                 pass  # the os throws an exception if there is no data
 

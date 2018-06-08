@@ -43,13 +43,13 @@ class ProcessModel(Model):
         if parameters.flopper is not None:
             arguments += f" --flopper {parameters.flopper}"
 
-        self.process = Process(self.command + " " + arguments)
+        self.process = Process(arguments)
         self.process.start()
 
-    def input(self, input: ModelInput) -> dict:
+    def input(self, input: ModelInput):
         assert(self.process is not None)
 
-        return {
+        self.process.write({
             "bid": str(input.bid),
             "lot": str(input.lot),
             "beg": str(input.beg),
@@ -58,7 +58,7 @@ class ProcessModel(Model):
             "tic": int(input.tic),
             "end": int(input.end),
             "price": str(input.price),
-        }
+        })
 
     def output(self) -> Optional[ModelOutput]:
         assert(self.process is not None)
