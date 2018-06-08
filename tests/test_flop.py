@@ -52,7 +52,8 @@ class TestAuctionKeeperFlopper:
         self.mkr.set_authority(dad.address).transact()
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                              f"--flopper {self.flopper.address}"), web3=self.web3)
+                                              f"--flopper {self.flopper.address} "
+                                              f"--model ./bogus-model.sh"), web3=self.web3)
 
         self.keeper.approve()
 

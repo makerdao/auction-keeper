@@ -44,7 +44,8 @@ class TestAuctionKeeperFlapper:
         self.flapper = Flapper.deploy(self.web3, self.dai.address, self.mkr.address)
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                              f"--flapper {self.flapper.address}"), web3=self.web3)
+                                              f"--flapper {self.flapper.address} "
+                                              f"--model ./bogus-model.sh"), web3=self.web3)
 
         self.keeper.approve()
 

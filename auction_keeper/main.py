@@ -53,6 +53,9 @@ class AuctionKeeper:
         contract.add_argument('--flapper', type=str, help="Ethereum address of the Flapper contract")
         contract.add_argument('--flopper', type=str, help="Ethereum address of the Flopper contract")
 
+        parser.add_argument("--model", type=str, required=True,
+                            help="Commandline to run the risk model used for bidding")
+
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
 
@@ -77,7 +80,7 @@ class AuctionKeeper:
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
-                                 model_factory=ProcessModelFactory('TODO'))
+                                 model_factory=ProcessModelFactory(self.arguments.model))
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
