@@ -19,6 +19,7 @@ from typing import Optional
 
 from auction_keeper.model import ModelFactory, Model, ModelParameters, ModelInput, ModelOutput
 from auction_keeper.process import Process
+from pymaker import Wad
 
 
 class ProcessModel(Model):
@@ -45,16 +46,31 @@ class ProcessModel(Model):
         self.process = Process(self.command + " " + arguments)
         self.process.start()
 
-    def input(self, input: ModelInput):
+    def input(self, input: ModelInput) -> dict:
         assert(self.process is not None)
 
-        #TODO
-        pass
+        return {
+            "bid": str(input.bid),
+            "lot": str(input.lot),
+            "beg": str(input.beg),
+            "guy": str(input.guy),
+            "era": int(input.era),
+            "tic": int(input.tic),
+            "end": int(input.end),
+            "price": str(input.price),
+        }
 
     def output(self) -> Optional[ModelOutput]:
         assert(self.process is not None)
 
-        pass
+        data = self.process.read()
+
+        if data is not None:
+            return ModelOutput(price=Wad.from_number(data['price']),
+                               gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
+
+        else:
+            return None
 
     def stop(self):
         assert(self.process is not None)

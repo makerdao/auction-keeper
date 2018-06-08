@@ -18,8 +18,10 @@
 from threading import RLock
 from typing import Optional
 
+from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.model import ModelFactory, Model, ModelOutput, ModelParameters, ModelInput
-from pymaker import Address
+from pymaker import Address, Transact, Wad
+from pymaker.approval import directly
 from pymaker.auctions import Flopper
 
 
@@ -33,6 +35,12 @@ class FlopperStrategy(Strategy):
         assert(isinstance(flopper, Flopper))
 
         self.flopper = flopper
+
+    def approve(self):
+        self.flopper.approve(directly())
+
+    def kicks(self) -> int:
+        return self.flopper.kicks()
 
     def get_input(self, id: int) -> ModelInput:
         assert(isinstance(id, int))
@@ -49,3 +57,26 @@ class FlopperStrategy(Strategy):
                           tic=bid.tic,
                           end=bid.end,
                           price=bid.bid / bid.lot)
+
+    def bid(self, id: int, price: Wad) -> Optional[Transact]:
+        assert(isinstance(id, int))
+        assert(isinstance(price, Wad))
+
+        bid = self.flopper.bids(id)
+
+        # Check if we can bid.
+        # If we can, bid.
+        auction_price = bid.bid / bid.lot
+        auction_price_min_increment = auction_price * self.flopper.beg()
+
+        if price >= auction_price_min_increment:
+            our_lot = bid.bid / price
+
+            # TODO this should happen asynchronously
+            return self.flopper.dent(id, our_lot, bid.bid)
+
+        else:
+            return None
+
+    def deal(self, id: int) -> Transact:
+        return self.flopper.deal(id)

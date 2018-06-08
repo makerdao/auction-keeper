@@ -80,10 +80,10 @@ class AuctionKeeper:
         self.approve()
 
     def approve(self):
-        self.flopper.approve(directly())
+        self.strategy.approve()
 
     def check_all_auctions(self):
-        for auction_id in range(1, self.flopper.kicks()+1):
+        for auction_id in range(1, self.strategy.kicks() + 1):
             self.check_auction(auction_id)
 
     def check_auction(self, auction_id: int):
@@ -103,32 +103,24 @@ class AuctionKeeper:
             # Check if the auction is finished.
             # If it is finished and we are the winner, `deal` the auction.
             # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
-            auction_finished = (input.tic < self.flopper.era() and input.tic != 0) or (input.end < self.flopper.era())
+            auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
             if auction_finished:
                 if input.guy == self.our_address:
                     # TODO this should happen asynchronously
 
                     # Always using default gas price for `deal`
-                    self.flopper.deal(auction_id).transact(gas_price=DefaultGasPrice())
+                    self.strategy.deal(auction_id).transact(gas_price=DefaultGasPrice())
 
             if not auction_finished:
                 if input.guy != self.our_address:
-                    # Check if we can bid.
-                    # If we can, bid.
-                    auction_price = input.bid / input.lot
-                    auction_price_min_increment = auction_price * self.flopper.beg()
-
                     output = auction.model_output()
                     if output is not None:
-                        our_price = output.price
-                        if our_price >= auction_price_min_increment:
-                            our_lot = input.bid / our_price
+                        bid_transact = self.strategy.bid(auction_id, output.price)
 
+                        if bid_transact is not None:
                             gas_price = UpdatableGasPrice(output.gas_price)
-
-                            # TODO this should happen asynchronously
-                            self.flopper.dent(auction_id, our_lot, input.bid).transact(gas_price=gas_price)
+                            bid_transact.transact(gas_price=gas_price)
 
 
 if __name__ == '__main__':
