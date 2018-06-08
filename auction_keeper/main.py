@@ -24,10 +24,10 @@ from web3 import Web3, HTTPProvider
 from auction_keeper.process_model import ProcessModelFactory
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
-from auction_keeper.strategy import FlopperStrategy
+from auction_keeper.strategy import FlopperStrategy, FlapperStrategy
 from pymaker import Address, Wad
 from pymaker.approval import directly
-from pymaker.auctions import Flopper
+from pymaker.auctions import Flopper, Flipper, Flapper
 from pymaker.gas import FixedGasPrice, DefaultGasPrice
 from pymaker.lifecycle import Lifecycle
 
@@ -63,8 +63,8 @@ class AuctionKeeper:
         self.web3.eth.defaultAccount = self.arguments.eth_from
         self.our_address = Address(self.arguments.eth_from)
 
-        self.flipper = Flopper(web3=self.web3, address=Address(self.arguments.flipper)) if self.arguments.flipper else None
-        self.flapper = Flopper(web3=self.web3, address=Address(self.arguments.flapper)) if self.arguments.flapper else None
+        self.flipper = Flipper(web3=self.web3, address=Address(self.arguments.flipper)) if self.arguments.flipper else None
+        self.flapper = Flapper(web3=self.web3, address=Address(self.arguments.flapper)) if self.arguments.flapper else None
         self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper)) if self.arguments.flopper else None
 
         if self.flipper:

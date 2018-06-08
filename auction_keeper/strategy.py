@@ -15,19 +15,69 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from threading import RLock
 from typing import Optional
 
-from auction_keeper.gas import UpdatableGasPrice
-from auction_keeper.model import ModelFactory, Model, ModelOutput, ModelParameters, ModelInput
-from pymaker import Address, Transact, Wad
+from auction_keeper.model import ModelInput
+from pymaker import Transact, Wad
 from pymaker.approval import directly
-from pymaker.auctions import Flopper
+from pymaker.auctions import Flopper, Flapper
 
 
 class Strategy:
     def get_input(self, id: int):
         raise NotImplementedError
+
+
+class FlapperStrategy(Strategy):
+    def __init__(self, flapper: Flapper):
+        assert(isinstance(flapper, Flapper))
+
+        self.flapper = flapper
+
+    def approve(self):
+        self.flapper.approve(directly())
+
+    def kicks(self) -> int:
+        return self.flapper.kicks()
+
+    def get_input(self, id: int) -> ModelInput:
+        assert(isinstance(id, int))
+
+        # Read auction state
+        bid = self.flapper.bids(id)
+
+        # Prepare the model input from auction state
+        return ModelInput(bid=bid.bid,
+                          lot=bid.lot,
+                          beg=self.flapper.beg(),
+                          guy=bid.guy,
+                          era=self.flapper.era(),
+                          tic=bid.tic,
+                          end=bid.end,
+                          price=bid.lot / bid.bid)
+
+    def bid(self, id: int, price: Wad) -> Optional[Transact]:
+        assert(isinstance(id, int))
+        assert(isinstance(price, Wad))
+
+        bid = self.flapper.bids(id)
+
+        # Check if we can bid.
+        # If we can, bid.
+        auction_price = bid.lot / bid.bid
+        auction_price_min_decrement = auction_price * self.flapper.beg()
+
+        if price <= auction_price_min_decrement:
+            our_bid = bid.lot / price
+
+            # TODO this should happen asynchronously
+            return self.flapper.tend(id, bid.lot, our_bid)
+
+        else:
+            return None
+
+    def deal(self, id: int) -> Transact:
+        return self.flapper.deal(id)
 
 
 class FlopperStrategy(Strategy):
