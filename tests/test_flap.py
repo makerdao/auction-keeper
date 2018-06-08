@@ -143,9 +143,9 @@ class TestAuctionKeeperFlapper:
 
     def test_should_bid_even_if_there_is_already_a_bidder(self):
         # given
-        self.flapper.approve(directly(from_address=self.other_address)) #TODO change order
         self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
         # and
+        self.flapper.approve(directly(from_address=self.other_address))
         self.flapper.tend(1, Wad.from_number(200), Wad.from_number(16)).transact(from_address=self.other_address)
         assert self.flapper.bids(1).bid == Wad.from_number(16)
 
@@ -199,9 +199,9 @@ class TestAuctionKeeperFlapper:
 
     def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
         # given
-        self.flapper.approve(directly(from_address=self.other_address)) #TODO change order
         self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
         # and
+        self.flapper.approve(directly(from_address=self.other_address))
         self.flapper.tend(1, Wad.from_number(200), Wad.from_number(16)).transact(from_address=self.other_address)
         assert self.flapper.bids(1).bid == Wad.from_number(16)
 

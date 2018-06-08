@@ -140,9 +140,9 @@ class TestAuctionKeeperFlopper:
 
     def test_should_bid_even_if_there_is_already_a_bidder(self):
         # given
-        self.flopper.approve(directly(from_address=self.other_address)) #TODO change order to less confusing
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
         # and
+        self.flopper.approve(directly(from_address=self.other_address))
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
         assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
@@ -196,9 +196,9 @@ class TestAuctionKeeperFlopper:
 
     def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
         # given
-        self.flopper.approve(directly(from_address=self.other_address))
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
         # and
+        self.flopper.approve(directly(from_address=self.other_address))
         self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
         assert self.flopper.bids(1).lot == Wad.from_number(1.5)
 
