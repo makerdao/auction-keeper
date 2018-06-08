@@ -48,8 +48,10 @@ class AuctionKeeper:
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
 
-        parser.add_argument("--flopper", type=str, required=True,
-                            help="Ethereum address of the Flopper contract")
+        contract = parser.add_mutually_exclusive_group(required=True)
+        contract.add_argument('--flipper', type=str, help="Ethereum address of the Flipper contract")
+        contract.add_argument('--flapper', type=str, help="Ethereum address of the Flapper contract")
+        contract.add_argument('--flopper', type=str, help="Ethereum address of the Flopper contract")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -61,12 +63,21 @@ class AuctionKeeper:
         self.web3.eth.defaultAccount = self.arguments.eth_from
         self.our_address = Address(self.arguments.eth_from)
 
-        #TODO mutually exclusive flipper|flapper|flopper
-        self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper))
+        self.flipper = Flopper(web3=self.web3, address=Address(self.arguments.flipper)) if self.arguments.flipper else None
+        self.flapper = Flopper(web3=self.web3, address=Address(self.arguments.flapper)) if self.arguments.flapper else None
+        self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper)) if self.arguments.flopper else None
 
-        self.strategy = FlopperStrategy(self.flopper)
+        if self.flipper:
+            raise Exception("Flipper not supported yet")
+        elif self.flapper:
+            self.strategy = FlapperStrategy(self.flapper)
+        elif self.flopper:
+            self.strategy = FlopperStrategy(self.flopper)
 
-        self.auctions = Auctions(flipper=None, flapper=None, flopper=self.flopper.address, model_factory=ProcessModelFactory('TODO'))
+        self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
+                                 flapper=self.flapper.address if self.flapper else None,
+                                 flopper=self.flopper.address if self.flopper else None,
+                                 model_factory=ProcessModelFactory('TODO'))
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
