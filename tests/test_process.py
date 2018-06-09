@@ -64,12 +64,44 @@ class TestProcess:
     @pytest.mark.timeout(15)
     def test_should_kill_process_on_stop(self):
         process = Process("./tests/models/output-echo.sh")
-        process.start()
 
+        process.start()
         while not process.running:
             time.sleep(0.1)
 
         process.stop()
-
         while process.running:
+            time.sleep(0.1)
+
+    def test_should_not_let_start_the_process_twice(self):
+        process = Process("./tests/models/output-echo.sh")
+        process.start()
+
+        with pytest.raises(Exception):
+            process.start()
+
+    def test_should_let_start_the_process_again_after_it_got_stopped(self):
+        process = Process("./tests/models/output-echo.sh")
+
+        process.start()
+        while not process.running:
+            time.sleep(0.1)
+
+        process.stop()
+        while process.running:
+            time.sleep(0.1)
+
+        process.start()
+        while not process.running:
+            time.sleep(0.1)
+
+    def test_should_let_start_the_process_again_after_it_terminated_voluntarily(self):
+        process = Process("./tests/models/terminate-voluntarily.sh")
+
+        process.start()
+        while process.running:
+            time.sleep(0.1)
+
+        process.start()
+        while not process.running:
             time.sleep(0.1)

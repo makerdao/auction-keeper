@@ -32,7 +32,8 @@ class Process:
     def __init__(self, command: str):
         self.command = command
         self.process = None
-        self.thread = None
+        self._thread = None
+        self._terminate = False
 
         self._last_read = None
         self._last_read_lock = threading.RLock()
@@ -45,6 +46,9 @@ class Process:
         self.logger.info(f"Process '{self.command}' (pid {self.process.pid}) started")
 
         while self.process.poll() is None:
+            if self._terminate:
+                self.process.kill()
+
             try:
                 lines = read(self.process.stdout.fileno(), 1024).decode('utf-8').splitlines()
 
@@ -76,15 +80,17 @@ class Process:
 
     @property
     def running(self):
-        return self.process and \
-               self.process.poll() is None
+        return self._thread and \
+               self._thread.is_alive()
 
     def start(self):
-        assert(self.process is None)
-        assert(self.thread is None)
+        assert not self.running
 
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
+        self._terminate = False
+        #TODO clear read queue here...?
+        #TODO clear write queue here...?
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
 
     def read(self) -> Optional[dict]:
         return self._last_read
@@ -106,10 +112,8 @@ class Process:
             self.logger.warning(f"Cannot send data to process as process hasn't started yet: {data_str}")
 
     def stop(self):
-        assert(self.process is not None)
+        assert self.running
 
-        self.process.kill()
-        #TODO log process killed [.poll()]
+        self._terminate = True
 
-        #TODO log low level process startup and shutdown here keeping high level "Starting model" and "Stopping model" at the same time
         #TODO restart dying processes
