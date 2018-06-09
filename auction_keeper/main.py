@@ -84,6 +84,8 @@ class AuctionKeeper:
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
+        logging.getLogger('urllib3.connectionpool').setLevel(logging.INFO)
+        logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(logging.INFO)
 
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
