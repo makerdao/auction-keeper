@@ -70,6 +70,8 @@ class Auctions:
         self.lock = RLock()
         self.model_factory = model_factory
 
+    #TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
+    #TODO and restart the model if so.
     def get_auction(self, id: int):
         assert(isinstance(id, int))
 
