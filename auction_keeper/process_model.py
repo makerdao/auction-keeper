@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 from typing import Optional
 
 from auction_keeper.model import ModelFactory, Model, ModelParameters, ModelInput, ModelOutput
@@ -23,28 +24,33 @@ from pymaker import Wad
 
 
 class ProcessModel(Model):
+    logger = logging.getLogger()
+
     def __init__(self, command: str):
         assert(isinstance(command, str))
 
         self.command = command
+        self.arguments = None
         self.process = None
 
     def start(self, parameters: ModelParameters):
         assert(self.process is None)
 
-        arguments = f"{self.command} --id {parameters.id}"
+        self.arguments = f"--id {parameters.id}"
 
         if parameters.flipper is not None:
-            arguments += f" --flipper {parameters.flipper}"
+            self.arguments += f" --flipper {parameters.flipper}"
 
         if parameters.flapper is not None:
-            arguments += f" --flapper {parameters.flapper}"
+            self.arguments += f" --flapper {parameters.flapper}"
 
         if parameters.flopper is not None:
-            arguments += f" --flopper {parameters.flopper}"
+            self.arguments += f" --flopper {parameters.flopper}"
 
-        self.process = Process(arguments)
+        self.process = Process(f"{self.command} {self.arguments}")
         self.process.start()
+
+        self.logger.info(f"Started model '{self.command} {self.arguments}'")
 
     def input(self, input: ModelInput):
         assert(self.process is not None)
@@ -74,6 +80,8 @@ class ProcessModel(Model):
 
     def stop(self):
         assert(self.process is not None)
+
+        self.logger.info(f"Stopped model '{self.command} {self.arguments}'")
 
         self.process.stop()
 

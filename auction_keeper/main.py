@@ -109,6 +109,8 @@ class AuctionKeeper:
         auction = self.auctions.get_auction(auction_id)
         #TODO detecting auctions which are gone. not recreating them
 
+        #TODO alive, finished, input
+
         with auction.lock:
             # Read auction information
             input = self.strategy.get_input(auction_id)

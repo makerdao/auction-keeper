@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 from threading import RLock
 from typing import Optional
 
@@ -54,6 +55,8 @@ class Auction:
 
 
 class Auctions:
+    logger = logging.getLogger()
+
     def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], model_factory: ModelFactory):
         assert(isinstance(flipper, Address) or (flipper is None))
         assert(isinstance(flapper, Address) or (flapper is None))
@@ -71,6 +74,9 @@ class Auctions:
         assert(isinstance(id, int))
 
         if id not in self.auctions:
+            # Log the fact that new auction has been detected
+            self.logger.info(f"Monitoring new auction #{id}")
+
             # Prepare model startup parameters
             model_parameters = ModelParameters(flipper=self.flipper,
                                                flapper=self.flapper,
@@ -89,8 +95,12 @@ class Auctions:
     def remove_auction(self, id: int):
         assert(isinstance(id, int))
 
-        # Stop the model
-        self.auctions[id].model.stop()
+        if id in self.auctions:
+            # Stop the model
+            self.auctions[id].model.stop()
 
-        # Remove the auction
-        del self.auctions[id]
+            # Remove the auction
+            del self.auctions[id]
+
+            # Log the fact that auction has been discarded
+            self.logger.info(f"Discarded auction #{id} as it's not active anymore")

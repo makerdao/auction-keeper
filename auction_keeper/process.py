@@ -107,4 +107,7 @@ class Process:
         assert(self.process is not None)
 
         self.process.kill()
-        #TODO log process killed
+        #TODO log process killed [.poll()]
+
+        #TODO log low level process startup and shutdown here keeping high level "Starting model" and "Stopping model" at the same time
+        #TODO restart dying processes

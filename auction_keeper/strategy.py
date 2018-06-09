@@ -54,7 +54,7 @@ class FlapperStrategy(Strategy):
                           era=self.flapper.era(),
                           tic=bid.tic,
                           end=bid.end,
-                          price=bid.lot / bid.bid)
+                          price=(bid.lot / bid.bid) if bid.bid != Wad(0) else Wad(0))
 
     def bid(self, id: int, price: Wad) -> Optional[Transact]:
         assert(isinstance(id, int))
@@ -106,7 +106,7 @@ class FlopperStrategy(Strategy):
                           era=self.flopper.era(),
                           tic=bid.tic,
                           end=bid.end,
-                          price=bid.bid / bid.lot)
+                          price=(bid.bid / bid.lot) if bid.lot != Wad(0) else Wad(0))
 
     def bid(self, id: int, price: Wad) -> Optional[Transact]:
         assert(isinstance(id, int))
