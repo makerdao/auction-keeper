@@ -47,10 +47,10 @@ class ProcessModel(Model):
         if parameters.flopper is not None:
             self.arguments += f" --flopper {parameters.flopper}"
 
+        self.logger.info(f"Starting model '{self.command} {self.arguments}'")
+
         self.process = Process(f"{self.command} {self.arguments}")
         self.process.start()
-
-        self.logger.info(f"Started model '{self.command} {self.arguments}'")
 
     def input(self, input: ModelInput):
         assert(self.process is not None)
@@ -81,7 +81,7 @@ class ProcessModel(Model):
     def stop(self):
         assert(self.process is not None)
 
-        self.logger.info(f"Stopped model '{self.command} {self.arguments}'")
+        self.logger.info(f"Stopping model '{self.command} {self.arguments}'")
 
         self.process.stop()
 

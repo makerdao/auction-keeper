@@ -42,10 +42,9 @@ class Process:
         self._set_nonblock(self.process.stdout)
         self._set_nonblock(self.process.stderr)
 
-        #TODO add some process identifiers to the log messages etc.
-        #TODO log process created
+        self.logger.info(f"Process '{self.command}' (pid {self.process.pid}) started")
 
-        while True:
+        while self.process.poll() is None:
             try:
                 lines = read(self.process.stdout.fileno(), 1024).decode('utf-8').splitlines()
 
@@ -67,6 +66,8 @@ class Process:
                 pass  # the os throws an exception if there is no data
 
             time.sleep(0.01)
+
+        self.logger.info(f"Process '{self.command}' (pid {self.process.pid}) terminated")
 
     @staticmethod
     def _set_nonblock(pipe):
