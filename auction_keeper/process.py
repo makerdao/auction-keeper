@@ -75,8 +75,9 @@ class Process:
         fcntl(pipe, F_SETFL, flags | O_NONBLOCK)
 
     @property
-    def pid(self):
-        return self.process.pid if self.process else None
+    def running(self):
+        return self.process and \
+               self.process.poll() is None
 
     def start(self):
         assert(self.process is None)

@@ -17,7 +17,6 @@
 
 import time
 
-import psutil
 import pytest
 
 from auction_keeper.process import Process
@@ -67,14 +66,10 @@ class TestProcess:
         process = Process("./tests/models/output-echo.sh")
         process.start()
 
-        while process.pid is None:
+        while not process.running:
             time.sleep(0.1)
-
-        assert process.pid is not None
-        assert psutil.pid_exists(process.pid)
 
         process.stop()
 
-        # todo fails in macOS
-        # while psutil.pid_exists(process.pid):
-        #     time.sleep(0.1)
+        while process.running:
+            time.sleep(0.1)
