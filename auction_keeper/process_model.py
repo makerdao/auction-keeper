@@ -78,7 +78,7 @@ class ProcessModel(Model):
         else:
             return None
 
-    def stop(self):
+    def terminate(self):
         assert(self.process is not None)
 
         self.logger.info(f"Stopping model '{self.command} {self.arguments}'")

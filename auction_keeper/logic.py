@@ -50,9 +50,6 @@ class Auction:
     def model_output(self) -> Optional[ModelOutput]:
         return self.model.output()
 
-    def remove(self):
-        self.model.stop()
-
 
 class Auctions:
     logger = logging.getLogger()
@@ -99,7 +96,7 @@ class Auctions:
 
         if id in self.auctions:
             # Stop the model
-            self.auctions[id].model.stop()
+            self.auctions[id].model.terminate()
 
             # Remove the auction
             del self.auctions[id]

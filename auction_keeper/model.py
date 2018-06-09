@@ -109,6 +109,7 @@ class ModelOutput:
 
 
 class Model:
+    #TODO to be deprecated
     def start(self, parameters: ModelParameters):
         raise NotImplementedError
 
@@ -118,7 +119,7 @@ class Model:
     def output(self) -> Optional[ModelOutput]:
         raise NotImplementedError
 
-    def stop(self):
+    def terminate(self):
         raise NotImplementedError
 
 
