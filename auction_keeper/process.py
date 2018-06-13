@@ -91,7 +91,6 @@ class Process:
         flags = fcntl(pipe, F_GETFL) # get current p.stdout flags
         fcntl(pipe, F_SETFL, flags | O_NONBLOCK)
 
-    #TODO shouldn `running` be up immediately...?
     @property
     def running(self):
         return self._thread and \
