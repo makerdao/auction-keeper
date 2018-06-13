@@ -103,6 +103,12 @@ class TestProcess:
         while process.running:
             time.sleep(0.1)
 
+    def test_should_set_running_to_true_immediately_after_start(self):
+        process = Process("./tests/models/output-echo.sh")
+        process.start()
+
+        assert process.running
+
     def test_should_not_let_start_the_process_twice(self):
         process = Process("./tests/models/output-echo.sh")
         process.start()
