@@ -37,14 +37,44 @@ class TestProcess:
         process.stop()
 
     @pytest.mark.timeout(15)
-    def test_should_read_last_available_json_document(self):
+    def test_should_read_multiple_json_documents(self):
         process = Process("./tests/models/output-multiple.sh")
         process.start()
+
+        while process.read() != {'key': 'value1'}:
+            time.sleep(0.1)
+
+        while process.read() != {'key': 'value2'}:
+            time.sleep(0.1)
 
         while process.read() != {'key': 'value3'}:
             time.sleep(0.1)
 
         process.stop()
+
+    @pytest.mark.timeout(15)
+    def test_should_skip_invalid_json_documents(self):
+        process = Process("./tests/models/output-invalid.sh")
+        process.start()
+
+        while process.read() != {'key': 'value1'}:
+            time.sleep(0.1)
+
+        while process.read() != {'key': 'value2'}:
+            time.sleep(0.1)
+
+        while process.read() != {'key': 'value3'}:
+            time.sleep(0.1)
+
+        process.stop()
+
+    @pytest.mark.timeout(15)
+    def test_should_return_none_from_read_if_nothing_to_read(self):
+        process = Process("./tests/models/terminate-voluntarily.sh")
+
+        process.start()
+        while process.running:
+            assert process.read() is None
 
     @pytest.mark.timeout(15)
     def test_should_read_and_write(self):
@@ -80,6 +110,7 @@ class TestProcess:
         with pytest.raises(Exception):
             process.start()
 
+    @pytest.mark.timeout(15)
     def test_should_let_start_the_process_again_after_it_got_stopped(self):
         process = Process("./tests/models/output-echo.sh")
 
@@ -95,6 +126,7 @@ class TestProcess:
         while not process.running:
             time.sleep(0.1)
 
+    @pytest.mark.timeout(15)
     def test_should_let_start_the_process_again_after_it_terminated_voluntarily(self):
         process = Process("./tests/models/terminate-voluntarily.sh")
 

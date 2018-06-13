@@ -35,8 +35,11 @@ class Process:
         self._thread = None
         self._terminate = False
 
-        self._last_read = None
-        self._last_read_lock = threading.RLock()
+        self._read_lock = threading.RLock()
+        self._read_queue = []
+
+        self._write_lock = threading.RLock()
+        self._write_queue = []
 
     def _run(self):
         self.process = Popen(self.command.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
@@ -49,25 +52,38 @@ class Process:
             if self._terminate:
                 self.process.kill()
 
+            # Read from stdout
             try:
                 lines = read(self.process.stdout.fileno(), 1024).decode('utf-8').splitlines()
 
-                with self._last_read_lock:
+                with self._read_lock:
                     for line in lines:
-                        self.logger.debug(f"Model process stdout: {line}")
+                        self.logger.debug(f"Model process read: {line}")
 
-                        self._last_read = json.loads(line)
-            except JSONDecodeError:
-                self.logger.exception("Incorrect JSON message received from model process")
+                        try:
+                            self._read_queue.append(json.loads(line))
+                        except JSONDecodeError:
+                            self.logger.exception("Incorrect JSON message received from model process")
             except OSError:
                 pass  # the os throws an exception if there is no data
 
+            # Read from stderr
             try:
                 lines = read(self.process.stderr.fileno(), 1024).decode('utf-8').splitlines()
                 for line in lines:
-                    self.logger.debug(f"Model process output: {line}")
+                    self.logger.info(f"Model process output: {line}")
             except OSError:
                 pass  # the os throws an exception if there is no data
+
+            # Write to stdout
+            with self._write_lock:
+                for line in self._write_queue:
+                    self.logger.debug(f"Model process write: {line}")
+
+                    self.process.stdin.write((line + '\n').encode('ascii'))
+                    self.process.stdin.flush()
+
+                self._write_queue.clear()
 
             time.sleep(0.01)
 
@@ -78,6 +94,7 @@ class Process:
         flags = fcntl(pipe, F_GETFL) # get current p.stdout flags
         fcntl(pipe, F_SETFL, flags | O_NONBLOCK)
 
+    #TODO shouldn `running` be up immediately...?
     @property
     def running(self):
         return self._thread and \
@@ -87,33 +104,23 @@ class Process:
         assert not self.running
 
         self._terminate = False
-        #TODO clear read queue here...?
-        #TODO clear write queue here...?
+        self._read_queue.clear()
+        self._write_queue.clear()
+
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def read(self) -> Optional[dict]:
-        return self._last_read
+        with self._read_lock:
+            return self._read_queue.pop(0) if len(self._read_queue) > 0 else None
 
     def write(self, data: dict):
         assert(isinstance(data, dict))
 
-        data_str = json.dumps(data, indent=None)
-
-        if self.process is not None:
-            self.logger.debug(f"Sending data to the model process: {data_str}")
-
-            self.process.stdin.write((data_str + '\n').encode('ascii'))
-            self.process.stdin.flush()
-
-        else:
-            #TODO this isn't clean. think about changing
-            #TODO maybe messages should be queued and sent from the thread we use to read them?
-            self.logger.warning(f"Cannot send data to process as process hasn't started yet: {data_str}")
+        with self._write_lock:
+            self._write_queue.append(json.dumps(data, indent=None))
 
     def stop(self):
         assert self.running
 
         self._terminate = True
-
-        #TODO restart dying processes

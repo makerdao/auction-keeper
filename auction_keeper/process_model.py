@@ -32,6 +32,7 @@ class ProcessModel(Model):
         self.command = command
         self.arguments = None
         self.process = None
+        self._last_output = None
 
     def start(self, parameters: ModelParameters):
         assert(self.process is None)
@@ -53,6 +54,7 @@ class ProcessModel(Model):
         self.process.start()
 
     def input(self, input: ModelInput):
+        #TODO these assertions will go away if we implement proper process restarting
         assert(self.process is not None)
 
         self.process.write({
@@ -67,18 +69,23 @@ class ProcessModel(Model):
         })
 
     def output(self) -> Optional[ModelOutput]:
+        #TODO these assertions will go away if we implement proper process restarting
         assert(self.process is not None)
 
-        data = self.process.read()
+        while True:
+            data = self.process.read()
 
-        if data is not None:
-            return ModelOutput(price=Wad.from_number(data['price']),
-                               gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
+            if data is not None:
+                self._last_output = ModelOutput(price=Wad.from_number(data['price']),
+                                                gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
 
-        else:
-            return None
+            else:
+                break
+
+        return self._last_output
 
     def terminate(self):
+        #TODO these assertions will go away if we implement proper process restarting
         assert(self.process is not None)
 
         self.logger.info(f"Stopping model '{self.command} {self.arguments}'")
