@@ -29,65 +29,62 @@ from typing import Optional
 class Process:
     logger = logging.getLogger()
 
-    def __init__(self, command: str):
-        self.command = command
-        self.process = None
+    def __init__(self, command_with_arguments: str):
+        self.command_with_arguments = command_with_arguments
         self._thread = None
         self._terminate = False
-
         self._read_lock = threading.RLock()
         self._read_queue = []
-
         self._write_lock = threading.RLock()
         self._write_queue = []
 
     def _run(self):
-        self.process = Popen(self.command.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
-        self._set_nonblock(self.process.stdout)
-        self._set_nonblock(self.process.stderr)
+        process = Popen(self.command_with_arguments.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
+        self._set_nonblock(process.stdout)
+        self._set_nonblock(process.stderr)
 
-        self.logger.info(f"Process '{self.command}' (pid {self.process.pid}) started")
+        self.logger.info(f"Process '{self.command_with_arguments}' (pid #{process.pid}) started")
 
-        while self.process.poll() is None:
+        while process.poll() is None:
             if self._terminate:
-                self.process.kill()
+                process.kill()
 
             # Read from stdout
             try:
-                lines = read(self.process.stdout.fileno(), 1024).decode('utf-8').splitlines()
+                lines = read(process.stdout.fileno(), 1024).decode('utf-8').splitlines()
 
                 with self._read_lock:
                     for line in lines:
-                        self.logger.debug(f"Model process read: {line}")
+                        self.logger.debug(f"Model process #{process.pid} read: {line}")
 
                         try:
                             self._read_queue.append(json.loads(line))
                         except JSONDecodeError:
-                            self.logger.exception("Incorrect JSON message received from model process")
+                            self.logger.exception(f"Incorrect JSON message received from model #{process.pid} process")
             except OSError:
                 pass  # the os throws an exception if there is no data
 
             # Read from stderr
             try:
-                lines = read(self.process.stderr.fileno(), 1024).decode('utf-8').splitlines()
+                lines = read(process.stderr.fileno(), 1024).decode('utf-8').splitlines()
                 for line in lines:
-                    self.logger.info(f"Model process output: {line}")
+                    self.logger.info(f"Model process #{process.pid} output: {line}")
             except OSError:
                 pass  # the os throws an exception if there is no data
 
             # Write to stdout
             with self._write_lock:
                 for line in self._write_queue:
-                    self.logger.debug(f"Model process write: {line}")
+                    self.logger.debug(f"Model process #{process.pid} write: {line}")
 
-                    self.process.stdin.write((line + '\n').encode('ascii'))
-                    self.process.stdin.flush()
+                    process.stdin.write((line + '\n').encode('ascii'))
+                    process.stdin.flush()
 
                 self._write_queue.clear()
 
             time.sleep(0.01)
 
-        self.logger.info(f"Process '{self.command}' (pid {self.process.pid}) terminated")
+        self.logger.info(f"Process '{self.command_with_arguments}' (pid #{process.pid}) terminated")
 
     @staticmethod
     def _set_nonblock(pipe):
