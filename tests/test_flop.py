@@ -72,10 +72,10 @@ class TestAuctionKeeperFlopper:
         # when
         self.keeper.check_all_auctions()
         # then
-        self.model.start.assert_called_once_with(ModelParameters(flipper=None,
-                                                                 flapper=None,
-                                                                 flopper=self.flopper.address,
-                                                                 id=1))
+        self.model_factory.create_model.assert_called_once_with(ModelParameters(flipper=None,
+                                                                                flapper=None,
+                                                                                flopper=self.flopper.address,
+                                                                                id=1))
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(2)

@@ -26,38 +26,34 @@ from pymaker import Wad
 class Model:
     logger = logging.getLogger()
 
-    def __init__(self, command: str):
+    def __init__(self, command: str, parameters: ModelParameters):
         assert(isinstance(command, str))
+        assert(isinstance(parameters, ModelParameters))
 
-        self.command = command
-        self.arguments = None
-        self.process = None
+        self._command = command
+        self._arguments = f"--id {parameters.id}"
+        self._arguments += f" --flipper {parameters.flipper}" if parameters.flipper is not None else ""
+        self._arguments += f" --flapper {parameters.flapper}" if parameters.flapper is not None else ""
+        self._arguments += f" --flopper {parameters.flopper}" if parameters.flopper is not None else ""
         self._last_output = None
 
-    def start(self, parameters: ModelParameters):
-        assert(self.process is None)
+        self.logger.info(f"Instantiated model '{self._command} {self._arguments}'")
 
-        self.arguments = f"--id {parameters.id}"
+        self._process = Process(f"{self._command} {self._arguments}")
+        self._process.start()
 
-        if parameters.flipper is not None:
-            self.arguments += f" --flipper {parameters.flipper}"
+    def _ensure_process_running(self):
+        if not self._process.running:
+            self.logger.warning(f"Model process '{self._command} {self._arguments}' is down, restarting it")
 
-        if parameters.flapper is not None:
-            self.arguments += f" --flapper {parameters.flapper}"
-
-        if parameters.flopper is not None:
-            self.arguments += f" --flopper {parameters.flopper}"
-
-        self.logger.info(f"Starting model '{self.command} {self.arguments}'")
-
-        self.process = Process(f"{self.command} {self.arguments}")
-        self.process.start()
+            self._process.start()
 
     def input(self, input: ModelInput):
-        #TODO these assertions will go away if we implement proper process restarting
-        assert(self.process is not None)
+        assert(isinstance(input, ModelInput))
 
-        self.process.write({
+        self._ensure_process_running()
+
+        self._process.write({
             "bid": str(input.bid),
             "lot": str(input.lot),
             "beg": str(input.beg),
@@ -69,11 +65,10 @@ class Model:
         })
 
     def output(self) -> Optional[ModelOutput]:
-        #TODO these assertions will go away if we implement proper process restarting
-        assert(self.process is not None)
+        self._ensure_process_running()
 
         while True:
-            data = self.process.read()
+            data = self._process.read()
 
             if data is not None:
                 self._last_output = ModelOutput(price=Wad.from_number(data['price']),
@@ -85,12 +80,9 @@ class Model:
         return self._last_output
 
     def terminate(self):
-        #TODO these assertions will go away if we implement proper process restarting
-        assert(self.process is not None)
+        self.logger.info(f"Terminating model '{self._command} {self._arguments}'")
 
-        self.logger.info(f"Stopping model '{self.command} {self.arguments}'")
-
-        self.process.stop()
+        self._process.stop()
 
 
 class ModelFactory:
@@ -99,5 +91,5 @@ class ModelFactory:
 
         self.command = command
 
-    def create_model(self) -> Model:
-        return Model(self.command)
+    def create_model(self, parameters: ModelParameters) -> Model:
+        return Model(self.command, parameters)

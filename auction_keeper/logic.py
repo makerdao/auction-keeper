@@ -84,8 +84,7 @@ class Auctions:
                                                id=id)
 
             # Start the model
-            model = self.model_factory.create_model()
-            model.start(model_parameters)
+            model = self.model_factory.create_model(model_parameters)
 
             # Register new auction
             self.auctions[id] = Auction(id, model)
