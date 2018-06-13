@@ -106,23 +106,3 @@ class ModelOutput:
 
     def __repr__(self):
         return pformat(vars(self))
-
-
-class Model:
-    #TODO to be deprecated
-    def start(self, parameters: ModelParameters):
-        raise NotImplementedError
-
-    def input(self, input: ModelInput):
-        raise NotImplementedError
-
-    def output(self) -> Optional[ModelOutput]:
-        raise NotImplementedError
-
-    def terminate(self):
-        raise NotImplementedError
-
-
-class ModelFactory:
-    def create_model(self) -> Model:
-        raise NotImplementedError

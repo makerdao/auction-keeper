@@ -19,7 +19,8 @@ import logging
 from threading import RLock
 from typing import Optional
 
-from auction_keeper.model import ModelFactory, Model, ModelOutput, ModelParameters, ModelInput
+from auction_keeper.model import ModelOutput, ModelParameters, ModelInput
+from auction_keeper.process_model import Model, ModelFactory
 from pymaker import Address
 
 

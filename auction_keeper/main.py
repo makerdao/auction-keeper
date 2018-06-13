@@ -21,7 +21,7 @@ import sys
 
 from web3 import Web3, HTTPProvider
 
-from auction_keeper.process_model import ProcessModelFactory
+from auction_keeper.process_model import ModelFactory
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy
@@ -80,7 +80,7 @@ class AuctionKeeper:
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
-                                 model_factory=ProcessModelFactory(self.arguments.model))
+                                 model_factory=ModelFactory(self.arguments.model))
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))

@@ -18,12 +18,12 @@
 import logging
 from typing import Optional
 
-from auction_keeper.model import ModelFactory, Model, ModelParameters, ModelInput, ModelOutput
+from auction_keeper.model import ModelParameters, ModelInput, ModelOutput
 from auction_keeper.process import Process
 from pymaker import Wad
 
 
-class ProcessModel(Model):
+class Model:
     logger = logging.getLogger()
 
     def __init__(self, command: str):
@@ -93,11 +93,11 @@ class ProcessModel(Model):
         self.process.stop()
 
 
-class ProcessModelFactory(ModelFactory):
+class ModelFactory:
     def __init__(self, command: str):
         assert(isinstance(command, str))
 
         self.command = command
 
     def create_model(self) -> Model:
-        return ProcessModel(self.command)
+        return Model(self.command)
