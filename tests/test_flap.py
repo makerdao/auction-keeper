@@ -237,7 +237,7 @@ class TestAuctionKeeperFlapper:
         # and
         self.keeper.check_all_auctions()
         # then
-        assert self.dai.balance_of(self.keeper_address) == Wad(0)
+        assert self.dai.balance_of(self.other_address) == Wad(0)
 
     def test_should_obey_gas_price_provided_by_the_model(self):
         # given
