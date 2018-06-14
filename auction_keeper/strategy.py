@@ -20,12 +20,67 @@ from typing import Optional
 from auction_keeper.model import ModelInput
 from pymaker import Transact, Wad
 from pymaker.approval import directly
-from pymaker.auctions import Flopper, Flapper
+from pymaker.auctions import Flopper, Flapper, Flipper
 
 
 class Strategy:
     def get_input(self, id: int):
         raise NotImplementedError
+
+
+class FlipperStrategy(Strategy):
+    def __init__(self, flipper: Flipper):
+        assert(isinstance(flipper, Flipper))
+
+        self.flipper = flipper
+
+    def approve(self):
+        # `Flipper` does not require any approval as collateral and Dai transfers happen directly in Vat
+        pass
+
+    def kicks(self) -> int:
+        return self.flipper.kicks()
+
+    def get_input(self, id: int) -> ModelInput:
+        assert(isinstance(id, int))
+
+        # Read auction state
+        bid = self.flipper.bids(id)
+
+        # Prepare the model input from auction state
+        return ModelInput(bid=bid.bid,
+                          lot=bid.lot,
+                          beg=self.flipper.beg(),
+                          guy=bid.guy,
+                          era=self.flipper.era(),
+                          tic=bid.tic,
+                          end=bid.end,
+                          price=(bid.bid / bid.lot) if bid.lot != Wad(0) else Wad(0))
+
+    def bid(self, id: int, price: Wad) -> Optional[Transact]:
+        assert(isinstance(id, int))
+        assert(isinstance(price, Wad))
+
+        bid = self.flipper.bids(id)
+
+        # Check if we can bid.
+        # If we can, bid.
+        auction_price = bid.bid / bid.lot
+        auction_price_min_decrement = auction_price * self.flipper.beg()
+
+        if price <= auction_price_min_decrement:
+            pass
+            our_lot = bid.bid / price #TODO TODO TODO
+            # our_bid = bid.lot / price
+
+            # TODO this should happen asynchronously
+            # return self.flipper.tend(id, bid.lot, our_bid)
+
+        else:
+            return None
+
+    def deal(self, id: int) -> Transact:
+        return self.flipper.deal(id)
 
 
 class FlapperStrategy(Strategy):

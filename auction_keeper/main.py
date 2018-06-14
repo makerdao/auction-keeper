@@ -24,7 +24,7 @@ from web3 import Web3, HTTPProvider
 from auction_keeper.process_model import ModelFactory
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
-from auction_keeper.strategy import FlopperStrategy, FlapperStrategy
+from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 from pymaker import Address, Wad
 from pymaker.approval import directly
 from pymaker.auctions import Flopper, Flipper, Flapper
@@ -71,7 +71,7 @@ class AuctionKeeper:
         self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper)) if self.arguments.flopper else None
 
         if self.flipper:
-            raise Exception("Flipper not supported yet")
+            self.strategy = FlipperStrategy(self.flipper)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper)
         elif self.flopper:
