@@ -89,7 +89,7 @@ class TestAuctionKeeperFlipper:
         assert self.model.input.call_args[0][0].tic == 0
         assert self.model.input.call_args[0][0].price == Wad.from_number(10.0)
 
-    def test_should_provide_model_with_updated_info_after_bid(self):
+    def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
             .transact(from_address=self.gal_address)
@@ -116,6 +116,32 @@ class TestAuctionKeeperFlipper:
         assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].price == Wad.from_number(15.0)
+
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        assert self.model.input.call_count == 1
+
+        # when
+        self.flipper.tend(1, Wad.from_number(100), Wad.from_number(1700)).transact(from_address=self.other_address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.model.input.call_count > 1
+        # and
+        assert self.model.input.call_args[0][0].bid == Wad.from_number(1700)
+        assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.input.call_args[0][0].guy == self.other_address
+        assert self.model.input.call_args[0][0].era > 0
+        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
+        assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
+        assert self.model.input.call_args[0][0].price == Wad.from_number(17.0)
 
     # def test_should_not_do_anything_if_no_output_from_model(self):
     #     # given

@@ -86,7 +86,7 @@ class TestAuctionKeeperFlopper:
         assert self.model.input.call_args[0][0].tic == 0
         assert self.model.input.call_args[0][0].price == Wad.from_number(5.0)
 
-    def test_should_provide_model_with_updated_info_after_bid(self):
+    def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
@@ -112,6 +112,32 @@ class TestAuctionKeeperFlopper:
         assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].price == Wad.from_number(50.0)
+
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        assert self.model.input.call_count == 1
+
+        # when
+        self.flopper.approve(directly(from_address=self.other_address))
+        self.flopper.dent(1, Wad.from_number(1), Wad.from_number(10)).transact(from_address=self.other_address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.model.input.call_count > 1
+        # and
+        assert self.model.input.call_args[0][0].bid == Wad.from_number(10)
+        assert self.model.input.call_args[0][0].lot == Wad.from_number(1)
+        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.input.call_args[0][0].guy == self.other_address
+        assert self.model.input.call_args[0][0].era > 0
+        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
+        assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
+        assert self.model.input.call_args[0][0].price == Wad.from_number(10.0)
 
     def test_should_not_do_anything_if_no_output_from_model(self):
         # given
