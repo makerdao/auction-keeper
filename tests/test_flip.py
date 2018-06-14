@@ -64,6 +64,10 @@ class TestAuctionKeeperFlipper:
         self.model_factory = self.keeper.auctions.model_factory
         self.model_factory.create_model = MagicMock(return_value=self.model)
 
+    def gem_balance(self, address: Address) -> Wad:
+        assert(isinstance(address, Address))
+        return Wad(self.vat_contract.call().gem(address.address))
+
     def simulate_model_output(self, price: Wad, gas_price: Optional[int] = None):
         self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=gas_price))
 
@@ -189,58 +193,60 @@ class TestAuctionKeeperFlipper:
 
     # #TODO pls reconsider if this is really the behaviour we expect from `auction-keeper`
     # #TODO because I don't think it is
-    # def test_should_not_overbid_itself(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0))
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.flipper.bids(1).bid == Wad.from_number(20.0)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(5.0))
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.flipper.bids(1).bid == Wad.from_number(20.0)
-    #
-    # def test_should_deal_when_we_won_the_auction(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0))
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     auction = self.flipper.bids(1)
-    #     assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
-    #     assert self.dai.balance_of(self.keeper_address) == Wad(0)
-    #
-    #     # when
-    #     time_travel_by(self.web3, self.flipper.ttl() + 5)
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.dai.balance_of(self.keeper_address) > Wad(0)
-    #
-    # def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #     # and
-    #     self.flipper.approve(directly(from_address=self.other_address))
-    #     self.flipper.tend(1, Wad.from_number(200), Wad.from_number(16)).transact(from_address=self.other_address)
-    #     assert self.flipper.bids(1).bid == Wad.from_number(16)
-    #
-    #     # when
-    #     time_travel_by(self.web3, self.flipper.ttl() + 5)
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.dai.balance_of(self.keeper_address) == Wad(0)
-    #
+    def test_should_not_overbid_itself(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(15.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.flipper.bids(1).bid == Wad.from_number(1500.0)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(20.0))
+        self.keeper.check_all_auctions()
+        # then
+        assert self.flipper.bids(1).bid == Wad.from_number(1500.0)
+
+    def test_should_deal_when_we_won_the_auction(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(15.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(15.0), 2)
+        assert self.gem_balance(self.keeper_address) == Wad(0)
+
+        # when
+        time_travel_by(self.web3, self.flipper.ttl() + 5)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.gem_balance(self.keeper_address) > Wad(0)
+
+    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+        # and
+        self.flipper.tend(1, Wad.from_number(100), Wad.from_number(1500)).transact(from_address=self.other_address)
+        assert self.flipper.bids(1).bid == Wad.from_number(1500)
+
+        # when
+        time_travel_by(self.web3, self.flipper.ttl() + 5)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.gem_balance(self.other_address) == Wad(0)
+
     # def test_should_obey_gas_price_provided_by_the_model(self):
     #     # given
     #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
