@@ -68,13 +68,13 @@ class FlipperStrategy(Strategy):
         auction_price = bid.bid / bid.lot
         auction_price_min_decrement = auction_price * self.flipper.beg()
 
-        if price <= auction_price_min_decrement:
-            pass
-            our_lot = bid.bid / price #TODO TODO TODO
-            # our_bid = bid.lot / price
+        if price >= auction_price_min_decrement:
+            # TODO we only support `tend` for now, just to get some unit tests up and running
+            # TODO we will introduce support for the `dent` phase later
+            our_bid = bid.lot * price
 
             # TODO this should happen asynchronously
-            # return self.flipper.tend(id, bid.lot, our_bid)
+            return self.flipper.tend(id, bid.lot, our_bid)
 
         else:
             return None
