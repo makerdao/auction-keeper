@@ -50,7 +50,7 @@ class TestAuctionKeeperFlapper:
         self.keeper.approve()
 
         # So that `gal_address` can kick auctions, it must have some DAI in its account
-        # and also Flapper must be approvedto access it
+        # and also Flapper must be approved to access it
         self.dai.mint(Wad.from_number(5000000)).transact()
         self.dai.transfer(self.gal_address, Wad.from_number(5000000)).transact()
         self.dai.approve(self.flapper.address).transact(from_address=self.gal_address)
