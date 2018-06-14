@@ -143,49 +143,50 @@ class TestAuctionKeeperFlipper:
         assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].price == Wad.from_number(17.0)
 
-    # def test_should_not_do_anything_if_no_output_from_model(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     previous_block_number = self.web3.eth.blockNumber
-    #
-    #     # when
-    #     # [no output from model]
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.web3.eth.blockNumber == previous_block_number
-    #
-    # def test_should_make_initial_bid(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0))
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     auction = self.flipper.bids(1)
-    #     assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
-    #     assert self.dai.balance_of(self.keeper_address) == Wad(0)
-    #
-    # def test_should_bid_even_if_there_is_already_a_bidder(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #     # and
-    #     self.flipper.approve(directly(from_address=self.other_address))
-    #     self.flipper.tend(1, Wad.from_number(200), Wad.from_number(16)).transact(from_address=self.other_address)
-    #     assert self.flipper.bids(1).bid == Wad.from_number(16)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0))
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     auction = self.flipper.bids(1)
-    #     assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
-    #     assert self.dai.balance_of(self.keeper_address) == Wad(0)
-    #
+    def test_should_not_do_anything_if_no_output_from_model(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        previous_block_number = self.web3.eth.blockNumber
+
+        # when
+        # [no output from model]
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.blockNumber == previous_block_number
+
+    def test_should_make_initial_bid(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(16.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(16.0), 2)
+
+    def test_should_bid_even_if_there_is_already_a_bidder(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+        # and
+        self.flipper.tend(1, Wad.from_number(100), Wad.from_number(1600)).transact(from_address=self.other_address)
+        assert self.flipper.bids(1).bid == Wad.from_number(1600)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(19.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(1900)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(19.0), 2)
+
     # #TODO pls reconsider if this is really the behaviour we expect from `auction-keeper`
     # #TODO because I don't think it is
     # def test_should_not_overbid_itself(self):
