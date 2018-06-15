@@ -53,7 +53,7 @@ class Model:
 
         self._ensure_process_running()
 
-        self._process.write({
+        record = {
             "bid": str(input.bid),
             "lot": str(input.lot),
             "beg": str(input.beg),
@@ -62,7 +62,12 @@ class Model:
             "tic": int(input.tic),
             "end": int(input.end),
             "price": str(input.price),
-        })
+        }
+
+        if input.tab:
+            record['tab'] = str(input.tab)
+
+        self._process.write(record)
 
     def output(self) -> Optional[ModelOutput]:
         self._ensure_process_running()

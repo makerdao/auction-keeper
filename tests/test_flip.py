@@ -86,6 +86,7 @@ class TestAuctionKeeperFlipper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(1000)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.input.call_args[0][0].tab == Wad.from_number(5000)
         assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.gal_address
         assert self.model.input.call_args[0][0].era > 0
@@ -114,6 +115,7 @@ class TestAuctionKeeperFlipper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(1500)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.input.call_args[0][0].tab == Wad.from_number(5000)
         assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.keeper_address
         assert self.model.input.call_args[0][0].era > 0
@@ -140,6 +142,7 @@ class TestAuctionKeeperFlipper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(1700)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.input.call_args[0][0].tab == Wad.from_number(5000)
         assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.other_address
         assert self.model.input.call_args[0][0].era > 0

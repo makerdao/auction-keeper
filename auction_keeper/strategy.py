@@ -50,6 +50,7 @@ class FlipperStrategy(Strategy):
         # Prepare the model input from auction state
         return ModelInput(bid=bid.bid,
                           lot=bid.lot,
+                          tab=bid.tab,
                           beg=self.flipper.beg(),
                           guy=bid.guy,
                           era=self.flipper.era(),
@@ -104,6 +105,7 @@ class FlapperStrategy(Strategy):
         # Prepare the model input from auction state
         return ModelInput(bid=bid.bid,
                           lot=bid.lot,
+                          tab=None,
                           beg=self.flapper.beg(),
                           guy=bid.guy,
                           era=self.flapper.era(),
@@ -156,6 +158,7 @@ class FlopperStrategy(Strategy):
         # Prepare the model input from auction state
         return ModelInput(bid=bid.bid,
                           lot=bid.lot,
+                          tab=None,
                           beg=self.flopper.beg(),
                           guy=bid.guy,
                           era=self.flopper.era(),

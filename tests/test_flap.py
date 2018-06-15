@@ -82,6 +82,7 @@ class TestAuctionKeeperFlapper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(200)
+        assert self.model.input.call_args[0][0].tab is None
         assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.gal_address
         assert self.model.input.call_args[0][0].era > 0
@@ -109,6 +110,7 @@ class TestAuctionKeeperFlapper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(20)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(200)
+        assert self.model.input.call_args[0][0].tab is None
         assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.keeper_address
         assert self.model.input.call_args[0][0].era > 0
@@ -135,6 +137,7 @@ class TestAuctionKeeperFlapper:
         # and
         assert self.model.input.call_args[0][0].bid == Wad.from_number(40)
         assert self.model.input.call_args[0][0].lot == Wad.from_number(200)
+        assert self.model.input.call_args[0][0].tab is None
         assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
         assert self.model.input.call_args[0][0].guy == self.other_address
         assert self.model.input.call_args[0][0].era > 0
