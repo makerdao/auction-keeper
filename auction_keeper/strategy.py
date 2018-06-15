@@ -67,15 +67,18 @@ class FlipperStrategy(Strategy):
         # Check if we can bid.
         # If we can, bid.
         auction_price = bid.bid / bid.lot
-        auction_price_min_decrement = auction_price * self.flipper.beg()
+        auction_price_min_increment = auction_price * self.flipper.beg()
 
-        if price >= auction_price_min_decrement:
-            # TODO we only support `tend` for now, just to get some unit tests up and running
-            # TODO we will introduce support for the `dent` phase later
-            our_bid = bid.lot * price
+        if price >= auction_price_min_increment:
+            if bid.bid == bid.tab:
+                # TODO this should happen asynchronously
+                our_lot = bid.bid / price
+                return self.flipper.dent(id, our_lot, bid.bid)
 
-            # TODO this should happen asynchronously
-            return self.flipper.tend(id, bid.lot, our_bid)
+            else:
+                # TODO this should happen asynchronously
+                our_bid = Wad.min(bid.lot * price, bid.tab)
+                return self.flipper.tend(id, bid.lot, our_bid)
 
         else:
             return None

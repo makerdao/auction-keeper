@@ -194,6 +194,29 @@ class TestAuctionKeeperFlipper:
         assert self.flipper.bids(1).bid == Wad.from_number(1900)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(19.0), 2)
 
+    def test_should_sequentially_tend_and_dent_if_price_takes_us_to_the_dent_phrase(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(80.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(100)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(62.5)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(80.0), 2)
+
     def test_should_overbid_itself_if_model_has_updated_the_price(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
