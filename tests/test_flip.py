@@ -247,24 +247,26 @@ class TestAuctionKeeperFlipper:
         # then
         assert self.gem_balance(self.other_address) == Wad(0)
 
-    # def test_should_obey_gas_price_provided_by_the_model(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0), gas_price=175000)
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
-    #
-    # def test_should_use_default_gas_price_if_not_provided_by_the_model(self):
-    #     # given
-    #     self.flipper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0))
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     # then
-    #     assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == GAS_PRICE
+    def test_should_obey_gas_price_provided_by_the_model(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(15.0), gas_price=175000)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
+
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(15.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == GAS_PRICE
