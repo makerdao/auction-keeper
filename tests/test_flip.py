@@ -194,9 +194,7 @@ class TestAuctionKeeperFlipper:
         assert self.flipper.bids(1).bid == Wad.from_number(1900)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(19.0), 2)
 
-    # #TODO pls reconsider if this is really the behaviour we expect from `auction-keeper`
-    # #TODO because I don't think it is
-    def test_should_not_overbid_itself(self):
+    def test_should_overbid_itself_if_model_has_updated_the_price(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
             .transact(from_address=self.gal_address)
@@ -212,7 +210,7 @@ class TestAuctionKeeperFlipper:
         self.simulate_model_output(price=Wad.from_number(20.0))
         self.keeper.check_all_auctions()
         # then
-        assert self.flipper.bids(1).bid == Wad.from_number(1500.0)
+        assert self.flipper.bids(1).bid == Wad.from_number(2000.0)
 
     def test_should_deal_when_we_won_the_auction(self):
         # given

@@ -131,14 +131,13 @@ class AuctionKeeper:
                     self.strategy.deal(auction_id).transact(gas_price=DefaultGasPrice())
 
             if not auction_finished:
-                if input.guy != self.our_address:
-                    output = auction.model_output()
-                    if output is not None:
-                        bid_transact = self.strategy.bid(auction_id, output.price)
+                output = auction.model_output()
+                if output is not None:
+                    bid_transact = self.strategy.bid(auction_id, output.price)
 
-                        if bid_transact is not None:
-                            gas_price = UpdatableGasPrice(output.gas_price)
-                            bid_transact.transact(gas_price=gas_price)
+                    if bid_transact is not None:
+                        gas_price = UpdatableGasPrice(output.gas_price)
+                        bid_transact.transact(gas_price=gas_price)
 
 
 if __name__ == '__main__':

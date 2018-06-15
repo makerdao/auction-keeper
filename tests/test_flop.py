@@ -185,9 +185,7 @@ class TestAuctionKeeperFlopper:
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(825.0), 2)
         assert self.mkr.balance_of(self.keeper_address) == Wad(0)
 
-    #TODO pls reconsider if this is really the behaviour we expect from `auction-keeper`
-    #TODO because I don't think it is
-    def test_should_not_overbid_itself(self):
+    def test_should_overbid_itself_if_model_has_updated_the_price(self):
         # given
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
 
@@ -202,7 +200,7 @@ class TestAuctionKeeperFlopper:
         self.simulate_model_output(price=Wad.from_number(200.0))
         self.keeper.check_all_auctions()
         # then
-        assert self.flopper.bids(1).lot == Wad.from_number(0.1)
+        assert self.flopper.bids(1).lot == Wad.from_number(0.05)
 
     def test_should_deal_when_we_won_the_auction(self):
         # given
