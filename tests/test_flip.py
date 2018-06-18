@@ -217,6 +217,54 @@ class TestAuctionKeeperFlipper:
         assert self.flipper.bids(1).lot == Wad.from_number(62.5)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(80.0), 2)
 
+    def test_should_use_most_up_to_date_price_for_dent_even_if_it_gets_updated_during_tend(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(80.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(100)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(100.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(50.0)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(100.0), 2)
+
+    def test_should_only_tend_if_bid_is_only_slighly_above_tab(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(50.1))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(100)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(100)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+
     def test_should_overbid_itself_if_model_has_updated_the_price(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
