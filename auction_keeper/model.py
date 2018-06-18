@@ -15,9 +15,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 from pprint import pformat
 from typing import Optional
 
+from auction_keeper.process import Process
 from pymaker import Wad, Address
 
 
@@ -109,3 +111,80 @@ class Stance:
 
     def __repr__(self):
         return pformat(vars(self))
+
+
+class Model:
+    logger = logging.getLogger()
+
+    def __init__(self, command: str, parameters: Parameters):
+        assert(isinstance(command, str))
+        assert(isinstance(parameters, Parameters))
+
+        self._command = command
+        self._arguments = f"--id {parameters.id}"
+        self._arguments += f" --flipper {parameters.flipper}" if parameters.flipper is not None else ""
+        self._arguments += f" --flapper {parameters.flapper}" if parameters.flapper is not None else ""
+        self._arguments += f" --flopper {parameters.flopper}" if parameters.flopper is not None else ""
+        self._last_output = None
+
+        self.logger.info(f"Instantiated model '{self._command} {self._arguments}'")
+
+        self._process = Process(f"{self._command} {self._arguments}")
+        self._process.start()
+
+    def _ensure_process_running(self):
+        if not self._process.running:
+            self.logger.warning(f"Model process '{self._command} {self._arguments}' is down, restarting it")
+
+            self._process.start()
+
+    def send_status(self, input: Status):
+        assert(isinstance(input, Status))
+
+        self._ensure_process_running()
+
+        record = {
+            "bid": str(input.bid),
+            "lot": str(input.lot),
+            "beg": str(input.beg),
+            "guy": str(input.guy),
+            "era": int(input.era),
+            "tic": int(input.tic),
+            "end": int(input.end),
+            "price": str(input.price),
+        }
+
+        if input.tab:
+            record['tab'] = str(input.tab)
+
+        self._process.write(record)
+
+    def get_stance(self) -> Optional[Stance]:
+        self._ensure_process_running()
+
+        while True:
+            data = self._process.read()
+
+            if data is not None:
+                self._last_output = Stance(price=Wad.from_number(data['price']),
+                                           gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
+
+            else:
+                break
+
+        return self._last_output
+
+    def terminate(self):
+        self.logger.info(f"Terminating model '{self._command} {self._arguments}'")
+
+        self._process.stop()
+
+
+class ModelFactory:
+    def __init__(self, command: str):
+        assert(isinstance(command, str))
+
+        self.command = command
+
+    def create_model(self, parameters: Parameters) -> Model:
+        return Model(self.command, parameters)

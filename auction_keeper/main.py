@@ -21,7 +21,7 @@ import sys
 
 from web3 import Web3, HTTPProvider
 
-from auction_keeper.process_model import ModelFactory
+from auction_keeper.model import ModelFactory
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, Status, Auctions, Stance
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy

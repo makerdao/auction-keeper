@@ -18,8 +18,7 @@
 import logging
 from typing import Optional
 
-from auction_keeper.model import Stance, Parameters, Status
-from auction_keeper.process_model import Model, ModelFactory
+from auction_keeper.model import Stance, Parameters, Status, Model, ModelFactory
 from pymaker import Address
 
 
