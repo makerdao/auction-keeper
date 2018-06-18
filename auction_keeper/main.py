@@ -102,6 +102,10 @@ class AuctionKeeper:
         for auction_id in range(1, self.strategy.kicks() + 1):
             self.check_auction(auction_id)
 
+    #TODO if we will introduce multithreading here, proper locking should be introduced as well
+    #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
+    #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
+    #     for example).
     def check_auction(self, auction_id: int):
         assert(isinstance(auction_id, int))
 
@@ -111,33 +115,32 @@ class AuctionKeeper:
 
         #TODO alive, finished, input
 
-        with auction.lock:
-            # Read auction information
-            input = self.strategy.get_input(auction_id)
+        # Read auction information
+        input = self.strategy.get_input(auction_id)
 
-            # Feed the model with current state
-            auction.feed_model(input)
+        # Feed the model with current state
+        auction.feed_model(input)
 
-            # Check if the auction is finished.
-            # If it is finished and we are the winner, `deal` the auction.
-            # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
-            auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
+        # Check if the auction is finished.
+        # If it is finished and we are the winner, `deal` the auction.
+        # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
+        auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
-            if auction_finished:
-                if input.guy == self.our_address:
-                    # TODO this should happen asynchronously
+        if auction_finished:
+            if input.guy == self.our_address:
+                # TODO this should happen asynchronously
 
-                    # Always using default gas price for `deal`
-                    self.strategy.deal(auction_id).transact(gas_price=DefaultGasPrice())
+                # Always using default gas price for `deal`
+                self.strategy.deal(auction_id).transact(gas_price=DefaultGasPrice())
 
-            if not auction_finished:
-                output = auction.model_output()
-                if output is not None:
-                    bid_transact = self.strategy.bid(auction_id, output.price)
+        if not auction_finished:
+            output = auction.model_output()
+            if output is not None:
+                bid_transact = self.strategy.bid(auction_id, output.price)
 
-                    if bid_transact is not None:
-                        gas_price = UpdatableGasPrice(output.gas_price)
-                        bid_transact.transact(gas_price=gas_price)
+                if bid_transact is not None:
+                    gas_price = UpdatableGasPrice(output.gas_price)
+                    bid_transact.transact(gas_price=gas_price)
 
 
 if __name__ == '__main__':

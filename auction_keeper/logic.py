@@ -16,7 +16,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-from threading import RLock
 from typing import Optional
 
 from auction_keeper.model import ModelOutput, ModelParameters, ModelInput
@@ -29,7 +28,6 @@ class Auction:
         assert(isinstance(id, int))
 
         self.output = None
-        self.output_lock = RLock()
         self.model = None
         self.transaction = None
         self.transaction_price = None
@@ -39,9 +37,6 @@ class Auction:
         #TODO these two will ultimately go away
         self.price = None
         self.gas_price = None
-
-        #TODO we will implement locking later
-        self.lock = RLock()
 
     def feed_model(self, input: ModelInput):
         assert(isinstance(input, ModelInput))
@@ -65,7 +60,6 @@ class Auctions:
         self.flipper = flipper
         self.flapper = flapper
         self.flopper = flopper
-        self.lock = RLock()
         self.model_factory = model_factory
 
     #TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
