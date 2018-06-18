@@ -171,7 +171,7 @@ class TestAuctionKeeperFlapper:
         self.flapper.approve(directly(from_address=self.other_address))
         self.flapper.tend(1, Wad.from_number(200), Wad.from_number(40)).transact(from_address=self.other_address)
         # and
-        time_travel_by(self.web3, self.flapper.tau() + 5)
+        time_travel_by(self.web3, self.flapper.ttl() + 5)
         # and
         self.flapper.deal(1).transact(from_address=self.other_address)
         # and
@@ -187,7 +187,7 @@ class TestAuctionKeeperFlapper:
         self.flapper.approve(directly(from_address=self.other_address))
         self.flapper.tend(1, Wad.from_number(200), Wad.from_number(40)).transact(from_address=self.other_address)
         # and
-        time_travel_by(self.web3, self.flapper.tau() + 5)
+        time_travel_by(self.web3, self.flapper.ttl() + 5)
         # and
         self.flapper.deal(1).transact(from_address=self.other_address)
 
