@@ -64,10 +64,11 @@ class Auctions:
 
     #TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
     #TODO and restart the model if so.
-    def get_auction(self, id: int):
+    def get_auction(self, id: int, create: bool = True) -> Optional[Auction]:
         assert(isinstance(id, int))
+        assert(isinstance(create, bool))
 
-        if id not in self.auctions:
+        if create and id not in self.auctions:
             # Log the fact that new auction has been detected
             self.logger.info(f"Monitoring new auction #{id}")
 
@@ -83,7 +84,7 @@ class Auctions:
             # Register new auction
             self.auctions[id] = Auction(id, model)
 
-        return self.auctions[id]
+        return self.auctions.get(id)
 
     def remove_auction(self, id: int):
         assert(isinstance(id, int))
