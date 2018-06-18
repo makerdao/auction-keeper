@@ -114,9 +114,6 @@ class AuctionKeeper:
         auction_missing = (input.end == 0)
         auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
-        print(f"MISSING {auction_missing}")
-        print(f"FINISHED {auction_finished}")
-
         if auction_missing:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
