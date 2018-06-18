@@ -99,25 +99,25 @@ class AuctionKeeper:
         self.strategy.approve()
 
     def check_all_auctions(self):
-        for auction_id in range(1, self.strategy.kicks() + 1):
-            self.check_auction(auction_id)
+        for id in range(1, self.strategy.kicks() + 1):
+            self.check_auction(id)
 
     #TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
     #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
     #     for example).
-    def check_auction(self, auction_id: int):
-        assert(isinstance(auction_id, int))
+    def check_auction(self, id: int):
+        assert(isinstance(id, int))
 
         # Read auction information
-        input = self.strategy.get_input(auction_id)
+        input = self.strategy.get_input(id)
         auction_missing = (input.end == 0)
         auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
         if auction_missing:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
-            self.auctions.remove_auction(auction_id)
+            self.auctions.remove_auction(id)
 
         # Check if the auction is finished.
         # If it is finished and we are the winner, `deal` the auction.
@@ -127,22 +127,22 @@ class AuctionKeeper:
                 # TODO this should happen asynchronously
 
                 # Always using default gas price for `deal`
-                self.strategy.deal(auction_id).transact(gas_price=DefaultGasPrice())
+                self.strategy.deal(id).transact(gas_price=DefaultGasPrice())
 
             else:
                 # Try to remove the auction so the model terminates and we stop tracking it.
                 # If auction has already been removed, nothing happens.
-                self.auctions.remove_auction(auction_id)
+                self.auctions.remove_auction(id)
 
         else:
-            auction = self.auctions.get_auction(auction_id)
+            auction = self.auctions.get_auction(id)
 
             # Feed the model with current state
             auction.feed_model(input)
 
             output = auction.model_output()
             if output is not None:
-                bid_transact = self.strategy.bid(auction_id, output.price)
+                bid_transact = self.strategy.bid(id, output.price)
 
                 if bid_transact is not None:
                     gas_price = UpdatableGasPrice(output.gas_price)
