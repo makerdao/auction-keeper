@@ -118,6 +118,33 @@ class TestAuctionKeeperFlapper:
         assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].price == Wad.from_number(10.0)
 
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
+        # given
+        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        assert self.model.input.call_count == 1
+
+        # when
+        self.flapper.approve(directly(from_address=self.other_address))
+        self.flapper.tend(1, Wad.from_number(200), Wad.from_number(40)).transact(from_address=self.other_address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.model.input.call_count > 1
+        # and
+        assert self.model.input.call_args[0][0].bid == Wad.from_number(40)
+        assert self.model.input.call_args[0][0].lot == Wad.from_number(200)
+        assert self.model.input.call_args[0][0].tab is None
+        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.input.call_args[0][0].guy == self.other_address
+        assert self.model.input.call_args[0][0].era > 0
+        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
+        assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
+        assert self.model.input.call_args[0][0].price == Wad.from_number(5.0)
+
     def test_should_terminate_model_if_auction_expired_due_to_tau(self):
         # given
         self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
@@ -195,33 +222,6 @@ class TestAuctionKeeperFlapper:
         self.keeper.check_all_auctions()
         # then
         self.model_factory.create_model.assert_not_called()
-
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
-        # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-
-        # when
-        self.keeper.check_all_auctions()
-        # then
-        assert self.model.input.call_count == 1
-
-        # when
-        self.flapper.approve(directly(from_address=self.other_address))
-        self.flapper.tend(1, Wad.from_number(200), Wad.from_number(40)).transact(from_address=self.other_address)
-        # and
-        self.keeper.check_all_auctions()
-        # then
-        assert self.model.input.call_count > 1
-        # and
-        assert self.model.input.call_args[0][0].bid == Wad.from_number(40)
-        assert self.model.input.call_args[0][0].lot == Wad.from_number(200)
-        assert self.model.input.call_args[0][0].tab is None
-        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
-        assert self.model.input.call_args[0][0].guy == self.other_address
-        assert self.model.input.call_args[0][0].era > 0
-        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].price == Wad.from_number(5.0)
 
     def test_should_not_do_anything_if_no_output_from_model(self):
         # given
