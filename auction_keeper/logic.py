@@ -18,7 +18,7 @@
 import logging
 from typing import Optional
 
-from auction_keeper.model import ModelOutput, ModelParameters, ModelInput
+from auction_keeper.model import Stance, Parameters, Status
 from auction_keeper.process_model import Model, ModelFactory
 from pymaker import Address
 
@@ -38,13 +38,13 @@ class Auction:
         self.price = None
         self.gas_price = None
 
-    def feed_model(self, input: ModelInput):
-        assert(isinstance(input, ModelInput))
+    def feed_model(self, input: Status):
+        assert(isinstance(input, Status))
 
-        self.model.input(input)
+        self.model.send_status(input)
 
-    def model_output(self) -> Optional[ModelOutput]:
-        return self.model.output()
+    def model_output(self) -> Optional[Stance]:
+        return self.model.get_stance()
 
 
 class Auctions:
@@ -73,10 +73,10 @@ class Auctions:
             self.logger.info(f"Monitoring new auction #{id}")
 
             # Prepare model startup parameters
-            model_parameters = ModelParameters(flipper=self.flipper,
-                                               flapper=self.flapper,
-                                               flopper=self.flopper,
-                                               id=id)
+            model_parameters = Parameters(flipper=self.flipper,
+                                          flapper=self.flapper,
+                                          flopper=self.flopper,
+                                          id=id)
 
             # Start the model
             model = self.model_factory.create_model(model_parameters)

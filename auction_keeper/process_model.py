@@ -18,7 +18,7 @@
 import logging
 from typing import Optional
 
-from auction_keeper.model import ModelParameters, ModelInput, ModelOutput
+from auction_keeper.model import Parameters, Status, Stance
 from auction_keeper.process import Process
 from pymaker import Wad
 
@@ -26,9 +26,9 @@ from pymaker import Wad
 class Model:
     logger = logging.getLogger()
 
-    def __init__(self, command: str, parameters: ModelParameters):
+    def __init__(self, command: str, parameters: Parameters):
         assert(isinstance(command, str))
-        assert(isinstance(parameters, ModelParameters))
+        assert(isinstance(parameters, Parameters))
 
         self._command = command
         self._arguments = f"--id {parameters.id}"
@@ -48,8 +48,8 @@ class Model:
 
             self._process.start()
 
-    def input(self, input: ModelInput):
-        assert(isinstance(input, ModelInput))
+    def send_status(self, input: Status):
+        assert(isinstance(input, Status))
 
         self._ensure_process_running()
 
@@ -69,15 +69,15 @@ class Model:
 
         self._process.write(record)
 
-    def output(self) -> Optional[ModelOutput]:
+    def get_stance(self) -> Optional[Stance]:
         self._ensure_process_running()
 
         while True:
             data = self._process.read()
 
             if data is not None:
-                self._last_output = ModelOutput(price=Wad.from_number(data['price']),
-                                                gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
+                self._last_output = Stance(price=Wad.from_number(data['price']),
+                                           gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
 
             else:
                 break
@@ -96,5 +96,5 @@ class ModelFactory:
 
         self.command = command
 
-    def create_model(self, parameters: ModelParameters) -> Model:
+    def create_model(self, parameters: Parameters) -> Model:
         return Model(self.command, parameters)

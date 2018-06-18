@@ -21,9 +21,9 @@ from ethereum.tester import GAS_PRICE
 from mock import MagicMock
 from web3 import Web3, EthereumTesterProvider
 
-from auction_keeper.logic import ModelOutput
+from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
-from auction_keeper.model import ModelParameters
+from auction_keeper.model import Parameters
 from pymaker import Address, Contract
 from pymaker.approval import directly
 from pymaker.auctions import Flapper, Flipper
@@ -60,7 +60,7 @@ class TestAuctionKeeperFlipper:
         self.vat_contract.transact().mint(self.other_address.address, Wad.from_number(10000000).value)
 
         self.model = MagicMock()
-        self.model.output = MagicMock(return_value=None)
+        self.model.get_stance = MagicMock(return_value=None)
         self.model_factory = self.keeper.auctions.model_factory
         self.model_factory.create_model = MagicMock(return_value=self.model)
 
@@ -69,7 +69,7 @@ class TestAuctionKeeperFlipper:
         return Wad(self.vat_contract.call().gem(address.address))
 
     def simulate_model_output(self, price: Wad, gas_price: Optional[int] = None):
-        self.model.output = MagicMock(return_value=ModelOutput(price=price, gas_price=gas_price))
+        self.model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self):
         # given
@@ -79,20 +79,20 @@ class TestAuctionKeeperFlipper:
         # when
         self.keeper.check_all_auctions()
         # then
-        self.model_factory.create_model.assert_called_once_with(ModelParameters(flipper=self.flipper.address,
-                                                                                flapper=None,
-                                                                                flopper=None,
-                                                                                id=1))
+        self.model_factory.create_model.assert_called_once_with(Parameters(flipper=self.flipper.address,
+                                                                           flapper=None,
+                                                                           flopper=None,
+                                                                           id=1))
         # and
-        assert self.model.input.call_args[0][0].bid == Wad.from_number(1000)
-        assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
-        assert self.model.input.call_args[0][0].tab == Wad.from_number(5000)
-        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
-        assert self.model.input.call_args[0][0].guy == self.gal_address
-        assert self.model.input.call_args[0][0].era > 0
-        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].tic == 0
-        assert self.model.input.call_args[0][0].price == Wad.from_number(10.0)
+        assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1000)
+        assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
+        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].guy == self.gal_address
+        assert self.model.send_status.call_args[0][0].era > 0
+        assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
+        assert self.model.send_status.call_args[0][0].tic == 0
+        assert self.model.send_status.call_args[0][0].price == Wad.from_number(10.0)
 
     def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
@@ -102,7 +102,7 @@ class TestAuctionKeeperFlipper:
         # when
         self.keeper.check_all_auctions()
         # then
-        assert self.model.input.call_count == 1
+        assert self.model.send_status.call_count == 1
 
         # when
         self.simulate_model_output(price=Wad.from_number(15.0))
@@ -111,17 +111,17 @@ class TestAuctionKeeperFlipper:
         # and
         self.keeper.check_all_auctions()
         # then
-        assert self.model.input.call_count > 1
+        assert self.model.send_status.call_count > 1
         # and
-        assert self.model.input.call_args[0][0].bid == Wad.from_number(1500)
-        assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
-        assert self.model.input.call_args[0][0].tab == Wad.from_number(5000)
-        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
-        assert self.model.input.call_args[0][0].guy == self.keeper_address
-        assert self.model.input.call_args[0][0].era > 0
-        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].price == Wad.from_number(15.0)
+        assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1500)
+        assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
+        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].guy == self.keeper_address
+        assert self.model.send_status.call_args[0][0].era > 0
+        assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
+        assert self.model.send_status.call_args[0][0].tic > self.model.send_status.call_args[0][0].era + 3600
+        assert self.model.send_status.call_args[0][0].price == Wad.from_number(15.0)
 
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
         # given
@@ -131,24 +131,24 @@ class TestAuctionKeeperFlipper:
         # when
         self.keeper.check_all_auctions()
         # then
-        assert self.model.input.call_count == 1
+        assert self.model.send_status.call_count == 1
 
         # when
         self.flipper.tend(1, Wad.from_number(100), Wad.from_number(1700)).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
         # then
-        assert self.model.input.call_count > 1
+        assert self.model.send_status.call_count > 1
         # and
-        assert self.model.input.call_args[0][0].bid == Wad.from_number(1700)
-        assert self.model.input.call_args[0][0].lot == Wad.from_number(100)
-        assert self.model.input.call_args[0][0].tab == Wad.from_number(5000)
-        assert self.model.input.call_args[0][0].beg == Wad.from_number(1.05)
-        assert self.model.input.call_args[0][0].guy == self.other_address
-        assert self.model.input.call_args[0][0].era > 0
-        assert self.model.input.call_args[0][0].end > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
-        assert self.model.input.call_args[0][0].price == Wad.from_number(17.0)
+        assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1700)
+        assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
+        assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
+        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].guy == self.other_address
+        assert self.model.send_status.call_args[0][0].era > 0
+        assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
+        assert self.model.send_status.call_args[0][0].tic > self.model.send_status.call_args[0][0].era + 3600
+        assert self.model.send_status.call_args[0][0].price == Wad.from_number(17.0)
 
     def test_should_terminate_model_if_auction_expired_due_to_tau(self):
         # given

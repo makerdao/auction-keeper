@@ -23,7 +23,7 @@ from web3 import Web3, HTTPProvider
 
 from auction_keeper.process_model import ModelFactory
 from auction_keeper.gas import UpdatableGasPrice
-from auction_keeper.logic import Auction, ModelInput, Auctions, ModelOutput
+from auction_keeper.logic import Auction, Status, Auctions, Stance
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 from pymaker import Address, Wad
 from pymaker.approval import directly

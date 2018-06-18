@@ -21,7 +21,7 @@ from typing import Optional
 from pymaker import Wad, Address
 
 
-class ModelParameters:
+class Parameters:
     def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], id: int):
         assert(isinstance(flipper, Address) or (flipper is None))
         assert(isinstance(flapper, Address) or (flapper is None))
@@ -34,7 +34,7 @@ class ModelParameters:
         self.id = id
 
     def __eq__(self, other):
-        assert(isinstance(other, ModelParameters))
+        assert(isinstance(other, Parameters))
 
         return self.flipper == other.flipper and \
                self.flapper == other.flapper and \
@@ -48,7 +48,7 @@ class ModelParameters:
         return pformat(vars(self))
 
 
-class ModelInput:
+class Status:
     def __init__(self, bid: Wad, lot: Wad, tab: Optional[Wad], beg: Wad, guy: Address, era: int, tic: int, end: int, price: Wad):
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
@@ -71,7 +71,7 @@ class ModelInput:
         self.price = price
 
     def __eq__(self, other):
-        assert(isinstance(other, ModelInput))
+        assert(isinstance(other, Status))
 
         return self.bid == other.bid and \
                self.lot == other.lot and \
@@ -90,7 +90,7 @@ class ModelInput:
         return pformat(vars(self))
 
 
-class ModelOutput:
+class Stance:
     def __init__(self, price: Wad, gas_price: Optional[int]):
         assert(isinstance(price, Wad))
         assert(isinstance(gas_price, int) or (gas_price is None))
@@ -99,7 +99,7 @@ class ModelOutput:
         self.gas_price = gas_price
 
     def __eq__(self, other):
-        assert(isinstance(other, ModelOutput))
+        assert(isinstance(other, Stance))
 
         return self.price == other.price and \
                self.gas_price == other.gas_price

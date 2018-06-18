@@ -17,7 +17,7 @@
 
 from typing import Optional
 
-from auction_keeper.model import ModelInput
+from auction_keeper.model import Status
 from pymaker import Transact, Wad
 from pymaker.approval import directly
 from pymaker.auctions import Flopper, Flapper, Flipper
@@ -41,22 +41,22 @@ class FlipperStrategy(Strategy):
     def kicks(self) -> int:
         return self.flipper.kicks()
 
-    def get_input(self, id: int) -> ModelInput:
+    def get_input(self, id: int) -> Status:
         assert(isinstance(id, int))
 
         # Read auction state
         bid = self.flipper.bids(id)
 
         # Prepare the model input from auction state
-        return ModelInput(bid=bid.bid,
-                          lot=bid.lot,
-                          tab=bid.tab,
-                          beg=self.flipper.beg(),
-                          guy=bid.guy,
-                          era=self.flipper.era(),
-                          tic=bid.tic,
-                          end=bid.end,
-                          price=(bid.bid / bid.lot) if bid.lot != Wad(0) else Wad(0))
+        return Status(bid=bid.bid,
+                      lot=bid.lot,
+                      tab=bid.tab,
+                      beg=self.flipper.beg(),
+                      guy=bid.guy,
+                      era=self.flipper.era(),
+                      tic=bid.tic,
+                      end=bid.end,
+                      price=(bid.bid / bid.lot) if bid.lot != Wad(0) else Wad(0))
 
     def bid(self, id: int, price: Wad) -> Optional[Transact]:
         assert(isinstance(id, int))
@@ -99,22 +99,22 @@ class FlapperStrategy(Strategy):
     def kicks(self) -> int:
         return self.flapper.kicks()
 
-    def get_input(self, id: int) -> ModelInput:
+    def get_input(self, id: int) -> Status:
         assert(isinstance(id, int))
 
         # Read auction state
         bid = self.flapper.bids(id)
 
         # Prepare the model input from auction state
-        return ModelInput(bid=bid.bid,
-                          lot=bid.lot,
-                          tab=None,
-                          beg=self.flapper.beg(),
-                          guy=bid.guy,
-                          era=self.flapper.era(),
-                          tic=bid.tic,
-                          end=bid.end,
-                          price=(bid.lot / bid.bid) if bid.bid != Wad(0) else Wad(0))
+        return Status(bid=bid.bid,
+                      lot=bid.lot,
+                      tab=None,
+                      beg=self.flapper.beg(),
+                      guy=bid.guy,
+                      era=self.flapper.era(),
+                      tic=bid.tic,
+                      end=bid.end,
+                      price=(bid.lot / bid.bid) if bid.bid != Wad(0) else Wad(0))
 
     def bid(self, id: int, price: Wad) -> Optional[Transact]:
         assert(isinstance(id, int))
@@ -152,22 +152,22 @@ class FlopperStrategy(Strategy):
     def kicks(self) -> int:
         return self.flopper.kicks()
 
-    def get_input(self, id: int) -> ModelInput:
+    def get_input(self, id: int) -> Status:
         assert(isinstance(id, int))
 
         # Read auction state
         bid = self.flopper.bids(id)
 
         # Prepare the model input from auction state
-        return ModelInput(bid=bid.bid,
-                          lot=bid.lot,
-                          tab=None,
-                          beg=self.flopper.beg(),
-                          guy=bid.guy,
-                          era=self.flopper.era(),
-                          tic=bid.tic,
-                          end=bid.end,
-                          price=(bid.bid / bid.lot) if bid.lot != Wad(0) else Wad(0))
+        return Status(bid=bid.bid,
+                      lot=bid.lot,
+                      tab=None,
+                      beg=self.flopper.beg(),
+                      guy=bid.guy,
+                      era=self.flopper.era(),
+                      tic=bid.tic,
+                      end=bid.end,
+                      price=(bid.bid / bid.lot) if bid.lot != Wad(0) else Wad(0))
 
     def bid(self, id: int, price: Wad) -> Optional[Transact]:
         assert(isinstance(id, int))
