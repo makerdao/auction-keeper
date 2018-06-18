@@ -142,6 +142,84 @@ class TestAuctionKeeperFlopper:
         assert self.model.input.call_args[0][0].tic > self.model.input.call_args[0][0].era + 3600
         assert self.model.input.call_args[0][0].price == Wad.from_number(10.0)
 
+    def test_should_terminate_model_if_auction_expired_due_to_tau(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_called_once()
+        self.model.terminate.assert_not_called()
+
+        # when
+        time_travel_by(self.web3, self.flopper.tau() + 5)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_called_once()
+        self.model.terminate.assert_called_once()
+
+    def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_called_once()
+        self.model.terminate.assert_not_called()
+
+        # when
+        self.flopper.approve(directly(from_address=self.other_address))
+        self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
+        # and
+        time_travel_by(self.web3, self.flopper.ttl() + 5)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_called_once()
+        self.model.terminate.assert_called_once()
+
+    def test_should_terminate_model_if_auction_is_dealt(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_called_once()
+        self.model.terminate.assert_not_called()
+
+        # when
+        self.flopper.approve(directly(from_address=self.other_address))
+        self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
+        # and
+        time_travel_by(self.web3, self.flopper.ttl() + 5)
+        # and
+        self.flopper.deal(1).transact(from_address=self.other_address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_called_once()
+        self.model.terminate.assert_called_once()
+
+    def test_should_not_instantiate_model_if_auction_is_dealt(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+        # and
+        self.flopper.approve(directly(from_address=self.other_address))
+        self.flopper.dent(1, Wad.from_number(1.5), Wad.from_number(10)).transact(from_address=self.other_address)
+        # and
+        time_travel_by(self.web3, self.flopper.ttl() + 5)
+        # and
+        self.flopper.deal(1).transact(from_address=self.other_address)
+
+        # when
+        self.keeper.check_all_auctions()
+        # then
+        self.model_factory.create_model.assert_not_called()
+
     def test_should_not_do_anything_if_no_output_from_model(self):
         # given
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
