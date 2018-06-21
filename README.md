@@ -6,7 +6,7 @@
 The _DAI Stablecoin System_ incentivizes external agents, called _keepers_,
 to automate certain operations around the Ethereum blockchain.
 
-`auction-keeper` is TODO.
+`auction-keeper` is **still early work in progress**.
 
 <https://chat.makerdao.com/channel/keeper>
 
@@ -28,7 +28,7 @@ For some known macOS issues see the [pymaker](https://github.com/makerdao/pymake
 
 ## Usage
 
-TODO
+**TODO**
 
 
 ## License
