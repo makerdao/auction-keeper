@@ -51,7 +51,7 @@ class Parameters:
 
 
 class Status:
-    def __init__(self, bid: Wad, lot: Wad, tab: Optional[Wad], beg: Wad, guy: Address, era: int, tic: int, end: int, price: Wad):
+    def __init__(self, bid: Wad, lot: Wad, tab: Optional[Wad], beg: Wad, guy: Address, era: int, tic: int, end: int, price: Optional[Wad]):
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
         assert(isinstance(tab, Wad) or (tab is None))
@@ -60,7 +60,7 @@ class Status:
         assert(isinstance(era, int))
         assert(isinstance(tic, int))
         assert(isinstance(end, int))
-        assert(isinstance(price, Wad))
+        assert(isinstance(price, Wad) or (price is None))
 
         self.bid = bid
         self.lot = lot
@@ -151,7 +151,7 @@ class Model:
             "era": int(input.era),
             "tic": int(input.tic),
             "end": int(input.end),
-            "price": str(input.price),
+            "price": str(input.price) if input.price is not None else None,
         }
 
         if input.tab:
