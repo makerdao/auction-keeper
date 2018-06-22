@@ -69,7 +69,7 @@ class Auctions:
 
         if create and id not in self.auctions:
             # Log the fact that new auction has been detected
-            self.logger.info(f"Monitoring new auction #{id}")
+            self.logger.info(f"Started monitoring auction #{id}")
 
             # Prepare model startup parameters
             model_parameters = Parameters(flipper=self.flipper,
@@ -96,4 +96,4 @@ class Auctions:
             del self.auctions[id]
 
             # Log the fact that auction has been discarded
-            self.logger.info(f"Discarded auction #{id} as it's not active anymore")
+            self.logger.info(f"Stopped monitoring auction #{id} as it's not active anymore")
