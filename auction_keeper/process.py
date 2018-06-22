@@ -39,11 +39,15 @@ class Process:
         self._write_queue = []
 
     def _run(self):
-        process = Popen(self.command_with_arguments.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
-        self._set_nonblock(process.stdout)
-        self._set_nonblock(process.stderr)
+        try:
+            process = Popen(self.command_with_arguments.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=False)
+            self._set_nonblock(process.stdout)
+            self._set_nonblock(process.stderr)
 
-        self.logger.info(f"Process '{self.command_with_arguments}' (pid #{process.pid}) started")
+            self.logger.info(f"Process '{self.command_with_arguments}' (pid #{process.pid}) started")
+        except:
+            self.logger.exception(f"Failed to start process '{self.command_with_arguments}'")
+            return
 
         while process.poll() is None:
             if self._terminate:

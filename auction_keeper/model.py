@@ -127,14 +127,14 @@ class Model:
         self._arguments += f" --flopper {parameters.flopper}" if parameters.flopper is not None else ""
         self._last_output = None
 
-        self.logger.info(f"Instantiated model '{self._command} {self._arguments}'")
+        self.logger.info(f"Instantiated model using process '{self._command} {self._arguments}'")
 
         self._process = Process(f"{self._command} {self._arguments}")
         self._process.start()
 
     def _ensure_process_running(self):
         if not self._process.running:
-            self.logger.warning(f"Model process '{self._command} {self._arguments}' is down, restarting it")
+            self.logger.warning(f"Process '{self._command} {self._arguments}' is down, restarting it")
 
             self._process.start()
 
@@ -175,7 +175,7 @@ class Model:
         return self._last_output
 
     def terminate(self):
-        self.logger.info(f"Terminating model '{self._command} {self._arguments}'")
+        self.logger.info(f"Terminating model using process '{self._command} {self._arguments}'")
 
         self._process.stop()
 
