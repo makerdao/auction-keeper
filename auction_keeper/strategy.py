@@ -124,15 +124,9 @@ class FlapperStrategy(Strategy):
         assert(isinstance(price, Wad))
 
         bid = self.flapper.bids(id)
+        our_bid = bid.lot / price
 
-        # Check if we can bid.
-        # If we can, bid.
-        auction_price = bid.lot / bid.bid
-        auction_price_min_decrement = auction_price * self.flapper.beg()
-
-        if price <= auction_price_min_decrement:
-            our_bid = bid.lot / price
-
+        if our_bid >= bid.bid * self.flapper.beg():
             # TODO this should happen asynchronously
             return self.flapper.tend(id, bid.lot, our_bid)
 
@@ -177,15 +171,9 @@ class FlopperStrategy(Strategy):
         assert(isinstance(price, Wad))
 
         bid = self.flopper.bids(id)
+        our_lot = bid.bid / price
 
-        # Check if we can bid.
-        # If we can, bid.
-        auction_price = bid.bid / bid.lot
-        auction_price_min_increment = auction_price * self.flopper.beg()
-
-        if price >= auction_price_min_increment:
-            our_lot = bid.bid / price
-
+        if our_lot * self.flopper.beg() <= bid.lot:
             # TODO this should happen asynchronously
             return self.flopper.dent(id, our_lot, bid.bid)
 
