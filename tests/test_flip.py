@@ -344,6 +344,31 @@ class TestAuctionKeeperFlipper:
         assert self.flipper.bids(1).lot == Wad.from_number(100)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
 
+    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slighly_below_tab(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(49.99))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(4999)
+        assert self.flipper.bids(1).lot == Wad.from_number(100)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(49.99), 2)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(50.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        auction = self.flipper.bids(1)
+        assert self.flipper.bids(1).bid == Wad.from_number(5000)
+        assert self.flipper.bids(1).lot == Wad.from_number(100)
+        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+
     def test_should_overbid_itself_if_model_has_updated_the_price(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \

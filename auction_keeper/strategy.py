@@ -64,24 +64,27 @@ class FlipperStrategy(Strategy):
 
         bid = self.flipper.bids(id)
 
-        # Check if we can bid.
-        # If we can, bid.
-        auction_price = bid.bid / bid.lot
-        auction_price_min_increment = auction_price * self.flipper.beg()
+        # dent phase
+        if bid.bid == bid.tab:
+            our_lot = bid.bid / price
 
-        if price >= auction_price_min_increment:
-            if bid.bid == bid.tab:
+            if our_lot * self.flipper.beg() <= bid.lot:
                 # TODO this should happen asynchronously
-                our_lot = bid.bid / price
                 return self.flipper.dent(id, our_lot, bid.bid)
 
             else:
+                return None
+
+        # tend phase
+        else:
+            our_bid = Wad.min(bid.lot * price, bid.tab)
+
+            if our_bid >= bid.bid * self.flipper.beg() or our_bid == bid.tab:
                 # TODO this should happen asynchronously
-                our_bid = Wad.min(bid.lot * price, bid.tab)
                 return self.flipper.tend(id, bid.lot, our_bid)
 
-        else:
-            return None
+            else:
+                return None
 
     def deal(self, id: int) -> Transact:
         return self.flipper.deal(id)
