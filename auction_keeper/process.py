@@ -52,6 +52,7 @@ class Process:
         while process.poll() is None:
             if self._terminate:
                 process.kill()
+                break
 
             # Read from stdout
             try:
@@ -76,7 +77,7 @@ class Process:
             except OSError:
                 pass  # the os throws an exception if there is no data
 
-            # Write to stdout
+            # Write to stdin
             while True:
                 with self._write_lock:
                     if len(self._write_queue) == 0:
@@ -86,8 +87,14 @@ class Process:
 
                 self.logger.debug(f"Model process #{process.pid} write: {line}")
 
-                process.stdin.write((line + '\n').encode('ascii'))
-                process.stdin.flush()
+                try:
+                    process.stdin.write((line + '\n').encode('ascii'))
+                    process.stdin.flush()
+                except BrokenPipeError:
+                    self.logger.exception(f"Model process #{process.pid} caused broken pipe, terminating the process")
+                    self._terminate = True
+
+                    break
 
             time.sleep(0.01)
 

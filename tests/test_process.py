@@ -100,6 +100,21 @@ class TestProcess:
             process.write({'aaa': 'bbb'})
 
     @pytest.mark.timeout(15)
+    def test_should_terminate_process_on_broken_input_pipe(self):
+        process = Process("./tests/models/break-pipe.sh")
+        process.start()
+
+        # so the process has some time to break the pipe
+        time.sleep(1)
+
+        for _ in range(10):
+            process.write({'aaa': 'bbb'})
+
+        time.sleep(5)
+
+        assert process.running is False
+
+    @pytest.mark.timeout(15)
     def test_should_kill_process_on_stop(self):
         process = Process("./tests/models/output-echo.sh")
 
