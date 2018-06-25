@@ -321,7 +321,7 @@ class TestAuctionKeeperFlipper:
         assert self.flipper.bids(1).lot == Wad.from_number(50.0)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(100.0), 2)
 
-    def test_should_only_tend_if_bid_is_only_slighly_above_tab(self):
+    def test_should_only_tend_if_bid_is_only_slightly_above_tab(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
             .transact(from_address=self.gal_address)
@@ -344,7 +344,7 @@ class TestAuctionKeeperFlipper:
         assert self.flipper.bids(1).lot == Wad.from_number(100)
         assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
 
-    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slighly_below_tab(self):
+    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slightly_below_tab(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \
             .transact(from_address=self.gal_address)
