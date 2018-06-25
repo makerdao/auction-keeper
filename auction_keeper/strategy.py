@@ -173,7 +173,7 @@ class FlopperStrategy(Strategy):
         bid = self.flopper.bids(id)
         our_lot = bid.bid / price
 
-        if our_lot * self.flopper.beg() <= bid.lot:
+        if our_lot * self.flopper.beg() <= bid.lot and our_lot < bid.lot:
             # TODO this should happen asynchronously
             return self.flopper.dent(id, our_lot, bid.bid)
 

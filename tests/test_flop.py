@@ -280,6 +280,24 @@ class TestAuctionKeeperFlopper:
         # then
         assert self.flopper.bids(1).lot == Wad.from_number(0.05)
 
+    def test_should_not_bid_on_rounding_errors_with_small_amounts(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad(10), Wad(10000)).transact()
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(1400.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.flopper.bids(1).lot == Wad(7)
+
+        # when
+        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
+
     def test_should_deal_when_we_won_the_auction(self):
         # given
         self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
