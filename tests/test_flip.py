@@ -387,6 +387,44 @@ class TestAuctionKeeperFlipper:
         # then
         assert self.flipper.bids(1).bid == Wad.from_number(2000.0)
 
+    def test_should_not_tend_on_rounding_errors_with_small_amounts(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad(5000), Wad(2), Wad(4)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(3.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.flipper.bids(1).bid == Wad(6)
+
+        # when
+        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
+
+    def test_should_not_dent_on_rounding_errors_with_small_amounts(self):
+        # given
+        self.flipper.kick(self.gal_address, self.gal_address, Wad(5000), Wad(10), Wad(5000)) \
+            .transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(1000.0))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.flipper.bids(1).lot == Wad(5)
+
+        # when
+        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
+
     def test_should_deal_when_we_won_the_auction(self):
         # given
         self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100), Wad.from_number(1000)) \

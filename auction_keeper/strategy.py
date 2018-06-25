@@ -68,7 +68,7 @@ class FlipperStrategy(Strategy):
         if bid.bid == bid.tab:
             our_lot = bid.bid / price
 
-            if our_lot * self.flipper.beg() <= bid.lot:
+            if (our_lot * self.flipper.beg() <= bid.lot) and (our_lot < bid.lot):
                 # TODO this should happen asynchronously
                 return self.flipper.dent(id, our_lot, bid.bid)
 
@@ -79,7 +79,7 @@ class FlipperStrategy(Strategy):
         else:
             our_bid = Wad.min(bid.lot * price, bid.tab)
 
-            if our_bid >= bid.bid * self.flipper.beg() or our_bid == bid.tab:
+            if (our_bid >= bid.bid * self.flipper.beg() or our_bid == bid.tab) and our_bid > bid.bid:
                 # TODO this should happen asynchronously
                 return self.flipper.tend(id, bid.lot, our_bid)
 
