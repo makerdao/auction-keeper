@@ -33,6 +33,7 @@ class FlipperStrategy(Strategy):
         assert(isinstance(flipper, Flipper))
 
         self.flipper = flipper
+        self.beg = flipper.beg()
 
     def approve(self):
         # `Flipper` does not require any approval as collateral and Dai transfers happen directly in Vat
@@ -51,7 +52,7 @@ class FlipperStrategy(Strategy):
         return Status(bid=bid.bid,
                       lot=bid.lot,
                       tab=bid.tab,
-                      beg=self.flipper.beg(),
+                      beg=self.beg,
                       guy=bid.guy,
                       era=self.flipper.era(),
                       tic=bid.tic,
@@ -68,7 +69,7 @@ class FlipperStrategy(Strategy):
         if bid.bid == bid.tab:
             our_lot = bid.bid / price
 
-            if (our_lot * self.flipper.beg() <= bid.lot) and (our_lot < bid.lot):
+            if (our_lot * self.beg <= bid.lot) and (our_lot < bid.lot):
                 # TODO this should happen asynchronously
                 return self.flipper.dent(id, our_lot, bid.bid)
 
@@ -79,7 +80,7 @@ class FlipperStrategy(Strategy):
         else:
             our_bid = Wad.min(bid.lot * price, bid.tab)
 
-            if (our_bid >= bid.bid * self.flipper.beg() or our_bid == bid.tab) and our_bid > bid.bid:
+            if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
                 # TODO this should happen asynchronously
                 return self.flipper.tend(id, bid.lot, our_bid)
 
@@ -95,6 +96,7 @@ class FlapperStrategy(Strategy):
         assert(isinstance(flapper, Flapper))
 
         self.flapper = flapper
+        self.beg = flapper.beg()
 
     def approve(self):
         self.flapper.approve(directly())
@@ -112,7 +114,7 @@ class FlapperStrategy(Strategy):
         return Status(bid=bid.bid,
                       lot=bid.lot,
                       tab=None,
-                      beg=self.flapper.beg(),
+                      beg=self.beg,
                       guy=bid.guy,
                       era=self.flapper.era(),
                       tic=bid.tic,
@@ -126,7 +128,7 @@ class FlapperStrategy(Strategy):
         bid = self.flapper.bids(id)
         our_bid = bid.lot / price
 
-        if our_bid >= bid.bid * self.flapper.beg() and our_bid > bid.bid:
+        if our_bid >= bid.bid * self.beg and our_bid > bid.bid:
             # TODO this should happen asynchronously
             return self.flapper.tend(id, bid.lot, our_bid)
 
@@ -142,6 +144,7 @@ class FlopperStrategy(Strategy):
         assert(isinstance(flopper, Flopper))
 
         self.flopper = flopper
+        self.beg = flopper.beg()
 
     def approve(self):
         self.flopper.approve(directly())
@@ -159,7 +162,7 @@ class FlopperStrategy(Strategy):
         return Status(bid=bid.bid,
                       lot=bid.lot,
                       tab=None,
-                      beg=self.flopper.beg(),
+                      beg=self.beg,
                       guy=bid.guy,
                       era=self.flopper.era(),
                       tic=bid.tic,
@@ -173,7 +176,7 @@ class FlopperStrategy(Strategy):
         bid = self.flopper.bids(id)
         our_lot = bid.bid / price
 
-        if our_lot * self.flopper.beg() <= bid.lot and our_lot < bid.lot:
+        if our_lot * self.beg <= bid.lot and our_lot < bid.lot:
             # TODO this should happen asynchronously
             return self.flopper.dent(id, our_lot, bid.bid)
 
