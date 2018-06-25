@@ -77,14 +77,17 @@ class Process:
                 pass  # the os throws an exception if there is no data
 
             # Write to stdout
-            with self._write_lock:
-                for line in self._write_queue:
-                    self.logger.debug(f"Model process #{process.pid} write: {line}")
+            while True:
+                with self._write_lock:
+                    if len(self._write_queue) == 0:
+                        break
 
-                    process.stdin.write((line + '\n').encode('ascii'))
-                    process.stdin.flush()
+                    line = self._write_queue.pop(0)
 
-                self._write_queue.clear()
+                self.logger.debug(f"Model process #{process.pid} write: {line}")
+
+                process.stdin.write((line + '\n').encode('ascii'))
+                process.stdin.flush()
 
             time.sleep(0.01)
 

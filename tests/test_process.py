@@ -91,6 +91,14 @@ class TestProcess:
 
         process.stop()
 
+    @pytest.mark.timeout(10)
+    def test_should_not_block_on_many_writes_if_no_input_being_received_by_the_process(self):
+        process = Process("./tests/models/output-once.sh")
+        process.start()
+
+        for _ in range(100000):
+            process.write({'aaa': 'bbb'})
+
     @pytest.mark.timeout(15)
     def test_should_kill_process_on_stop(self):
         process = Process("./tests/models/output-echo.sh")
