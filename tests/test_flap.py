@@ -283,6 +283,24 @@ class TestAuctionKeeperFlapper:
         # then
         assert self.flapper.bids(1).bid == Wad.from_number(40.0)
 
+    def test_should_not_bid_on_rounding_errors_with_small_amounts(self):
+        # given
+        self.flapper.kick(self.gal_address, Wad(20), Wad(1)).transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(9.95))
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.flapper.bids(1).bid == Wad(2)
+
+        # when
+        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
+        # and
+        self.keeper.check_all_auctions()
+        # then
+        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
+
     def test_should_deal_when_we_won_the_auction(self):
         # given
         self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)

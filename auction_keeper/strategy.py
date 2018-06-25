@@ -126,7 +126,7 @@ class FlapperStrategy(Strategy):
         bid = self.flapper.bids(id)
         our_bid = bid.lot / price
 
-        if our_bid >= bid.bid * self.flapper.beg():
+        if our_bid >= bid.bid * self.flapper.beg() and our_bid > bid.bid:
             # TODO this should happen asynchronously
             return self.flapper.tend(id, bid.lot, our_bid)
 
