@@ -16,8 +16,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import asyncio
 import logging
 import sys
+import threading
 
 from web3 import Web3, HTTPProvider
 
@@ -146,7 +148,19 @@ class AuctionKeeper:
 
                 if bid_transact is not None:
                     gas_price = UpdatableGasPrice(output.gas_price)
-                    bid_transact.transact(gas_price=gas_price)
+                    self._run_future(bid_transact.transact_async(gas_price=gas_price))
+
+    def _run_future(self, fff):
+        def worker():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                asyncio.get_event_loop().run_until_complete(fff)
+            finally:
+                loop.close()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
 
 
 if __name__ == '__main__':

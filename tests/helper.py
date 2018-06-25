@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
+import threading
+import time
 from contextlib import contextmanager
 from io import StringIO
 
@@ -42,3 +44,8 @@ def time_travel_by(web3: Web3, seconds: int):
     assert(isinstance(seconds, int))
 
     web3.providers[0].rpc_methods.testing_timeTravel(web3.eth.getBlock('latest').timestamp + seconds)
+
+
+def wait_for_other_threads():
+    while threading.active_count() > 1:
+        time.sleep(0.1)

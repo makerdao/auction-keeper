@@ -14,7 +14,8 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+import threading
+import time
 from typing import Optional
 
 from ethereum.tester import GAS_PRICE
@@ -29,7 +30,7 @@ from pymaker.approval import directly
 from pymaker.auctions import Flapper
 from pymaker.numeric import Wad
 from pymaker.token import DSToken
-from tests.helper import args, time_travel_by
+from tests.helper import args, time_travel_by, wait_for_other_threads
 
 
 class TestAuctionKeeperFlapper:
@@ -68,12 +69,33 @@ class TestAuctionKeeperFlapper:
     def simulate_model_output(self, price: Wad, gas_price: Optional[int] = None):
         self.model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
 
+    def start_ignoring_transactions(self):
+        self.original_send_transaction = self.web3.eth.sendTransaction
+        self.original_get_transaction = self.web3.eth.getTransaction
+        self.original_nonce = self.web3.eth.getTransactionCount(self.keeper_address.address)
+
+        self.web3.eth.sendTransaction = MagicMock(return_value='0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd')
+        self.web3.eth.getTransaction = MagicMock(return_value={'nonce': self.original_nonce})
+
+    def end_ignoring_transactions(self):
+        def second_send_transaction(transaction):
+            assert transaction['nonce'] == self.original_nonce
+
+            # TestRPC doesn't support `sendTransaction` calls with the `nonce` parameter
+            # (unlike proper Ethereum nodes which handle it very well)
+            transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
+            return self.original_send_transaction(transaction_without_nonce)
+
+        self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
+        self.web3.eth.getTransaction = self.original_get_transaction
+
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self):
         # given
         self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once_with(Parameters(flipper=None,
                                                                            flapper=self.flapper.address,
@@ -96,6 +118,7 @@ class TestAuctionKeeperFlapper:
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.model.send_status.call_count == 1
 
@@ -103,8 +126,10 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.model.send_status.call_count > 1
         # and
@@ -124,6 +149,7 @@ class TestAuctionKeeperFlapper:
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.model.send_status.call_count == 1
 
@@ -132,6 +158,7 @@ class TestAuctionKeeperFlapper:
         self.flapper.tend(1, Wad.from_number(200), Wad.from_number(40)).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.model.send_status.call_count > 1
         # and
@@ -151,6 +178,7 @@ class TestAuctionKeeperFlapper:
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once()
         self.model.terminate.assert_not_called()
@@ -159,6 +187,7 @@ class TestAuctionKeeperFlapper:
         time_travel_by(self.web3, self.flapper.tau() + 5)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once()
         self.model.terminate.assert_called_once()
@@ -169,6 +198,7 @@ class TestAuctionKeeperFlapper:
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once()
         self.model.terminate.assert_not_called()
@@ -180,6 +210,7 @@ class TestAuctionKeeperFlapper:
         time_travel_by(self.web3, self.flapper.ttl() + 5)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once()
         self.model.terminate.assert_called_once()
@@ -190,6 +221,7 @@ class TestAuctionKeeperFlapper:
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once()
         self.model.terminate.assert_not_called()
@@ -203,6 +235,7 @@ class TestAuctionKeeperFlapper:
         self.flapper.deal(1).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_called_once()
         self.model.terminate.assert_called_once()
@@ -220,6 +253,7 @@ class TestAuctionKeeperFlapper:
 
         # when
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         self.model_factory.create_model.assert_not_called()
 
@@ -233,6 +267,7 @@ class TestAuctionKeeperFlapper:
         # [no output from model]
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.web3.eth.blockNumber == previous_block_number
 
@@ -244,6 +279,7 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         auction = self.flapper.bids(1)
         assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
@@ -261,6 +297,7 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         auction = self.flapper.bids(1)
         assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
@@ -274,14 +311,35 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.flapper.bids(1).bid == Wad.from_number(20.0)
 
         # when
         self.simulate_model_output(price=Wad.from_number(5.0))
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.flapper.bids(1).bid == Wad.from_number(40.0)
+
+    # def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
+    #     # given
+    #     self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+    #
+    #     # when
+    #     self.simulate_model_output(price=Wad.from_number(10.0))
+    #     # and
+    #     self.keeper.check_all_auctions()
+    #     wait_for_other_threads()
+    #     # then
+    #     assert self.flapper.bids(1).bid == Wad.from_number(20.0)
+    #
+    #     # when
+    #     self.simulate_model_output(price=Wad.from_number(5.0))
+    #     self.keeper.check_all_auctions()
+    #     wait_for_other_threads()
+    #     # then
+    #     assert self.flapper.bids(1).bid == Wad.from_number(40.0)
 
     def test_should_not_bid_on_rounding_errors_with_small_amounts(self):
         # given
@@ -291,6 +349,7 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(9.95))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.flapper.bids(1).bid == Wad(2)
 
@@ -298,6 +357,7 @@ class TestAuctionKeeperFlapper:
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
@@ -309,6 +369,7 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         auction = self.flapper.bids(1)
         assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
@@ -318,6 +379,7 @@ class TestAuctionKeeperFlapper:
         time_travel_by(self.web3, self.flapper.ttl() + 5)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.dai.balance_of(self.keeper_address) > Wad(0)
 
@@ -333,6 +395,7 @@ class TestAuctionKeeperFlapper:
         time_travel_by(self.web3, self.flapper.ttl() + 5)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.dai.balance_of(self.other_address) == Wad(0)
 
@@ -344,6 +407,7 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0), gas_price=175000)
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
@@ -355,5 +419,6 @@ class TestAuctionKeeperFlapper:
         self.simulate_model_output(price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        wait_for_other_threads()
         # then
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == GAS_PRICE
