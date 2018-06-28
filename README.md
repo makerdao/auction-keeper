@@ -6,9 +6,23 @@
 The _DAI Stablecoin System_ incentivizes external agents, called _keepers_,
 to automate certain operations around the Ethereum blockchain.
 
-`auction-keeper` is **still early work in progress**.
+`auction-keeper` can participate in `flip` (collateral sale), `flap` (MKR buy-and-burn)
+and `flop` (MKR minting) auctions. Its unique feature is the ability to plug in external
+_bidding models_, which tell the keeper when and how high to bid. This keeper can be safely
+left running in background. The moment it notices a new auction it will spawn a new instance
+of a _bidding model_ for it and then act according to its instructions. The keeper will also
+automatically `deal` expired auctions afterwards if it's us who won them.
+
+Bear in mind that this keeper is still **early work in progress**. Many of the things described
+here may still change.
 
 <https://chat.makerdao.com/channel/keeper>
+
+
+## Description
+
+**TODO**
+
 
 
 ## Installation
