@@ -36,7 +36,7 @@ these instances of the current status of their auctions and bid according to dec
 
 The way the auction discovery and monitoring mechanism works at the moment is pretty lame. It basically
 operates as a loop which kicks in on every new block and simply enumerates all auctions from `1` to `kicks`.
-Even if the _bidding model_ decides to send a bit, it will not be processed by the keeper until the next
+Even if the _bidding model_ decides to send a bid, it will not be processed by the keeper until the next
 iteration of that loop. We definitely plan to upgrade this mechanism with something smarter in the future,
 especially that the current approach will stop performing well the moment the number of both current
 and historical auctions will rise. The GitHub issue for it is here: <https://github.com/makerdao/auction-keeper/issues/4>.
