@@ -46,7 +46,21 @@ to validate the whole architecture and only start optimizing it when it becomes 
 good responsiveness of the keeper will be essential as the auctions space will become more competitive.
 
 
-### Communicating with external _bidding models_
+### Starting and stopping _bidding models_
+
+`auction-keeper` maintains a collection of child processes, as each _bidding model_ is its own dedicated
+process. New processes (new _bidding model_ instances) are spawned by executing a command according to the
+`--model` commandline parameter. These processes are automatically terminated (via `SIGKILL`) by the keeper
+shortly after their associated auction expires.
+
+Whenever the _bidding model_ process dies, it gets automatically respawned by the keeper.
+
+Example:
+```bash
+bin/auction-keeper --model '../my-bidding-model.sh' [...]
+```
+
+### Communicating with _bidding models_
 
 TODO
 
