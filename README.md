@@ -60,12 +60,39 @@ Example:
 bin/auction-keeper --model '../my-bidding-model.sh' [...]
 ```
 
+
 ### Communicating with _bidding models_
 
-TODO
+`auction-keeper` communicates with _bidding models_ via their standard input and standard output.
 
+Straight away after the process gets started, and every time the auction state changes, the keeper
+sends a one-line JSON document to the **standard input** of the _bidding model_ process.
+Sample message sent from the keeper to the model looks like:
+```json
+{"todo": "todo"}
+```
 
+The meaning of individual fields:
+* TODO
+* TODO
+* TODO
 
+_Bidding models_ should never make an assumption that messages will be sent only when auction state changes.
+It is perfectly fine for the `auction-keeper` to periodically send the same messages to _bidding models_.
+
+At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the _bidding model_
+process and tries to parse them as JSON documents. Then it extracts two fields from that document:
+* `price` - the maximum (for `flip` and `flop` auctions) or the minimum (for `flap` auctions) price
+  the model is willing to bid.
+* `gasPrice` (optional) - gas price in Wei to use when sending the bid.
+
+Sample message send from the model to the keeper may look like:
+```json
+{"price": "750.0", "gasPrice": 7000000000}
+```
+
+Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
+This is the most convenient way of implementing logging from _bidding models_.
 
 
 ## Installation
