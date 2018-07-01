@@ -112,7 +112,25 @@ For some known macOS issues see the [pymaker](https://github.com/makerdao/pymake
 
 ## Usage
 
-**TODO**
+```
+usage: auction-keeper [-h] [--rpc-host RPC_HOST] [--rpc-port RPC_PORT]
+                      [--rpc-timeout RPC_TIMEOUT] --eth-from ETH_FROM
+                      (--flipper FLIPPER | --flapper FLAPPER | --flopper FLOPPER)
+                      --model MODEL [--debug]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --rpc-host RPC_HOST   JSON-RPC host (default: `localhost')
+  --rpc-port RPC_PORT   JSON-RPC port (default: `8545')
+  --rpc-timeout RPC_TIMEOUT
+                        JSON-RPC timeout (in seconds, default: 10)
+  --eth-from ETH_FROM   Ethereum account from which to send transactions
+  --flipper FLIPPER     Ethereum address of the Flipper contract
+  --flapper FLAPPER     Ethereum address of the Flapper contract
+  --flopper FLOPPER     Ethereum address of the Flopper contract
+  --model MODEL         Commandline to use in order to start the bidding model
+  --debug               Enable debug output
+```
 
 
 ## License
