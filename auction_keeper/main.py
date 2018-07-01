@@ -56,7 +56,7 @@ class AuctionKeeper:
         contract.add_argument('--flopper', type=str, help="Ethereum address of the Flopper contract")
 
         parser.add_argument("--model", type=str, required=True,
-                            help="Commandline to run the risk model used for bidding")
+                            help="Commandline to use in order to start the bidding model")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
