@@ -91,6 +91,17 @@ class TestProcess:
 
         process.stop()
 
+    def test_should_read_long_json_documents(self):
+        process = Process("./tests/models/output-long.sh")
+        process.start()
+
+        time.sleep(1)
+
+        doc = process.read()
+
+        assert doc is not None
+        assert len(doc) == 65
+
     @pytest.mark.timeout(10)
     def test_should_not_block_on_many_writes_if_no_input_being_received_by_the_process(self):
         process = Process("./tests/models/output-once.sh")

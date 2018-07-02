@@ -56,7 +56,7 @@ class Process:
 
             # Read from stdout
             try:
-                lines = read(process.stdout.fileno(), 1024).decode('utf-8').splitlines()
+                lines = read(process.stdout.fileno(), 102400).decode('utf-8').splitlines()
 
                 with self._read_lock:
                     for line in lines:
@@ -71,7 +71,7 @@ class Process:
 
             # Read from stderr
             try:
-                lines = read(process.stderr.fileno(), 1024).decode('utf-8').splitlines()
+                lines = read(process.stderr.fileno(), 102400).decode('utf-8').splitlines()
                 for line in lines:
                     self.logger.info(f"Model process #{process.pid} output: {line}")
             except OSError:
