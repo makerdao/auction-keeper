@@ -113,7 +113,7 @@ This is the most convenient way of implementing logging from _bidding models_.
 If you just want to bid a fixed price for each auction, this is the simplest possible _bidding model_
 you can use:
 
-```
+```bash
 #!/usr/bin/env bash
 
 echo "{\"price\": \"750.0\"}"  # put your price here
