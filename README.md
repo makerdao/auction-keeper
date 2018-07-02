@@ -69,13 +69,23 @@ Straight away after the process gets started, and every time the auction state c
 sends a one-line JSON document to the **standard input** of the _bidding model_ process.
 Sample message sent from the keeper to the model looks like:
 ```json
-{"todo": "todo"}
+{"id": "6", "flapper": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bid": "7.142857142857142857", "lot": "10000.000000000000000000", "beg": "1.050000000000000000", "guy": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "tic": 1530541420, "end": 1531135256, "price": "1400.000000000000000028"}
 ```
 
 The meaning of individual fields:
-* TODO
-* TODO
-* TODO
+* `id` - auction identifier.
+* `flipper` - Ethereum address of the `Flipper` contract (only for `flip` auctions).
+* `flapper` - Ethereum address of the `Flapper` contract (only for `flap` auctions).
+* `flopper` - Ethereum address of the `Flopper` contract (only for `flop` auctions).
+* `bid` - current highest bid.
+* `lot` - amount being currently auctioned.
+* `tab` - bid value which will cause the auction to enter the `dent` phase (only for `flip` auctions).
+* `beg` - minimum price increment (`1.05` means minimum 5% price increment).
+* `guy` - current highest bidder.
+* `era` - current time (in seconds since the UNIX epoch).
+* `tic` - time when the current bid will expire (`null` if no bids yet).
+* `end` - time when the entire auction will expire.
+* `price` - current price being tendered.
 
 _Bidding models_ should never make an assumption that messages will be sent only when auction state changes.
 It is perfectly fine for the `auction-keeper` to periodically send the same messages to _bidding models_.
