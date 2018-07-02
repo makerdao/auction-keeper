@@ -22,10 +22,14 @@ here may still change.
 
 ## Overall architecture
 
-**TODO**
+`auction-keeper` is responsible for directly interacting with `Flipper`, `Flapper` and `Flopper` auction contracts
+deployed to the Ethereum blockchain. It it responsible for querying and monitoring the current auction
+state, and also for sending all Ethereum transactions. At the same time all all decision making
+is delegated to _bidding models_.
 
-Bidding models are simple, external processes. They can be basically implemented in any programming language,
-as the only thing they need to do is to read and write JSON documents exchanged with `auction-keeper`.
+_Bidding models_ are simple processes, external to the main `auction-keeper` process. As they do not have to know
+anything about blockchain and smart contracts, they can be implemented in basically any programming language.
+The only thing they need to do is to read and write JSON documents they exchange with `auction-keeper`.
 
 
 ### Monitoring ongoing auctions and discovering new ones
