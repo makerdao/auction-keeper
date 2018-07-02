@@ -98,6 +98,19 @@ Any messages writen by a _bidding model_ to **stderr** will be passed through by
 This is the most convenient way of implementing logging from _bidding models_.
 
 
+### Simplest possible _bidding model_
+
+If you just want to bid a fixed price for each auction, this is the simplest possible _bidding model_
+you can use:
+
+```
+#!/usr/bin/env bash
+
+echo "{\"price\": \"750.0\"}"  # put your price here
+sleep 1000000
+```
+
+
 ## Installation
 
 This project uses *Python 3.6.2*.
