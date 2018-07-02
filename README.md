@@ -20,7 +20,7 @@ here may still change.
 <https://chat.makerdao.com/channel/keeper>
 
 
-## Description
+## Overall architecture
 
 **TODO**
 
@@ -101,8 +101,8 @@ Sample message send from the model to the keeper may look like:
 {"price": "750.0", "gasPrice": 7000000000}
 ```
 
-Whenever the keeper and the model communicate in terms of prices, it is the MKR/DAI price (for `flap` and `flop`)
-or the collateral price expressed in DAI e.g. DGX/DAI (for `flip`).
+Whenever the keeper and the model communicate in terms of prices, it is the MKR/DAI price (for `flap`
+and `flop` auctions) or the collateral price expressed in DAI e.g. DGX/DAI (for `flip` auctions).
 
 Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
 This is the most convenient way of implementing logging from _bidding models_.
