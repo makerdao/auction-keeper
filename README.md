@@ -77,8 +77,8 @@ The meaning of individual fields:
 * `flipper` - Ethereum address of the `Flipper` contract (only for `flip` auctions).
 * `flapper` - Ethereum address of the `Flapper` contract (only for `flap` auctions).
 * `flopper` - Ethereum address of the `Flopper` contract (only for `flop` auctions).
-* `bid` - current highest bid.
-* `lot` - amount being currently auctioned.
+* `bid` - current highest bid (will go up for `flip` and `flap` auctions).
+* `lot` - amount being currently auctioned (will go down for `flip` and `flop` auctions).
 * `tab` - bid value which will cause the auction to enter the `dent` phase (only for `flip` auctions).
 * `beg` - minimum price increment (`1.05` means minimum 5% price increment).
 * `guy` - Ethereum address of the current highest bidder.
