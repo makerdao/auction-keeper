@@ -181,6 +181,7 @@ class Model:
         self._ensure_process_running()
 
         record = {
+            "id": str(input.id),
             "bid": str(input.bid),
             "lot": str(input.lot),
             "beg": str(input.beg),
@@ -193,6 +194,15 @@ class Model:
 
         if input.tab:
             record['tab'] = str(input.tab)
+
+        if input.flipper:
+            record['flipper'] = str(input.flipper)
+
+        if input.flapper:
+            record['flapper'] = str(input.flapper)
+
+        if input.flopper:
+            record['flopper'] = str(input.flopper)
 
         self._process.write(record)
 
