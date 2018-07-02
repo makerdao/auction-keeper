@@ -15,8 +15,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import time
 from typing import Optional
 
+import pytest
 from ethereum.tester import GAS_PRICE
 from mock import MagicMock
 from web3 import Web3, EthereumTesterProvider
@@ -30,10 +32,11 @@ from pymaker.auctions import Flopper
 from pymaker.auth import DSGuard
 from pymaker.numeric import Wad
 from pymaker.token import DSToken
-from tests.helper import args, time_travel_by, wait_for_other_threads
+from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
-class TestAuctionKeeperFlopper:
+@pytest.mark.timeout(20)
+class TestAuctionKeeperFlopper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = Web3(EthereumTesterProvider())
         self.web3.eth.defaultAccount = self.web3.eth.accounts[0]
@@ -309,6 +312,75 @@ class TestAuctionKeeperFlopper:
         wait_for_other_threads()
         # then
         assert self.flopper.bids(1).lot == Wad.from_number(0.05)
+
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(100.0), gas_price=10)
+        # and
+        self.start_ignoring_transactions()
+        # and
+        self.keeper.check_all_auctions()
+        # and
+        time.sleep(5)
+        # and
+        self.end_ignoring_transactions()
+        # and
+        self.simulate_model_output(price=Wad.from_number(100.0), gas_price=15)
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.flopper.bids(1).lot == Wad.from_number(0.1)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
+
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(100.0), gas_price=10)
+        # and
+        self.start_ignoring_transactions()
+        # and
+        self.keeper.check_all_auctions()
+        # and
+        time.sleep(5)
+        # and
+        self.end_ignoring_transactions()
+        # and
+        self.simulate_model_output(price=Wad.from_number(200.0), gas_price=15)
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.flopper.bids(1).lot == Wad.from_number(0.05)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
+
+    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self):
+        # given
+        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(100.0), gas_price=10)
+        # and
+        self.start_ignoring_transactions()
+        # and
+        self.keeper.check_all_auctions()
+        # and
+        time.sleep(5)
+        # and
+        self.end_ignoring_transactions()
+        # and
+        self.simulate_model_output(price=Wad.from_number(50.0), gas_price=15)
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.flopper.bids(1).lot == Wad.from_number(0.2)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
     def test_should_not_bid_on_rounding_errors_with_small_amounts(self):
         # given
