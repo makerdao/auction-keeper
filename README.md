@@ -81,11 +81,11 @@ The meaning of individual fields:
 * `lot` - amount being currently auctioned.
 * `tab` - bid value which will cause the auction to enter the `dent` phase (only for `flip` auctions).
 * `beg` - minimum price increment (`1.05` means minimum 5% price increment).
-* `guy` - current highest bidder.
+* `guy` - Ethereum address of the current highest bidder.
 * `era` - current time (in seconds since the UNIX epoch).
 * `tic` - time when the current bid will expire (`null` if no bids yet).
 * `end` - time when the entire auction will expire.
-* `price` - current price being tendered.
+* `price` - current price being tendered (can be `null` if price is infinity).
 
 _Bidding models_ should never make an assumption that messages will be sent only when auction state changes.
 It is perfectly fine for the `auction-keeper` to periodically send the same messages to _bidding models_.
