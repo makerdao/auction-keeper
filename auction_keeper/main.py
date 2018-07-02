@@ -27,7 +27,7 @@ from auction_keeper.model import ModelFactory
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, Status, Auctions, Stance
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
-from pymaker import Address, Wad
+from pymaker import Address, Wad, TransactStatus
 from pymaker.approval import directly
 from pymaker.auctions import Flopper, Flipper, Flapper
 from pymaker.gas import FixedGasPrice, DefaultGasPrice
@@ -35,6 +35,8 @@ from pymaker.lifecycle import Lifecycle
 
 
 class AuctionKeeper:
+    logger = logging.getLogger()
+
     def __init__(self, args: list, **kwargs):
         parser = argparse.ArgumentParser(prog='auction-keeper')
 
@@ -144,11 +146,39 @@ class AuctionKeeper:
 
             output = auction.model_output()
             if output is not None:
-                bid_transact = self.strategy.bid(id, output.price)
+                bid_price, bid_transact = self.strategy.bid(id, output.price)
 
-                if bid_transact is not None:
-                    gas_price = UpdatableGasPrice(output.gas_price)
-                    self._run_future(bid_transact.transact_async(gas_price=gas_price))
+                if bid_price is not None and bid_transact is not None:
+                    # if no transaction in progress, send a new one
+                    transaction_in_progress = auction.transaction_in_progress()
+                    if transaction_in_progress is None:
+                        self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+
+                        auction.price = bid_price
+                        auction.gas_price = UpdatableGasPrice(output.gas_price)
+                        auction.register_transaction(bid_transact)
+
+                        self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+
+                    # if transaction in progress and gas price went up...
+                    elif output.gas_price > auction.gas_price.gas_price:
+
+                        # ...replace the entire bid if the price has changed...
+                        if bid_price != auction.price:
+                            self.logger.info(f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
+
+                            auction.price = bid_price
+                            auction.gas_price = UpdatableGasPrice(output.gas_price)
+                            auction.register_transaction(bid_transact)
+
+                            self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                                         gas_price=auction.gas_price))
+
+                        # ...or just replace gas_price if price stays the same
+                        else:
+                            self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
+
+                            auction.gas_price.update_gas_price(output.gas_price)
 
     @staticmethod
     def _run_future(future):

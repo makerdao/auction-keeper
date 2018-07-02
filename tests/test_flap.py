@@ -14,10 +14,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import threading
+
 import time
 from typing import Optional
 
+import pytest
 from ethereum.tester import GAS_PRICE
 from mock import MagicMock
 from web3 import Web3, EthereumTesterProvider
@@ -30,10 +31,11 @@ from pymaker.approval import directly
 from pymaker.auctions import Flapper
 from pymaker.numeric import Wad
 from pymaker.token import DSToken
-from tests.helper import args, time_travel_by, wait_for_other_threads
+from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
-class TestAuctionKeeperFlapper:
+@pytest.mark.timeout(20)
+class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = Web3(EthereumTesterProvider())
         self.web3.eth.defaultAccount = self.web3.eth.accounts[0]
@@ -68,26 +70,6 @@ class TestAuctionKeeperFlapper:
 
     def simulate_model_output(self, price: Wad, gas_price: Optional[int] = None):
         self.model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
-
-    def start_ignoring_transactions(self):
-        self.original_send_transaction = self.web3.eth.sendTransaction
-        self.original_get_transaction = self.web3.eth.getTransaction
-        self.original_nonce = self.web3.eth.getTransactionCount(self.keeper_address.address)
-
-        self.web3.eth.sendTransaction = MagicMock(return_value='0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd')
-        self.web3.eth.getTransaction = MagicMock(return_value={'nonce': self.original_nonce})
-
-    def end_ignoring_transactions(self):
-        def second_send_transaction(transaction):
-            assert transaction['nonce'] == self.original_nonce
-
-            # TestRPC doesn't support `sendTransaction` calls with the `nonce` parameter
-            # (unlike proper Ethereum nodes which handle it very well)
-            transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
-            return self.original_send_transaction(transaction_without_nonce)
-
-        self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
-        self.web3.eth.getTransaction = self.original_get_transaction
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self):
         # given
@@ -334,24 +316,74 @@ class TestAuctionKeeperFlapper:
         # then
         assert self.flapper.bids(1).bid == Wad.from_number(40.0)
 
-    # def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
-    #     # given
-    #     self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(10.0))
-    #     # and
-    #     self.keeper.check_all_auctions()
-    #     wait_for_other_threads()
-    #     # then
-    #     assert self.flapper.bids(1).bid == Wad.from_number(20.0)
-    #
-    #     # when
-    #     self.simulate_model_output(price=Wad.from_number(5.0))
-    #     self.keeper.check_all_auctions()
-    #     wait_for_other_threads()
-    #     # then
-    #     assert self.flapper.bids(1).bid == Wad.from_number(40.0)
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
+        # given
+        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=10)
+        # and
+        self.start_ignoring_transactions()
+        # and
+        self.keeper.check_all_auctions()
+        # and
+        time.sleep(5)
+        # and
+        self.end_ignoring_transactions()
+        # and
+        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=15)
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(1).bid == Wad.from_number(20.0)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
+
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self):
+        # given
+        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=10)
+        # and
+        self.start_ignoring_transactions()
+        # and
+        self.keeper.check_all_auctions()
+        # and
+        time.sleep(5)
+        # and
+        self.end_ignoring_transactions()
+        # and
+        self.simulate_model_output(price=Wad.from_number(5.0), gas_price=15)
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(1).bid == Wad.from_number(40.0)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
+
+    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self):
+        # given
+        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+
+        # when
+        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=10)
+        # and
+        self.start_ignoring_transactions()
+        # and
+        self.keeper.check_all_auctions()
+        # and
+        time.sleep(5)
+        # and
+        self.end_ignoring_transactions()
+        # and
+        self.simulate_model_output(price=Wad.from_number(8.0), gas_price=15)
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(1).bid == Wad.from_number(25.0)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
     def test_should_not_bid_on_rounding_errors_with_small_amounts(self):
         # given

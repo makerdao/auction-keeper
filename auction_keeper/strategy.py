@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Optional
+from typing import Optional, Tuple
 
 from auction_keeper.model import Status
 from pymaker import Transact, Wad
@@ -63,7 +63,7 @@ class FlipperStrategy(Strategy):
                       end=bid.end,
                       price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
 
-    def bid(self, id: int, price: Wad) -> Optional[Transact]:
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert(isinstance(id, int))
         assert(isinstance(price, Wad))
 
@@ -74,22 +74,21 @@ class FlipperStrategy(Strategy):
             our_lot = bid.bid / price
 
             if (our_lot * self.beg <= bid.lot) and (our_lot < bid.lot):
-                # TODO this should happen asynchronously
-                return self.flipper.dent(id, our_lot, bid.bid)
+                return price, self.flipper.dent(id, our_lot, bid.bid)
 
             else:
-                return None
+                return None, None
 
         # tend phase
         else:
             our_bid = Wad.min(bid.lot * price, bid.tab)
+            our_price = price if our_bid < bid.tab else bid.bid/bid.lot
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
-                # TODO this should happen asynchronously
-                return self.flipper.tend(id, bid.lot, our_bid)
+                return our_price, self.flipper.tend(id, bid.lot, our_bid)
 
             else:
-                return None
+                return None, None
 
     def deal(self, id: int) -> Transact:
         return self.flipper.deal(id)
@@ -129,7 +128,7 @@ class FlapperStrategy(Strategy):
                       end=bid.end,
                       price=(bid.lot / bid.bid) if bid.bid != Wad(0) else None)
 
-    def bid(self, id: int, price: Wad) -> Optional[Transact]:
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert(isinstance(id, int))
         assert(isinstance(price, Wad))
 
@@ -137,11 +136,10 @@ class FlapperStrategy(Strategy):
         our_bid = bid.lot / price
 
         if our_bid >= bid.bid * self.beg and our_bid > bid.bid:
-            # TODO this should happen asynchronously
-            return self.flapper.tend(id, bid.lot, our_bid)
+            return price, self.flapper.tend(id, bid.lot, our_bid)
 
         else:
-            return None
+            return None, None
 
     def deal(self, id: int) -> Transact:
         return self.flapper.deal(id)
@@ -181,7 +179,7 @@ class FlopperStrategy(Strategy):
                       end=bid.end,
                       price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
 
-    def bid(self, id: int, price: Wad) -> Optional[Transact]:
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert(isinstance(id, int))
         assert(isinstance(price, Wad))
 
@@ -189,11 +187,10 @@ class FlopperStrategy(Strategy):
         our_lot = bid.bid / price
 
         if our_lot * self.beg <= bid.lot and our_lot < bid.lot:
-            # TODO this should happen asynchronously
-            return self.flopper.dent(id, our_lot, bid.bid)
+            return price, self.flopper.dent(id, our_lot, bid.bid)
 
         else:
-            return None
+            return None, None
 
     def deal(self, id: int) -> Transact:
         return self.flopper.deal(id)

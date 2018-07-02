@@ -19,23 +19,31 @@ import logging
 from typing import Optional
 
 from auction_keeper.model import Stance, Parameters, Status, Model, ModelFactory
-from pymaker import Address
+from pymaker import Address, TransactStatus, Transact
 
 
 class Auction:
     def __init__(self, id: int, model: Model):
         assert(isinstance(id, int))
 
-        self.output = None
-        self.model = None
-        self.transaction = None
-        self.transaction_price = None
-
         self.model = model
+        self.output = None
 
-        #TODO these two will ultimately go away
         self.price = None
         self.gas_price = None
+        self.transactions = []
+
+    def register_transaction(self, transact: Transact):
+        self.transactions.append(transact)
+
+    def transaction_in_progress(self) -> Optional[Transact]:
+        self.transactions = list(filter(lambda transact: transact.status != TransactStatus.FINISHED, self.transactions))
+
+        if len(self.transactions) > 0:
+            return self.transactions[-1]
+
+        else:
+            return None
 
     def feed_model(self, input: Status):
         assert(isinstance(input, Status))

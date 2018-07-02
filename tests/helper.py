@@ -21,6 +21,7 @@ import time
 from contextlib import contextmanager
 from io import StringIO
 
+from mock import MagicMock
 from web3 import Web3
 
 
@@ -49,3 +50,25 @@ def time_travel_by(web3: Web3, seconds: int):
 def wait_for_other_threads():
     while threading.active_count() > 1:
         time.sleep(0.1)
+
+
+class TransactionIgnoringTest:
+    def start_ignoring_transactions(self):
+        self.original_send_transaction = self.web3.eth.sendTransaction
+        self.original_get_transaction = self.web3.eth.getTransaction
+        self.original_nonce = self.web3.eth.getTransactionCount(self.keeper_address.address)
+
+        self.web3.eth.sendTransaction = MagicMock(return_value='0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd')
+        self.web3.eth.getTransaction = MagicMock(return_value={'nonce': self.original_nonce})
+
+    def end_ignoring_transactions(self):
+        def second_send_transaction(transaction):
+            assert transaction['nonce'] == self.original_nonce
+
+            # TestRPC doesn't support `sendTransaction` calls with the `nonce` parameter
+            # (unlike proper Ethereum nodes which handle it very well)
+            transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
+            return self.original_send_transaction(transaction_without_nonce)
+
+        self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
+        self.web3.eth.getTransaction = self.original_get_transaction
