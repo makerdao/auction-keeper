@@ -49,7 +49,11 @@ class FlipperStrategy(Strategy):
         bid = self.flipper.bids(id)
 
         # Prepare the model input from auction state
-        return Status(bid=bid.bid,
+        return Status(id=id,
+                      flipper=self.flipper.address,
+                      flapper=None,
+                      flopper=None,
+                      bid=bid.bid,
                       lot=bid.lot,
                       tab=bid.tab,
                       beg=self.beg,
@@ -111,7 +115,11 @@ class FlapperStrategy(Strategy):
         bid = self.flapper.bids(id)
 
         # Prepare the model input from auction state
-        return Status(bid=bid.bid,
+        return Status(id=id,
+                      flipper=None,
+                      flapper=self.flapper.address,
+                      flopper=None,
+                      bid=bid.bid,
                       lot=bid.lot,
                       tab=None,
                       beg=self.beg,
@@ -159,7 +167,11 @@ class FlopperStrategy(Strategy):
         bid = self.flopper.bids(id)
 
         # Prepare the model input from auction state
-        return Status(bid=bid.bid,
+        return Status(id=id,
+                      flipper=None,
+                      flapper=None,
+                      flopper=self.flopper.address,
+                      bid=bid.bid,
                       lot=bid.lot,
                       tab=None,
                       beg=self.beg,

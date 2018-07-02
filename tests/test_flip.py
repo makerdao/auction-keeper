@@ -85,6 +85,10 @@ class TestAuctionKeeperFlipper:
                                                                            flopper=None,
                                                                            id=1))
         # and
+        assert self.model.send_status.call_args[0][0].id == 1
+        assert self.model.send_status.call_args[0][0].flipper == self.flipper.address
+        assert self.model.send_status.call_args[0][0].flapper is None
+        assert self.model.send_status.call_args[0][0].flopper is None
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1000)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
         assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
@@ -117,6 +121,10 @@ class TestAuctionKeeperFlipper:
         # then
         assert self.model.send_status.call_count > 1
         # and
+        assert self.model.send_status.call_args[0][0].id == 1
+        assert self.model.send_status.call_args[0][0].flipper == self.flipper.address
+        assert self.model.send_status.call_args[0][0].flapper is None
+        assert self.model.send_status.call_args[0][0].flopper is None
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1500)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
         assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
@@ -146,6 +154,10 @@ class TestAuctionKeeperFlipper:
         # then
         assert self.model.send_status.call_count > 1
         # and
+        assert self.model.send_status.call_args[0][0].id == 1
+        assert self.model.send_status.call_args[0][0].flipper == self.flipper.address
+        assert self.model.send_status.call_args[0][0].flapper is None
+        assert self.model.send_status.call_args[0][0].flopper is None
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1700)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
         assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)

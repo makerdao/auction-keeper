@@ -51,7 +51,24 @@ class Parameters:
 
 
 class Status:
-    def __init__(self, bid: Wad, lot: Wad, tab: Optional[Wad], beg: Wad, guy: Address, era: int, tic: int, end: int, price: Optional[Wad]):
+    def __init__(self,
+                 id: int,
+                 flipper: Optional[Address],
+                 flapper: Optional[Address],
+                 flopper: Optional[Address],
+                 bid: Wad,
+                 lot: Wad,
+                 tab: Optional[Wad],
+                 beg: Wad,
+                 guy: Address,
+                 era: int,
+                 tic: int,
+                 end: int,
+                 price: Optional[Wad]):
+        assert(isinstance(id, int))
+        assert(isinstance(flipper, Address) or (flipper is None))
+        assert(isinstance(flapper, Address) or (flapper is None))
+        assert(isinstance(flopper, Address) or (flopper is None))
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
         assert(isinstance(tab, Wad) or (tab is None))
@@ -62,6 +79,10 @@ class Status:
         assert(isinstance(end, int))
         assert(isinstance(price, Wad) or (price is None))
 
+        self.id = id
+        self.flipper = flipper
+        self.flapper = flapper
+        self.flopper = flopper
         self.bid = bid
         self.lot = lot
         self.tab = tab
@@ -75,7 +96,11 @@ class Status:
     def __eq__(self, other):
         assert(isinstance(other, Status))
 
-        return self.bid == other.bid and \
+        return self.id == other.id and \
+               self.flipper == other.flipper and \
+               self.flapper == other.flapper and \
+               self.flopper == other.flopper and \
+               self.bid == other.bid and \
                self.lot == other.lot and \
                self.tab == other.tab and \
                self.beg == other.beg and \
@@ -86,7 +111,19 @@ class Status:
                self.price == other.price
 
     def __hash__(self):
-        return hash((self.bid, self.lot, self.tab, self.beg, self.guy, self.era, self.tic, self.end, self.price))
+        return hash((self.id,
+                     self.flipper,
+                     self.flapper,
+                     self.flopper,
+                     self.bid,
+                     self.lot,
+                     self.tab,
+                     self.beg,
+                     self.guy,
+                     self.era,
+                     self.tic,
+                     self.end,
+                     self.price))
 
     def __repr__(self):
         return pformat(vars(self))

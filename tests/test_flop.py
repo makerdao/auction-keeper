@@ -78,6 +78,10 @@ class TestAuctionKeeperFlopper:
                                                                            flopper=self.flopper.address,
                                                                            id=1))
         # and
+        assert self.model.send_status.call_args[0][0].id == 1
+        assert self.model.send_status.call_args[0][0].flipper is None
+        assert self.model.send_status.call_args[0][0].flapper is None
+        assert self.model.send_status.call_args[0][0].flopper == self.flopper.address
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(2)
         assert self.model.send_status.call_args[0][0].tab is None
@@ -109,6 +113,10 @@ class TestAuctionKeeperFlopper:
         # then
         assert self.model.send_status.call_count > 1
         # and
+        assert self.model.send_status.call_args[0][0].id == 1
+        assert self.model.send_status.call_args[0][0].flipper is None
+        assert self.model.send_status.call_args[0][0].flapper is None
+        assert self.model.send_status.call_args[0][0].flopper == self.flopper.address
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(0.2)
         assert self.model.send_status.call_args[0][0].tab is None
@@ -138,6 +146,10 @@ class TestAuctionKeeperFlopper:
         # then
         assert self.model.send_status.call_count > 1
         # and
+        assert self.model.send_status.call_args[0][0].id == 1
+        assert self.model.send_status.call_args[0][0].flipper is None
+        assert self.model.send_status.call_args[0][0].flapper is None
+        assert self.model.send_status.call_args[0][0].flopper == self.flopper.address
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(1)
         assert self.model.send_status.call_args[0][0].tab is None
