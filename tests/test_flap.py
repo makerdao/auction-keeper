@@ -19,9 +19,8 @@ import time
 from typing import Optional
 
 import pytest
-from ethereum.tester import GAS_PRICE
 from mock import MagicMock
-from web3 import Web3, EthereumTesterProvider
+from web3 import Web3, HTTPProvider
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
@@ -37,7 +36,7 @@ from tests.helper import args, time_travel_by, wait_for_other_threads, Transacti
 @pytest.mark.timeout(20)
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
-        self.web3 = Web3(EthereumTesterProvider())
+        self.web3 = Web3(HTTPProvider("http://localhost:8555"))
         self.web3.eth.defaultAccount = self.web3.eth.accounts[0]
         self.keeper_address = Address(self.web3.eth.defaultAccount)
         self.gal_address = Address(self.web3.eth.accounts[1])
