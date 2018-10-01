@@ -19,6 +19,8 @@ import logging
 from pprint import pformat
 from typing import Optional
 
+from pymaker.numeric import Ray
+
 from auction_keeper.process import Process
 from pymaker import Wad, Address
 
@@ -59,7 +61,7 @@ class Status:
                  bid: Wad,
                  lot: Wad,
                  tab: Optional[Wad],
-                 beg: Wad,
+                 beg: Ray,
                  guy: Address,
                  era: int,
                  tic: int,
@@ -72,7 +74,7 @@ class Status:
         assert(isinstance(bid, Wad))
         assert(isinstance(lot, Wad))
         assert(isinstance(tab, Wad) or (tab is None))
-        assert(isinstance(beg, Wad))
+        assert(isinstance(beg, Ray))
         assert(isinstance(guy, Address))
         assert(isinstance(era, int))
         assert(isinstance(tic, int))

@@ -27,7 +27,7 @@ from auction_keeper.model import Parameters
 from pymaker import Address, Contract
 from pymaker.approval import directly
 from pymaker.auctions import Flapper, Flipper
-from pymaker.numeric import Wad
+from pymaker.numeric import Wad, Ray
 from pymaker.token import DSToken
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
@@ -40,13 +40,21 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.gal_address = Address(self.web3.eth.accounts[1])
         self.other_address = Address(self.web3.eth.accounts[2])
 
-        # we need VatMock to mock Vat, as Flipper won't work without it
-        vat_abi = Contract._load_abi(__name__, '../lib/pymaker/tests/abi/VatMock.abi')
-        vat_bin = Contract._load_bin(__name__, '../lib/pymaker/tests/abi/VatMock.bin')
-        self.vat_address = Contract._deploy(self.web3, vat_abi, vat_bin, [])
-        self.vat_contract = self.web3.eth.contract(abi=vat_abi)(address=self.vat_address.address)
+        # we need a GemLike version of DSToken with push(bytes32, uint function)
+        gem_abi = Contract._load_abi(__name__, '../lib/pymaker/tests/abi/DSToken.abi')
+        gem_bin = Contract._load_bin(__name__, '../lib/pymaker/tests/abi/DSToken.bin')
+        self.gem_addr = Contract._deploy(self.web3, gem_abi, gem_bin, [b'ABC'])
+        self.gem = DSToken(web3=self.web3, address=self.gem_addr)
 
-        self.flipper = Flipper.deploy(self.web3, self.vat_address, 123)
+        self.dai = DSToken.deploy(self.web3, 'DAI')
+        self.flipper = Flipper.deploy(self.web3, self.dai.address, self.gem.address)
+
+        # Set allowance to allow flipper to move dai and gem
+        self.dai.approve(self.flipper.address).transact()
+        self.dai.approve(self.flipper.address).transact(from_address=self.gal_address)
+        self.dai.approve(self.flipper.address).transact(from_address=self.other_address)
+        self.gem.approve(self.flipper.address).transact(from_address=self.gal_address)
+        self.gem.approve(self.flipper.address).transact(from_address=self.other_address)
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--flipper {self.flipper.address} "
@@ -56,8 +64,12 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
         # So that `keeper_address` and `other_address` can bid in auctions,
         # they both need to have DAI in their accounts.
-        self.vat_contract.transact().mint(self.keeper_address.address, Wad.from_number(10000000).value)
-        self.vat_contract.transact().mint(self.other_address.address, Wad.from_number(10000000).value)
+        self.dai.mint(Wad.from_number(20000000)).transact()
+        self.dai.transfer(self.other_address, Wad.from_number(10000000)).transact()
+
+        # So that `gal_address` can kick auction he need to have GEM in his accounts
+        self.gem.mint(Wad.from_number(1000000)).transact()
+        self.gem.transfer(self.gal_address, Wad.from_number(1000000)).transact()
 
         self.model = MagicMock()
         self.model.get_stance = MagicMock(return_value=None)
@@ -66,7 +78,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     def gem_balance(self, address: Address) -> Wad:
         assert(isinstance(address, Address))
-        return Wad(self.vat_contract.call().gem(address.address))
+        return Wad(self.gem.balance_of(address))
 
     def simulate_model_output(self, price: Wad, gas_price: Optional[int] = None):
         self.model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
@@ -92,7 +104,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1000)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
         assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
-        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
         assert self.model.send_status.call_args[0][0].guy == self.gal_address
         assert self.model.send_status.call_args[0][0].era > 0
         assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
@@ -128,7 +140,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1500)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
         assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
-        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
         assert self.model.send_status.call_args[0][0].guy == self.keeper_address
         assert self.model.send_status.call_args[0][0].era > 0
         assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
@@ -161,7 +173,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(1700)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(100)
         assert self.model.send_status.call_args[0][0].tab == Wad.from_number(5000)
-        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
         assert self.model.send_status.call_args[0][0].guy == self.other_address
         assert self.model.send_status.call_args[0][0].era > 0
         assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
@@ -602,4 +614,4 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == GAS_PRICE
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == self.web3.eth.gasPrice
