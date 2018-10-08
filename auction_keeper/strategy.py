@@ -19,7 +19,7 @@ from typing import Optional, Tuple
 
 from auction_keeper.model import Status
 from pymaker import Transact, Wad
-from pymaker.approval import directly
+from pymaker.approval import directly, hope_directly
 from pymaker.auctions import Flopper, Flapper, Flipper
 
 
@@ -36,8 +36,7 @@ class FlipperStrategy(Strategy):
         self.beg = flipper.beg()
 
     def approve(self):
-        # `Flipper` does not require any approval as collateral and Dai transfers happen directly in Vat
-        pass
+        self.flipper.approve(hope_directly())
 
     def kicks(self) -> int:
         return self.flipper.kicks()
@@ -153,7 +152,7 @@ class FlopperStrategy(Strategy):
         self.beg = flopper.beg()
 
     def approve(self):
-        self.flopper.approve(directly())
+        self.flopper.approve(hope_directly())
 
     def kicks(self) -> int:
         return self.flopper.kicks()
