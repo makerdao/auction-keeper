@@ -25,7 +25,7 @@ from web3 import Web3, HTTPProvider
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.logic import Stance
 from auction_keeper.model import Parameters, Status
-from pymaker import Address
+from pymaker import Address, Contract
 from pymaker.approval import directly
 from pymaker.auctions import Flopper
 from pymaker.auth import DSGuard
@@ -42,7 +42,12 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper_address = Address(self.web3.eth.defaultAccount)
         self.gal_address = Address(self.web3.eth.accounts[1])
         self.other_address = Address(self.web3.eth.accounts[2])
-        self.dai = DSToken.deploy(self.web3, 'DAI')
+
+        # GemMock version of DSToken with push(bytes32, uint function) an hope(address)
+        gem_abi = Contract._load_abi(__name__, '../lib/pymaker/tests/abi/GemMock.abi')
+        gem_bin = Contract._load_bin(__name__, '../lib/pymaker/tests/abi/GemMock.bin')
+        self.dai_addr = Contract._deploy(self.web3, gem_abi, gem_bin, [b'DAI'])
+        self.dai = DSToken(web3=self.web3, address=self.dai_addr)
         self.dai.mint(Wad.from_number(10000000)).transact()
         self.dai.transfer(self.other_address, Wad.from_number(1000000)).transact()
         self.mkr = DSToken.deploy(self.web3, 'MKR')

@@ -40,13 +40,16 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.gal_address = Address(self.web3.eth.accounts[1])
         self.other_address = Address(self.web3.eth.accounts[2])
 
-        # we need a GemLike version of DSToken with push(bytes32, uint function)
-        gem_abi = Contract._load_abi(__name__, '../lib/pymaker/tests/abi/DSToken.abi')
-        gem_bin = Contract._load_bin(__name__, '../lib/pymaker/tests/abi/DSToken.bin')
+        # GemMock version of DSToken with push(bytes32, uint function) an hope(address)
+        gem_abi = Contract._load_abi(__name__, '../lib/pymaker/tests/abi/GemMock.abi')
+        gem_bin = Contract._load_bin(__name__, '../lib/pymaker/tests/abi/GemMock.bin')
+
         self.gem_addr = Contract._deploy(self.web3, gem_abi, gem_bin, [b'ABC'])
         self.gem = DSToken(web3=self.web3, address=self.gem_addr)
 
-        self.dai = DSToken.deploy(self.web3, 'DAI')
+        self.dai_addr = Contract._deploy(self.web3, gem_abi, gem_bin, [b'DAI'])
+        self.dai = DSToken(web3=self.web3, address=self.dai_addr)
+
         self.flipper = Flipper.deploy(self.web3, self.dai.address, self.gem.address)
 
         # Set allowance to allow flipper to move dai and gem
