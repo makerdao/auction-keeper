@@ -17,6 +17,8 @@
 
 from typing import Optional, Tuple
 
+from pymaker.dss import Cat
+
 from auction_keeper.model import Status
 from pymaker import Transact, Wad
 from pymaker.approval import directly, hope_directly
@@ -24,8 +26,24 @@ from pymaker.auctions import Flopper, Flapper, Flipper
 
 
 class Strategy:
+    def approve(self):
+        raise NotImplementedError
+
     def get_input(self, id: int):
         raise NotImplementedError
+
+
+class CatStrategy:
+    def __init__(self, cat: Cat):
+        assert isinstance(cat, Cat)
+
+        self.cat = cat
+
+    def approve(self):
+        pass
+
+    def get_input(self, id: int):
+        pass
 
 
 class FlipperStrategy(Strategy):

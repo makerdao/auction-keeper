@@ -21,12 +21,14 @@ import logging
 import sys
 import threading
 
+from pymaker.dss import Ilk, Cat, Pit, Vat, Urn, DaiVat
+from pymaker.token import DSToken
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.model import ModelFactory
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, Status, Auctions, Stance
-from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
+from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy, CatStrategy
 from pymaker import Address, Wad, TransactStatus
 from pymaker.approval import directly
 from pymaker.auctions import Flopper, Flipper, Flapper
@@ -52,6 +54,10 @@ class AuctionKeeper:
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
 
+        parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
+
+        parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
+
         contract = parser.add_mutually_exclusive_group(required=True)
         contract.add_argument('--flipper', type=str, help="Ethereum address of the Flipper contract")
         contract.add_argument('--flapper', type=str, help="Ethereum address of the Flapper contract")
@@ -65,17 +71,28 @@ class AuctionKeeper:
 
         self.arguments = parser.parse_args(args)
 
-        self.web3 = kwargs['web3'] if 'web3' in kwargs else Web3(HTTPProvider(endpoint_uri=f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}",
-                                                                              request_kwargs={"timeout": self.arguments.rpc_timeout}))
+        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(
+            HTTPProvider(endpoint_uri=f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}",
+                         request_kwargs={"timeout": self.arguments.rpc_timeout}))
         self.web3.eth.defaultAccount = self.arguments.eth_from
         self.our_address = Address(self.arguments.eth_from)
 
-        self.flipper = Flipper(web3=self.web3, address=Address(self.arguments.flipper)) if self.arguments.flipper else None
-        self.flapper = Flapper(web3=self.web3, address=Address(self.arguments.flapper)) if self.arguments.flapper else None
-        self.flopper = Flopper(web3=self.web3, address=Address(self.arguments.flopper)) if self.arguments.flopper else None
+        self.cat = Cat(web3=self.web3, address=Address(self.arguments.cat)) if self.arguments.cat else None
+        self.ilk = Ilk(self.arguments.ilk) if self.arguments.ilk else None
+
+        self.flipper = Flipper(web3=self.web3,
+                               address=Address(self.arguments.flipper)) if self.arguments.flipper else None
+        self.flapper = Flapper(web3=self.web3,
+                               address=Address(self.arguments.flapper)) if self.arguments.flapper else None
+        self.flopper = Flopper(web3=self.web3,
+                               address=Address(self.arguments.flopper)) if self.arguments.flopper else None
 
         if self.flipper:
             self.strategy = FlipperStrategy(self.flipper)
+            if self.cat is None:
+                self.logger.warning(f"Flipper auction selected but no Cat address specified so we won't bite()")
+                if self.ilk is None:
+                    self.logger.warning(f"bite() will operate on all CDP type because ilk is not specified")
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper)
         elif self.flopper:
@@ -95,6 +112,8 @@ class AuctionKeeper:
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
             lifecycle.on_block(self.check_all_auctions)
+            if self.flipper and self.cat:
+                lifecycle.on_block(self.check_cdps)
 
     def startup(self):
         self.approve()
@@ -102,16 +121,61 @@ class AuctionKeeper:
     def approve(self):
         self.strategy.approve()
 
+    def check_cdps(self):
+        last_frob_event = {}
+        pit = Pit(self.web3, self.cat.pit())
+        vat = Vat(self.web3, self.cat.vat())
+
+        # Look for unsafe CDPs and bite them
+        frob_filter = {}
+        if self.ilk:
+            frob_filter = {'ilk': self.ilk.toBytes()}
+
+        past_frob = pit.past_frob(self.web3.eth.blockNumber, event_filter=frob_filter)  # TODO: put past_block in cache
+        for frob_event in past_frob:
+            last_frob_event[frob_event.urn.address] = frob_event
+
+        for urn_addr in last_frob_event:
+            ilk = last_frob_event[urn_addr].ilk
+            current_urn = vat.urn(ilk, urn_addr)
+            safe = current_urn.ink * pit.spot(ilk) >= current_urn.art * vat.ilk(ilk.name).rate
+            if not safe:
+                self.logger.info(f'Found an unsafe CDP: {current_urn}')
+                # TODO this should happen asynchronously
+                self.cat.bite(ilk, current_urn).transact()
+
+        # Look for pending collateral auctions and start them when DAI balance is sufficient
+        for i in range(self.cat.nflip()):
+            flip = self.cat.flips(i)
+
+            # Check both debt and if this auction-keeper will handle the auction
+            if flip.tab > Wad(0) and (self.cat.flipper(flip.urn.ilk) == self.flipper.address):
+                self.logger.info(f'Found an outstanding collateral auction: {flip}')
+
+                # Check our balance and if balances available then flip() an auction
+                dai_balance = Wad(vat.dai(self.our_address))
+                lump = self.cat.lump(flip.urn.ilk)
+
+                if flip.tab < lump and dai_balance > flip.tab:
+                    # TODO this should happen asynchronously
+                    self.cat.flip(flip, flip.tab).transact()
+                elif flip.tab > lump and dai_balance > lump:
+                    # TODO this should happen asynchronously
+                    self.cat.flip(flip, lump).transact()
+                else:
+                    self.logger.warning(f'Not enought balance to flip({flip.id}): '
+                                        f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
+
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
             self.check_auction(id)
 
-    #TODO if we will introduce multithreading here, proper locking should be introduced as well
+    # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
     #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
     #     for example).
     def check_auction(self, id: int):
-        assert(isinstance(id, int))
+        assert (isinstance(id, int))
 
         # Read auction information
         input = self.strategy.get_input(id)
@@ -165,7 +229,8 @@ class AuctionKeeper:
 
                         # ...replace the entire bid if the price has changed...
                         if bid_price != auction.price:
-                            self.logger.info(f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
+                            self.logger.info(
+                                f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
 
                             auction.price = bid_price
                             auction.gas_price = UpdatableGasPrice(output.gas_price)
