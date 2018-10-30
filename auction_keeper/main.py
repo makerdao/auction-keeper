@@ -126,7 +126,6 @@ class AuctionKeeper:
         self.strategy.approve()
 
     def check_cdps(self):
-        self.logger.warning('test1')
         last_frob_event = {}
         pit = Pit(self.web3, self.cat.pit())
         vat = Vat(self.web3, self.cat.vat())
@@ -172,7 +171,6 @@ class AuctionKeeper:
                                         f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
 
     def check_all_auctions(self):
-        self.logger.warning('test2')
         for id in range(1, self.strategy.kicks() + 1):
             self.check_auction(id)
 
