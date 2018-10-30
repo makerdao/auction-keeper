@@ -111,9 +111,13 @@ class AuctionKeeper:
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
-            lifecycle.on_block(self.check_all_auctions)
             if self.flipper and self.cat:
-                lifecycle.on_block(self.check_cdps)
+                def seq_func():
+                    self.check_cdps()
+                    self.check_all_auctions()
+                lifecycle.on_block(seq_func)
+            else:
+                lifecycle.on_block(self.check_all_auctions)
 
     def startup(self):
         self.approve()
@@ -122,6 +126,7 @@ class AuctionKeeper:
         self.strategy.approve()
 
     def check_cdps(self):
+        self.logger.warning('test1')
         last_frob_event = {}
         pit = Pit(self.web3, self.cat.pit())
         vat = Vat(self.web3, self.cat.vat())
@@ -167,6 +172,7 @@ class AuctionKeeper:
                                         f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
 
     def check_all_auctions(self):
+        self.logger.warning('test2')
         for id in range(1, self.strategy.kicks() + 1):
             self.check_auction(id)
 
