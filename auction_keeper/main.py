@@ -231,7 +231,7 @@ class AuctionKeeper:
                         self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
 
                     # if transaction in progress and gas price went up...
-                    elif output.gas_price > auction.gas_price.gas_price:
+                    elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
 
                         # ...replace the entire bid if the price has changed...
                         if bid_price != auction.price:
