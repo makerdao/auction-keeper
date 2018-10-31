@@ -21,7 +21,7 @@ import logging
 import sys
 import threading
 
-from pymaker.dss import Ilk, Cat, Pit, Vat, Urn, DaiVat
+from pymaker.dss import Ilk, Cat, Pit, Vat, Urn, DaiVat, Vow
 from pymaker.token import DSToken
 from web3 import Web3, HTTPProvider
 
@@ -55,6 +55,7 @@ class AuctionKeeper:
                             help="Ethereum account from which to send transactions")
 
         parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
+        parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
 
         parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
 
@@ -78,6 +79,7 @@ class AuctionKeeper:
         self.our_address = Address(self.arguments.eth_from)
 
         self.cat = Cat(web3=self.web3, address=Address(self.arguments.cat)) if self.arguments.cat else None
+        self.vow = Vow(web3=self.web3, address=Address(self.arguments.vow)) if self.arguments.vow else None
         self.ilk = Ilk(self.arguments.ilk) if self.arguments.ilk else None
 
         self.flipper = Flipper(web3=self.web3,
@@ -94,8 +96,14 @@ class AuctionKeeper:
                 if self.ilk is None:
                     self.logger.warning(f"bite() will operate on all CDP type because ilk is not specified")
         elif self.flapper:
+            if self.vow is None:
+                self.logger.warning(f"Flapper auction selected but no Vow address specified so we won't flip()")
             self.strategy = FlapperStrategy(self.flapper)
         elif self.flopper:
+            if self.vow is None:
+                self.logger.warning(f"Flopper auction selected but no Vow address specified so we won't flap()")
+            if self.cat is None:
+                self.logger.warning(f"Flopper auction selected but no Cat address specified so we won't flog()")
             self.strategy = FlopperStrategy(self.flopper)
 
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
@@ -115,6 +123,19 @@ class AuctionKeeper:
                 def seq_func():
                     self.check_cdps()
                     self.check_all_auctions()
+
+                lifecycle.on_block(seq_func)
+            elif self.flapper and self.vow:
+                def seq_func():
+                    self.check_flap()
+                    self.check_all_auctions()
+
+                lifecycle.on_block(seq_func)
+            elif self.flopper and self.vow:
+                def seq_func():
+                    self.check_flop()
+                    self.check_all_auctions()
+
                 lifecycle.on_block(seq_func)
             else:
                 lifecycle.on_block(self.check_all_auctions)
@@ -169,6 +190,79 @@ class AuctionKeeper:
                 else:
                     self.logger.warning(f'Not enought balance to flip({flip.id}): '
                                         f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
+
+    def check_flap(self):
+        # Check if Vow has a surplus of Dai compared to bad debt
+        joy = self.vow.joy()
+        awe = self.vow.awe()
+        mkr = DSToken(self.web3, self.flapper.gem())
+
+        # Check if Vow has Dai in excess
+        if joy > awe:
+            bump = self.vow.bump()
+            hump = self.vow.hump()
+
+            # Check our balance
+            mkr_balance = mkr.balance_of(self.our_address)
+            min_balance = Wad(0)  # TODO: determine minimum balance ...
+
+            # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
+            if (joy - awe) >= (bump + hump) and mkr_balance > min_balance:
+                woe = self.vow.woe()
+
+                # Heal the system to bring Woe to 0
+                if woe > Wad(0):
+                    self.vow.heal(woe).transact()
+                self.vow.flap().transact()
+
+    def check_flop(self):
+        # Check if Vow has a surplus of bad debt compared to Dai
+        joy = self.vow.joy()
+        awe = self.vow.awe()
+        vat = Vat(self.web3, self.vow.vat())
+
+        # Check if Vow has bad debt in excess
+        if joy < awe:
+            woe = self.vow.woe()
+            sin = self.vow.sin()
+            sump = self.vow.sump()
+
+            # Check our balance
+            dai_balance = Wad(vat.dai(self.our_address))
+            min_balance = Wad(0)  # TODO: determine minimum balance ...
+
+            # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
+            if woe + sin >= sump and dai_balance > min_balance:
+                # We need to bring Joy to 0 and Woe to at least sump
+
+                # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
+                ash = self.vow.ash()
+                if ash > Wad(0):
+                    self.vow.kiss(ash).transact()
+
+                # then use heal() for the remaining joy
+                joy = self.vow.joy()
+                if joy > Wad(0):
+                    self.vow.heal(joy).transact()
+
+                # Convert enough sin in woe to have woe >= sump
+                if woe < sump and self.cat is not None:
+                    flog_amount = Wad(0)
+                    for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
+                        era = bite_event.era(self.web3)
+                        sin = self.vow.sin_of(era)
+                        if sin > Wad(0):
+                            self.vow.flog(era).transact()
+
+                            # flog() sin until woe is above sump
+                            if self.vow.woe() >= sump:
+                                break
+
+                if woe < sump and self.cat is None:
+                    self.logger.warning('Not enough woe to flop() and Cat address is not known !')
+                else:
+                    # Start a flop auction
+                    self.vow.flop()
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
