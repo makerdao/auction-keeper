@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -19,9 +19,8 @@ import time
 from typing import Optional
 
 import pytest
-from ethereum.tester import GAS_PRICE
 from mock import MagicMock
-from web3 import Web3, EthereumTesterProvider
+from web3 import Web3, HTTPProvider
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
@@ -29,7 +28,7 @@ from auction_keeper.model import Parameters
 from pymaker import Address
 from pymaker.approval import directly
 from pymaker.auctions import Flapper
-from pymaker.numeric import Wad
+from pymaker.numeric import Wad, Ray
 from pymaker.token import DSToken
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
@@ -37,7 +36,7 @@ from tests.helper import args, time_travel_by, wait_for_other_threads, Transacti
 @pytest.mark.timeout(20)
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
-        self.web3 = Web3(EthereumTesterProvider())
+        self.web3 = Web3(HTTPProvider("http://localhost:8555"))
         self.web3.eth.defaultAccount = self.web3.eth.accounts[0]
         self.keeper_address = Address(self.web3.eth.defaultAccount)
         self.gal_address = Address(self.web3.eth.accounts[1])
@@ -91,7 +90,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(10)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(200)
         assert self.model.send_status.call_args[0][0].tab is None
-        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
         assert self.model.send_status.call_args[0][0].guy == self.gal_address
         assert self.model.send_status.call_args[0][0].era > 0
         assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
@@ -126,7 +125,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(20)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(200)
         assert self.model.send_status.call_args[0][0].tab is None
-        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
         assert self.model.send_status.call_args[0][0].guy == self.keeper_address
         assert self.model.send_status.call_args[0][0].era > 0
         assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
@@ -159,7 +158,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.model.send_status.call_args[0][0].bid == Wad.from_number(40)
         assert self.model.send_status.call_args[0][0].lot == Wad.from_number(200)
         assert self.model.send_status.call_args[0][0].tab is None
-        assert self.model.send_status.call_args[0][0].beg == Wad.from_number(1.05)
+        assert self.model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
         assert self.model.send_status.call_args[0][0].guy == self.other_address
         assert self.model.send_status.call_args[0][0].era > 0
         assert self.model.send_status.call_args[0][0].end > self.model.send_status.call_args[0][0].era + 3600
@@ -465,4 +464,4 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == GAS_PRICE
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == self.web3.eth.gasPrice
