@@ -177,16 +177,20 @@ class AuctionKeeper:
             if flip.tab > Wad(0) and (self.cat.flipper(flip.urn.ilk) == self.flipper.address):
                 self.logger.info(f'Found an outstanding collateral auction: {flip}')
 
-                # Check our balance and if balances available then flip() an auction
-                dai_balance = Wad(vat.dai(self.our_address))
                 lump = self.cat.lump(flip.urn.ilk)
 
-                if flip.tab < lump and dai_balance > flip.tab:
-                    # TODO this should happen asynchronously
-                    self.cat.flip(flip, flip.tab).transact()
-                elif flip.tab > lump and dai_balance > lump:
-                    # TODO this should happen asynchronously
-                    self.cat.flip(flip, lump).transact()
+                # Check our balance and if balances available then flip() an auction
+                dai_balance = Wad(vat.dai(self.our_address))
+                min_balance = Wad(0)  # TODO: determine minimum balance ...
+
+                if dai_balance > min_balance:
+
+                    if flip.tab < lump and dai_balance > flip.tab:
+                        # TODO this should happen asynchronously
+                        self.cat.flip(flip, flip.tab).transact()
+                    elif flip.tab > lump and dai_balance > lump:
+                        # TODO this should happen asynchronously
+                        self.cat.flip(flip, lump).transact()
                 else:
                     self.logger.warning(f'Not enought balance to flip({flip.id}): '
                                         f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
@@ -215,6 +219,9 @@ class AuctionKeeper:
                     self.vow.heal(woe).transact()
                 self.vow.flap().transact()
 
+            if (joy - awe) >= (bump + hump) and mkr_balance <= min_balance:
+                self.logger.warning('Flap auction is possible but not enought MKR balance available to participate')
+
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
         joy = self.vow.joy()
@@ -240,12 +247,7 @@ class AuctionKeeper:
                 if ash > Wad(0):
                     self.vow.kiss(ash).transact()
 
-                # then use heal() for the remaining joy
-                joy = self.vow.joy()
-                if joy > Wad(0):
-                    self.vow.heal(joy).transact()
-
-                # Convert enough sin in woe to have woe >= sump
+                # Convert enough sin in woe to have woe >= sump + joy
                 if woe < sump and self.cat is not None:
                     flog_amount = Wad(0)
                     for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
@@ -254,15 +256,25 @@ class AuctionKeeper:
                         if sin > Wad(0):
                             self.vow.flog(era).transact()
 
-                            # flog() sin until woe is above sump
-                            if self.vow.woe() >= sump:
+                            # flog() sin until woe is above sump + joy
+                            if self.vow.woe() - self.vow.joy() >= sump:
                                 break
+
+                # use heal() for removing the remaining joy
+                joy = self.vow.joy()
+                if joy > Wad(0):
+                    self.logger.debug(f"healing joy={self.vow.joy()} woe={self.vow.woe()}")
+                    self.vow.heal(joy).transact()
+
 
                 if woe < sump and self.cat is None:
                     self.logger.warning('Not enough woe to flop() and Cat address is not known !')
                 else:
                     # Start a flop auction
-                    self.vow.flop()
+                    self.vow.flop().transact()
+
+            if woe + sin >= sump and dai_balance <= min_balance:
+                self.logger.warning('Flop auction is possible but not enought DAI balance available to participate')
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
