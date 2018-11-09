@@ -22,6 +22,7 @@ import sys
 import threading
 
 from pymaker.dss import Ilk, Cat, Pit, Vat, Urn, DaiVat, Vow
+from pymaker.keys import register_keys
 from pymaker.token import DSToken
 from web3 import Web3, HTTPProvider
 
@@ -54,6 +55,9 @@ class AuctionKeeper:
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
 
+        parser.add_argument("--eth-key", type=str, nargs='*',
+                            help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
+
         parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
         parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
 
@@ -76,6 +80,7 @@ class AuctionKeeper:
             HTTPProvider(endpoint_uri=f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}",
                          request_kwargs={"timeout": self.arguments.rpc_timeout}))
         self.web3.eth.defaultAccount = self.arguments.eth_from
+        register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
 
         self.cat = Cat(web3=self.web3, address=Address(self.arguments.cat)) if self.arguments.cat else None
