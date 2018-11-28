@@ -16,7 +16,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from typing import Optional, Tuple
 
-from pymaker.dss import Cat
 from web3 import Web3
 
 from auction_keeper.model import Status
@@ -38,22 +37,9 @@ class Strategy:
         raise NotImplementedError
 
 
-class CatStrategy:
-    def __init__(self, cat: Cat):
-        assert isinstance(cat, Cat)
-
-        self.cat = cat
-
-    def approve(self):
-        pass
-
-    def get_input(self, id: int):
-        pass
-
-
 class FlipperStrategy(Strategy):
     def __init__(self, flipper: Flipper):
-        assert(isinstance(flipper, Flipper))
+        assert isinstance(flipper, Flipper)
 
         self.flipper = flipper
         self.beg = flipper.beg()
@@ -65,7 +51,7 @@ class FlipperStrategy(Strategy):
         return self.flipper.kicks()
 
     def get_input(self, id: int) -> Status:
-        assert(isinstance(id, int))
+        assert isinstance(id, int)
 
         # Read auction state
         bid = self.flipper.bids(id)
@@ -86,8 +72,8 @@ class FlipperStrategy(Strategy):
                       price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
-        assert(isinstance(id, int))
-        assert(isinstance(price, Wad))
+        assert isinstance(id, int)
+        assert isinstance(price, Wad)
 
         bid = self.flipper.bids(id)
 
@@ -104,7 +90,7 @@ class FlipperStrategy(Strategy):
         # tend phase
         else:
             our_bid = Wad.min(bid.lot * price, bid.tab)
-            our_price = price if our_bid < bid.tab else bid.bid/bid.lot
+            our_price = price if our_bid < bid.tab else bid.bid / bid.lot
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
                 return our_price, self.flipper.tend(id, bid.lot, our_bid)
@@ -118,7 +104,7 @@ class FlipperStrategy(Strategy):
 
 class FlapperStrategy(Strategy):
     def __init__(self, flapper: Flapper):
-        assert(isinstance(flapper, Flapper))
+        assert isinstance(flapper, Flapper)
 
         self.flapper = flapper
         self.beg = flapper.beg()
@@ -130,7 +116,7 @@ class FlapperStrategy(Strategy):
         return self.flapper.kicks()
 
     def get_input(self, id: int) -> Status:
-        assert(isinstance(id, int))
+        assert isinstance(id, int)
 
         # Read auction state
         bid = self.flapper.bids(id)
@@ -151,8 +137,8 @@ class FlapperStrategy(Strategy):
                       price=(bid.lot / bid.bid) if bid.bid != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
-        assert(isinstance(id, int))
-        assert(isinstance(price, Wad))
+        assert isinstance(id, int)
+        assert isinstance(price, Wad)
 
         bid = self.flapper.bids(id)
         our_bid = bid.lot / price
@@ -169,7 +155,7 @@ class FlapperStrategy(Strategy):
 
 class FlopperStrategy(Strategy):
     def __init__(self, flopper: Flopper):
-        assert(isinstance(flopper, Flopper))
+        assert isinstance(flopper, Flopper)
 
         self.flopper = flopper
         self.beg = flopper.beg()
@@ -181,7 +167,7 @@ class FlopperStrategy(Strategy):
         return self.flopper.kicks()
 
     def get_input(self, id: int) -> Status:
-        assert(isinstance(id, int))
+        assert isinstance(id, int)
 
         # Read auction state
         bid = self.flopper.bids(id)
@@ -202,8 +188,8 @@ class FlopperStrategy(Strategy):
                       price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
-        assert(isinstance(id, int))
-        assert(isinstance(price, Wad))
+        assert isinstance(id, int)
+        assert isinstance(price, Wad)
 
         bid = self.flopper.bids(id)
         our_lot = bid.bid / price

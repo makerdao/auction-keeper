@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -27,10 +27,10 @@ from pymaker import Wad, Address
 
 class Parameters:
     def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], id: int):
-        assert(isinstance(flipper, Address) or (flipper is None))
-        assert(isinstance(flapper, Address) or (flapper is None))
-        assert(isinstance(flopper, Address) or (flopper is None))
-        assert(isinstance(id, int))
+        assert isinstance(flipper, Address) or (flipper is None)
+        assert isinstance(flapper, Address) or (flapper is None)
+        assert isinstance(flopper, Address) or (flopper is None)
+        assert isinstance(id, int)
 
         self.flipper = flipper
         self.flapper = flapper
@@ -38,7 +38,7 @@ class Parameters:
         self.id = id
 
     def __eq__(self, other):
-        assert(isinstance(other, Parameters))
+        assert isinstance(other, Parameters)
 
         return self.flipper == other.flipper and \
                self.flapper == other.flapper and \
@@ -67,19 +67,19 @@ class Status:
                  tic: int,
                  end: int,
                  price: Optional[Wad]):
-        assert(isinstance(id, int))
-        assert(isinstance(flipper, Address) or (flipper is None))
-        assert(isinstance(flapper, Address) or (flapper is None))
-        assert(isinstance(flopper, Address) or (flopper is None))
-        assert(isinstance(bid, Wad))
-        assert(isinstance(lot, Wad))
-        assert(isinstance(tab, Wad) or (tab is None))
-        assert(isinstance(beg, Ray))
-        assert(isinstance(guy, Address))
-        assert(isinstance(era, int))
-        assert(isinstance(tic, int))
-        assert(isinstance(end, int))
-        assert(isinstance(price, Wad) or (price is None))
+        assert isinstance(id, int)
+        assert isinstance(flipper, Address) or (flipper is None)
+        assert isinstance(flapper, Address) or (flapper is None)
+        assert isinstance(flopper, Address) or (flopper is None)
+        assert isinstance(bid, Wad)
+        assert isinstance(lot, Wad)
+        assert isinstance(tab, Wad) or (tab is None)
+        assert isinstance(beg, Ray)
+        assert isinstance(guy, Address)
+        assert isinstance(era, int)
+        assert isinstance(tic, int)
+        assert isinstance(end, int)
+        assert isinstance(price, Wad) or (price is None)
 
         self.id = id
         self.flipper = flipper
@@ -96,7 +96,7 @@ class Status:
         self.price = price
 
     def __eq__(self, other):
-        assert(isinstance(other, Status))
+        assert isinstance(other, Status)
 
         return self.id == other.id and \
                self.flipper == other.flipper and \
@@ -133,14 +133,14 @@ class Status:
 
 class Stance:
     def __init__(self, price: Wad, gas_price: Optional[int]):
-        assert(isinstance(price, Wad))
-        assert(isinstance(gas_price, int) or (gas_price is None))
+        assert isinstance(price, Wad)
+        assert isinstance(gas_price, int) or (gas_price is None)
 
         self.price = price
         self.gas_price = gas_price
 
     def __eq__(self, other):
-        assert(isinstance(other, Stance))
+        assert isinstance(other, Stance)
 
         return self.price == other.price and \
                self.gas_price == other.gas_price
@@ -156,8 +156,8 @@ class Model:
     logger = logging.getLogger()
 
     def __init__(self, command: str, parameters: Parameters):
-        assert(isinstance(command, str))
-        assert(isinstance(parameters, Parameters))
+        assert isinstance(command, str)
+        assert isinstance(parameters, Parameters)
 
         self._command = command
         self._arguments = f"--id {parameters.id}"
@@ -178,7 +178,7 @@ class Model:
             self._process.start()
 
     def send_status(self, input: Status):
-        assert(isinstance(input, Status))
+        assert isinstance(input, Status)
 
         self._ensure_process_running()
 
@@ -231,7 +231,7 @@ class Model:
 
 class ModelFactory:
     def __init__(self, command: str):
-        assert(isinstance(command, str))
+        assert isinstance(command, str)
 
         self.command = command
 

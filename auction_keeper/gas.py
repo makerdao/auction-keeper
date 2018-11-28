@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -22,12 +22,12 @@ from pymaker.gas import GasPrice
 
 class UpdatableGasPrice(GasPrice):
     def __init__(self, gas_price: Optional[int]):
-        assert(isinstance(gas_price, int) or (gas_price is None))
+        assert isinstance(gas_price, int) or (gas_price is None)
 
         self.gas_price = gas_price
 
     def update_gas_price(self, gas_price: Optional[int]):
-        assert(isinstance(gas_price, int) or (gas_price is None))
+        assert isinstance(gas_price, int) or (gas_price is None)
 
         self.gas_price = gas_price
 

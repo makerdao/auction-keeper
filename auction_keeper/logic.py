@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -24,7 +24,7 @@ from pymaker import Address, TransactStatus, Transact
 
 class Auction:
     def __init__(self, id: int, model: Model):
-        assert(isinstance(id, int))
+        assert isinstance(id, int)
 
         self.model = model
         self.output = None
@@ -46,7 +46,7 @@ class Auction:
             return None
 
     def feed_model(self, input: Status):
-        assert(isinstance(input, Status))
+        assert isinstance(input, Status)
 
         self.model.send_status(input)
 
@@ -57,11 +57,12 @@ class Auction:
 class Auctions:
     logger = logging.getLogger()
 
-    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], model_factory: ModelFactory):
-        assert(isinstance(flipper, Address) or (flipper is None))
-        assert(isinstance(flapper, Address) or (flapper is None))
-        assert(isinstance(flopper, Address) or (flopper is None))
-        assert(isinstance(model_factory, ModelFactory))
+    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address],
+                 model_factory: ModelFactory):
+        assert isinstance(flipper, Address) or (flipper is None)
+        assert isinstance(flapper, Address) or (flapper is None)
+        assert isinstance(flopper, Address) or (flopper is None)
+        assert isinstance(model_factory, ModelFactory)
 
         self.auctions = {}
         self.flipper = flipper
@@ -69,11 +70,11 @@ class Auctions:
         self.flopper = flopper
         self.model_factory = model_factory
 
-    #TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
-    #TODO and restart the model if so.
+    # TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
+    # TODO and restart the model if so.
     def get_auction(self, id: int, create: bool = True) -> Optional[Auction]:
-        assert(isinstance(id, int))
-        assert(isinstance(create, bool))
+        assert isinstance(id, int)
+        assert isinstance(create, bool)
 
         if create and id not in self.auctions:
             # Log the fact that new auction has been detected
@@ -94,7 +95,7 @@ class Auctions:
         return self.auctions.get(id)
 
     def remove_auction(self, id: int):
-        assert(isinstance(id, int))
+        assert isinstance(id, int)
 
         if id in self.auctions:
             # Stop the model

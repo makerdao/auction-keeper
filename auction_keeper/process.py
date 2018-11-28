@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -102,7 +102,7 @@ class Process:
 
     @staticmethod
     def _set_nonblock(pipe):
-        flags = fcntl(pipe, F_GETFL) # get current p.stdout flags
+        flags = fcntl(pipe, F_GETFL)  # get current p.stdout flags
         fcntl(pipe, F_SETFL, flags | O_NONBLOCK)
 
     @property
@@ -125,7 +125,7 @@ class Process:
             return self._read_queue.pop(0) if len(self._read_queue) > 0 else None
 
     def write(self, data: dict):
-        assert(isinstance(data, dict))
+        assert isinstance(data, dict)
 
         with self._write_lock:
             self._write_queue.append(json.dumps(data, indent=None))

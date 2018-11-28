@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -21,20 +21,20 @@ import logging
 import sys
 import threading
 
-from pymaker.dss import Ilk, Cat, Pit, Vat, Urn, DaiVat, Vow
-from pymaker.keys import register_keys
-from pymaker.token import DSToken
 from web3 import Web3, HTTPProvider
 
-from auction_keeper.model import ModelFactory
-from auction_keeper.gas import UpdatableGasPrice
-from auction_keeper.logic import Auction, Status, Auctions, Stance
-from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy, CatStrategy
-from pymaker import Address, Wad, TransactStatus
-from pymaker.approval import directly
+from pymaker import Address, Wad
 from pymaker.auctions import Flopper, Flipper, Flapper
-from pymaker.gas import FixedGasPrice, DefaultGasPrice
+from pymaker.dss import Ilk, Cat, Pit, Vat, Vow
+from pymaker.gas import DefaultGasPrice
+from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
+from pymaker.token import DSToken
+
+from auction_keeper.gas import UpdatableGasPrice
+from auction_keeper.logic import Auctions
+from auction_keeper.model import ModelFactory
+from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 
 
 class AuctionKeeper:
@@ -271,7 +271,6 @@ class AuctionKeeper:
                     self.logger.debug(f"healing joy={self.vow.joy()} woe={self.vow.woe()}")
                     self.vow.heal(joy).transact()
 
-
                 if woe < sump and self.cat is None:
                     self.logger.warning('Not enough woe to flop() and Cat address is not known !')
                 else:
@@ -290,7 +289,7 @@ class AuctionKeeper:
     #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
     #     for example).
     def check_auction(self, id: int):
-        assert (isinstance(id, int))
+        assert isinstance(id, int)
 
         # Read auction information
         input = self.strategy.get_input(id)
