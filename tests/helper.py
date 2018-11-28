@@ -45,6 +45,8 @@ def time_travel_by(web3: Web3, seconds: int):
     assert(isinstance(seconds, int))
 
     web3.manager.request_blocking("evm_increaseTime", [seconds])
+    # force a block mining to have a correct timestamp in latest block
+    web3.manager.request_blocking("evm_mine", [])
 
 def wait_for_other_threads():
     while threading.active_count() > 1:

@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus
+# Copyright (C) 2018 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -14,15 +14,20 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 from typing import Optional, Tuple
 
 from pymaker.dss import Cat
+from web3 import Web3
 
 from auction_keeper.model import Status
+
 from pymaker import Transact, Wad
 from pymaker.approval import directly, hope_directly
 from pymaker.auctions import Flopper, Flapper, Flipper
+
+
+def era(web3: Web3):
+    return web3.eth.getBlock('latest')['timestamp']
 
 
 class Strategy:
@@ -75,7 +80,7 @@ class FlipperStrategy(Strategy):
                       tab=bid.tab,
                       beg=self.beg,
                       guy=bid.guy,
-                      era=self.flipper.era(),
+                      era=era(self.flipper.web3),
                       tic=bid.tic,
                       end=bid.end,
                       price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
@@ -140,7 +145,7 @@ class FlapperStrategy(Strategy):
                       tab=None,
                       beg=self.beg,
                       guy=bid.guy,
-                      era=self.flapper.era(),
+                      era=era(self.flapper.web3),
                       tic=bid.tic,
                       end=bid.end,
                       price=(bid.lot / bid.bid) if bid.bid != Wad(0) else None)
@@ -191,7 +196,7 @@ class FlopperStrategy(Strategy):
                       tab=None,
                       beg=self.beg,
                       guy=bid.guy,
-                      era=self.flopper.era(),
+                      era=era(self.flopper.web3),
                       tic=bid.tic,
                       end=bid.end,
                       price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
