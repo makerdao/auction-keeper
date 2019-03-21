@@ -1,0 +1,47 @@
+version: "3.2"
+services:
+  flipper_auction:
+    build: .
+    image: makerdao/auction-keeper
+    env_file:
+      - .env
+    volumes:
+      - $PWD/hush:/home/keeper/hush
+      - $PWD/model:/home/keeper/model
+    command: >
+      bash -c "./auction-keeper --rpc-host=$${RPC_HOST} --rpc-port=$${RPC_PORT} \
+      --eth-from=$${ETH_FROM} \
+      --eth-key='key_file=/home/keeper/hush/auction.json,pass_file=/home/keeper/hush/auction.pass' \
+      --flipper=$${FLIPPER_ADDRESS} \
+      --cat=$${CAT_ADDRESS} \
+      --model '/home/keeper/model/model.sh'"
+
+  flopper_auction:
+    image: makerdao/auction-keeper
+    env_file:
+      - .env
+    volumes:
+      - $PWD/hush:/home/keeper/hush
+      - $PWD/model:/home/keeper/model
+    command: >
+      bash -c "./auction-keeper --rpc-host=$${RPC_HOST} --rpc-port=$${RPC_PORT} \
+      --eth-from=$${ETH_FROM} \
+      --eth-key='key_file=/home/keeper/hush/auction.json,pass_file=/home/keeper/hush/auction.pass' \
+      --flopper=$${FLOPPER_ADDRESS} \
+      --vow=$${VOW_ADDRESS} \
+      --model '/home/keeper/model/model.sh'"
+
+  flapper_auction:
+    image: makerdao/auction-keeper
+    env_file:
+      - .env
+    volumes:
+      - $PWD/hush:/home/keeper/hush
+      - $PWD/model:/home/keeper/model
+    command: >
+      bash -c "./auction-keeper --rpc-host=$${RPC_HOST} --rpc-port=$${RPC_PORT} \
+      --eth-from=$${ETH_FROM} \
+      --eth-key='key_file=/home/keeper/hush/auction.json,pass_file=/home/keeper/hush/auction.pass' \
+      --flapper=$${FLAPPER_ADDRESS} \
+      --vow=$${VOW_ADDRESS} \
+      --model '/home/keeper/model/model.sh'"
