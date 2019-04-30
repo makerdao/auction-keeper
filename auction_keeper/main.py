@@ -159,23 +159,23 @@ class AuctionKeeper:
         self.strategy.approve()
 
     def check_cdps(self):
-        last_frob_event = {}
+        last_note_event = {}
         pit = Pit(self.web3, self.cat.pit())
         vat = Vat(self.web3, self.cat.vat())
 
         # Look for unsafe CDPs and bite them
-        frob_filter = {}
+        note_filter = {}
         if self.ilk:
-            frob_filter = {'ilk': self.ilk.toBytes()}
+            note_filter = {'ilk': self.ilk.toBytes()}
 
-        past_frob = pit.past_frob(self.web3.eth.blockNumber, event_filter=frob_filter)  # TODO: put past_block in cache
-        for frob_event in past_frob:
-            last_frob_event[frob_event.urn.address] = frob_event
+        past_note = vat.past_note(self.web3.eth.blockNumber, event_filter=note_filter)  # TODO: put past_block in cache
+        for note_event in past_note:
+            last_note_event[note_event.urn.address] = note_event
 
-        for urn_addr in last_frob_event:
-            ilk = last_frob_event[urn_addr].ilk
+        for urn_addr in last_note_event:
+            ilk = last_note_event[urn_addr].ilk
             current_urn = vat.urn(ilk, urn_addr)
-            safe = current_urn.ink * pit.spot(ilk) >= current_urn.art * vat.ilk(ilk.name).rate
+            safe = current_urn.ink * vat.spot(ilk) >= current_urn.art * vat.ilk(ilk.name).rate
             if not safe:
                 self.logger.info(f'Found an unsafe CDP: {current_urn}')
                 # TODO this should happen asynchronously
