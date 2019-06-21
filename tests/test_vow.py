@@ -85,16 +85,16 @@ def d(web3, our_address, keeper_address, gal_address):
 
 
 @pytest.fixture(scope="session")
-def c(d: DssDeployment):
-    return d.collaterals[0]
+def c(mcd):
+    return mcd.collaterals[0]
 
 
 @pytest.fixture()
-def flap_keeper(web3, c: Collateral, keeper_address: Address, d: DssDeployment):
+def flap_keeper(web3, c: Collateral, keeper_address: Address, mcd):
     keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                     f"--flapper {d.flap.address} "
-                                     f"--cat {d.cat.address} "
-                                     f"--vow {d.vow.address} "
+                                     f"--flapper {mcd.flap.address} "
+                                     f"--cat {mcd.cat.address} "
+                                     f"--vow {mcd.vow.address} "
                                      f"--ilk {c.ilk.name} "
                                      f"--model ./bogus-model.sh"), web3=web3)
 
@@ -104,11 +104,11 @@ def flap_keeper(web3, c: Collateral, keeper_address: Address, d: DssDeployment):
 
 
 @pytest.fixture()
-def flop_keeper(web3, c: Collateral, keeper_address: Address, d: DssDeployment):
+def flop_keeper(web3, c: Collateral, keeper_address: Address, mcd):
     keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                     f"--flopper {d.flop.address} "
-                                     f"--cat {d.cat.address} "
-                                     f"--vow {d.vow.address} "
+                                     f"--flopper {mcd.flop.address} "
+                                     f"--cat {mcd.cat.address} "
+                                     f"--vow {mcd.vow.address} "
                                      f"--ilk {c.ilk.name} "
                                      f"--model ./bogus-model.sh"), web3=web3)
 
@@ -118,63 +118,63 @@ def flop_keeper(web3, c: Collateral, keeper_address: Address, d: DssDeployment):
 
 
 @pytest.fixture()
-def unsafe_cdp(our_address, gal_address, d: DssDeployment, c: Collateral):
+def unsafe_cdp(our_address, gal_address, mcd, c: Collateral):
     # Add collateral to gal CDP
     assert c.adapter.join(Urn(gal_address), Wad.from_number(10)).transact(from_address=gal_address)
-    assert d.pit.frob(c.ilk, Wad.from_number(10), Wad(0)).transact(from_address=gal_address)
+    assert mcd.pit.frob(c.ilk, Wad.from_number(10), Wad(0)).transact(from_address=gal_address)
 
     # Put gal CDP at max possible debt
-    our_urn = d.vat.urn(c.ilk, gal_address)
-    max_dart = our_urn.ink * d.pit.spot(c.ilk) - our_urn.art
+    our_urn = mcd.vat.urn(c.ilk, gal_address)
+    max_dart = our_urn.ink * mcd.pit.spot(c.ilk) - our_urn.art
     to_price = Wad(c.pip.read_as_int()) - Wad.from_number(1)
-    assert d.pit.frob(c.ilk, Wad(0), max_dart).transact(from_address=gal_address)
+    assert mcd.pit.frob(c.ilk, Wad(0), max_dart).transact(from_address=gal_address)
 
     # Manipulate price to make gal CDP underwater
     assert c.pip.poke_with_int(to_price.value).transact(from_address=our_address)
     assert c.spotter.poke().transact()
 
-    return d.vat.urn(c.ilk, gal_address)
+    return mcd.vat.urn(c.ilk, gal_address)
 
 
 @pytest.fixture()
-def bid_id(unsafe_cdp: Urn, d: DssDeployment, c: Collateral):
+def bid_id(unsafe_cdp: Urn, mcd, c: Collateral):
     # Bite gal CDP
-    flip_id = d.cat.nflip()
-    assert d.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
+    flip_id = mcd.cat.nflip()
+    assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
 
     # Kick one flip auction
-    flip = d.cat.flips(flip_id)
-    lump = d.cat.lump(flip.urn.ilk)
-    assert d.cat.flip(flip, lump).transact()
+    flip = mcd.cat.flips(flip_id)
+    lump = mcd.cat.lump(flip.urn.ilk)
+    assert mcd.cat.flip(flip, lump).transact()
 
     return c.flipper.kicks()
 
-
+@pytest.mark.skip(reason="Needs updating to accommodate DSS changes")
 class TestAuctionKeeperVow:
-    def test_flap(self, our_address, flap_keeper, d: DssDeployment):
+    def test_flap(self, our_address, flap_keeper, mcd):
         # given
-        joy = d.vow.joy()
-        awe = d.vow.awe()
-        hump = d.vow.hump()
-        bump = d.vow.bump()
+        joy = mcd.vow.joy()
+        awe = mcd.vow.awe()
+        hump = mcd.vow.hump()
+        bump = mcd.vow.bump()
         needed_joy = Wad.from_number(10) - joy + awe + hump + bump
         if needed_joy > Wad(0):
-            assert d.dai_move.move(our_address, d.vow.address, needed_joy).transact(from_address=our_address)
-        kicks = d.flap.kicks()
+            assert mcd.dai_move.move(our_address, mcd.vow.address, needed_joy).transact(from_address=our_address)
+        kicks = mcd.flap.kicks()
 
         # when
         flap_keeper.check_flap()
 
         # then
-        assert d.flap.kicks() == kicks + 1
+        assert mcd.flap.kicks() == kicks + 1
 
-    def test_flop(self, flop_keeper, bid_id, d: DssDeployment):
-        print(d)
+    def test_flop(self, flop_keeper, bid_id, mcd):
+        print(mcd)
         # given
-        kicks = d.flop.kicks()
+        kicks = mcd.flop.kicks()
 
         # when
         flop_keeper.check_flop()
 
         # then
-        assert d.flop.kicks() == kicks + 1
+        assert mcd.flop.kicks() == kicks + 1

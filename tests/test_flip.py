@@ -85,12 +85,12 @@ def d(web3, our_address, other_address, gal_address):
 
 
 @pytest.fixture(scope="session")
-def c(d: DssDeployment):
-    return d.collaterals[0]
+def c(mcd):
+    return mcd.collaterals[0]
 
 
 @pytest.fixture()
-def keeper(web3, c: Collateral, keeper_address: Address, d: DssDeployment):
+def keeper(web3, c: Collateral, keeper_address: Address, mcd):
     keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                      f"--flipper {c.flipper.address} "
                                      f"--model ./bogus-model.sh"), web3=web3)
@@ -101,38 +101,39 @@ def keeper(web3, c: Collateral, keeper_address: Address, d: DssDeployment):
 
 
 @pytest.fixture()
-def unsafe_cdp(our_address, gal_address, d: DssDeployment, c: Collateral):
+def unsafe_cdp(our_address, gal_address, mcd, c: Collateral):
     # Add collateral to gal CDP
     assert c.adapter.join(Urn(gal_address), Wad.from_number(1)).transact(from_address=gal_address)
-    assert d.pit.frob(c.ilk, Wad.from_number(1), Wad(0)).transact(from_address=gal_address)
+    assert mcd.pit.frob(c.ilk, Wad.from_number(1), Wad(0)).transact(from_address=gal_address)
 
     # Put gal CDP at max possible debt
-    our_urn = d.vat.urn(c.ilk, gal_address)
-    max_dart = our_urn.ink * d.pit.spot(c.ilk) - our_urn.art
+    our_urn = mcd.vat.urn(c.ilk, gal_address)
+    max_dart = our_urn.ink * mcd.pit.spot(c.ilk) - our_urn.art
     to_price = Wad(c.pip.read_as_int()) - Wad.from_number(1)
-    assert d.pit.frob(c.ilk, Wad(0), max_dart).transact(from_address=gal_address)
+    assert mcd.pit.frob(c.ilk, Wad(0), max_dart).transact(from_address=gal_address)
 
     # Manipulate price to make gal CDP underwater
     assert c.pip.poke_with_int(to_price.value).transact(from_address=our_address)  # TODO: why our_address here ?
     assert c.spotter.poke().transact()
 
-    return d.vat.urn(c.ilk, gal_address)
+    return mcd.vat.urn(c.ilk, gal_address)
 
 
 @pytest.fixture()
-def bid_id(unsafe_cdp: Urn, d: DssDeployment, c: Collateral):
+def bid_id(unsafe_cdp: Urn, mcd, c: Collateral):
     # Bite gal CDP
-    flip_id = d.cat.nflip()
-    assert d.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
+    flip_id = mcd.cat.nflip()
+    assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
 
     # Kick one flip auction
-    flip = d.cat.flips(flip_id)
-    lump = d.cat.lump(flip.urn.ilk)
-    assert d.cat.flip(flip, lump).transact()
+    flip = mcd.cat.flips(flip_id)
+    lump = mcd.cat.lump(flip.urn.ilk)
+    assert mcd.cat.flip(flip, lump).transact()
 
     return c.flipper.kicks()
 
 
+@pytest.mark.skip(reason="Need to point at testchain with proper MCD deployment")
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = Web3(HTTPProvider("http://localhost:8555"))
@@ -195,7 +196,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
         return (model, model_factory)
 
-    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, bid_id, d, keeper, c):
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, bid_id, mcd, keeper, c):
         # given
         (model, model_factory) = self.models(keeper)
 
@@ -216,7 +217,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert model.send_status.call_args[0][0].lot == Wad(684931506849315068)
         assert model.send_status.call_args[0][0].tab == Wad.from_number(100)
         assert model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
-        assert model.send_status.call_args[0][0].guy == d.cat.address
+        assert model.send_status.call_args[0][0].guy == mcd.cat.address
         assert model.send_status.call_args[0][0].era > 0
         assert model.send_status.call_args[0][0].end < model.send_status.call_args[0][0].era + c.flipper.tau() + 1
         assert model.send_status.call_args[0][0].tic == 0

@@ -145,7 +145,6 @@ class FlapperStrategy(Strategy):
 
         if our_bid >= bid.bid * self.beg and our_bid > bid.bid:
             return price, self.flapper.tend(id, bid.lot, our_bid)
-
         else:
             return None, None
 

@@ -25,14 +25,14 @@ from web3 import Web3, HTTPProvider
 
 from pymaker import Address, Wad
 from pymaker.auctions import Flopper, Flipper, Flapper
-from pymaker.dss import Ilk, Cat, Pit, Vat, Vow
+from pymaker.dss import Ilk, Cat, Vat, Vow
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
 from pymaker.token import DSToken
 
 from auction_keeper.gas import UpdatableGasPrice
-from auction_keeper.logic import Auctions
+from auction_keeper.logic import Auction, Auctions
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 
@@ -151,6 +151,7 @@ class AuctionKeeper:
                 lifecycle.on_block(seq_func)
             else:
                 lifecycle.on_block(self.check_all_auctions)
+            lifecycle.every(2, self.check_for_bids)
 
     def startup(self):
         self.approve()
@@ -160,7 +161,6 @@ class AuctionKeeper:
 
     def check_cdps(self):
         last_note_event = {}
-        pit = Pit(self.web3, self.cat.pit())
         vat = Vat(self.web3, self.cat.vat())
 
         # Look for unsafe CDPs and bite them
@@ -204,7 +204,7 @@ class AuctionKeeper:
                         # TODO this should happen asynchronously
                         self.cat.flip(flip, lump).transact()
                 else:
-                    self.logger.warning(f'Not enought balance to flip({flip.id}): '
+                    self.logger.warning(f'Not enough balance to flip({flip.id}): '
                                         f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
 
     def check_flap(self):
@@ -232,7 +232,7 @@ class AuctionKeeper:
                 self.vow.flap().transact()
 
             if (joy - awe) >= (bump + hump) and mkr_balance <= min_balance:
-                self.logger.warning('Flap auction is possible but not enought MKR balance available to participate')
+                self.logger.warning('Flap auction is possible but not enough MKR balance available to participate')
 
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
@@ -289,13 +289,19 @@ class AuctionKeeper:
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
-            self.check_auction(id)
+            if self.check_auction(id):
+                self.feed_model(id)
+
+    def check_for_bids(self):
+        self.logger.debug(f"Checking for bids in {len(self.auctions.auctions)} auctions")
+        for id, auction in self.auctions.auctions.items():
+            self.handle_bid(id=id, auction=auction)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
     #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
     #     for example).
-    def check_auction(self, id: int):
+    def check_auction(self, id: int) -> bool:
         assert isinstance(id, int)
 
         # Read auction information
@@ -307,6 +313,7 @@ class AuctionKeeper:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
+            return False
 
         # Check if the auction is finished.
         # If it is finished and we are the winner, `deal` the auction.
@@ -322,49 +329,61 @@ class AuctionKeeper:
                 # Try to remove the auction so the model terminates and we stop tracking it.
                 # If auction has already been removed, nothing happens.
                 self.auctions.remove_auction(id)
+            return False
 
         else:
-            auction = self.auctions.get_auction(id)
+            return True
 
-            # Feed the model with current state
-            auction.feed_model(input)
+    def feed_model(self, id: int):
+        assert isinstance(id, int)
 
-            output = auction.model_output()
-            if output is not None:
-                bid_price, bid_transact = self.strategy.bid(id, output.price)
+        auction = self.auctions.get_auction(id)
+        input = self.strategy.get_input(id)
 
-                if bid_price is not None and bid_transact is not None:
-                    # if no transaction in progress, send a new one
-                    transaction_in_progress = auction.transaction_in_progress()
-                    if transaction_in_progress is None:
-                        self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+        # Feed the model with current state
+        auction.feed_model(input)
+
+    def handle_bid(self, id: int, auction: Auction):
+        assert isinstance(id, int)
+        assert isinstance(auction, Auction)
+
+        output = auction.model_output()
+
+        if output is not None:
+            bid_price, bid_transact = self.strategy.bid(id, output.price)
+
+            if bid_price is not None and bid_transact is not None:
+                # if no transaction in progress, send a new one
+                transaction_in_progress = auction.transaction_in_progress()
+
+                if transaction_in_progress is None:
+                    self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+
+                    auction.price = bid_price
+                    auction.gas_price = UpdatableGasPrice(output.gas_price)
+                    auction.register_transaction(bid_transact)
+
+                    self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+
+                # if transaction in progress and gas price went up...
+                elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
+
+                    # ...replace the entire bid if the price has changed...
+                    if bid_price != auction.price:
+                        self.logger.info(
+                            f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
 
                         auction.price = bid_price
                         auction.gas_price = UpdatableGasPrice(output.gas_price)
                         auction.register_transaction(bid_transact)
 
-                        self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+                        self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                                     gas_price=auction.gas_price))
+                    # ...or just replace gas_price if price stays the same
+                    else:
+                        self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
 
-                    # if transaction in progress and gas price went up...
-                    elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
-
-                        # ...replace the entire bid if the price has changed...
-                        if bid_price != auction.price:
-                            self.logger.info(
-                                f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
-
-                            auction.price = bid_price
-                            auction.gas_price = UpdatableGasPrice(output.gas_price)
-                            auction.register_transaction(bid_transact)
-
-                            self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
-                                                                         gas_price=auction.gas_price))
-
-                        # ...or just replace gas_price if price stays the same
-                        else:
-                            self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
-
-                            auction.gas_price.update_gas_price(output.gas_price)
+                        auction.gas_price.update_gas_price(output.gas_price)
 
     @staticmethod
     def _run_future(future):

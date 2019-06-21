@@ -34,6 +34,7 @@ from tests.helper import args, time_travel_by, wait_for_other_threads, Transacti
 
 
 @pytest.mark.timeout(20)
+@pytest.mark.skip(reason="Need to point at testchain with proper MCD deployment")
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = Web3(HTTPProvider("http://localhost:8555"))
