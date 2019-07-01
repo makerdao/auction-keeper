@@ -164,48 +164,22 @@ class AuctionKeeper:
         vat = Vat(self.web3, self.cat.vat())
 
         # Look for unsafe CDPs and bite them
-        note_filter = {}
-        if self.ilk:
-            note_filter = {'ilk': self.ilk.toBytes()}
 
-        past_note = vat.past_note(self.web3.eth.blockNumber, event_filter=note_filter)  # TODO: put past_block in cache
-        for note_event in past_note:
-            last_note_event[note_event.urn.address] = note_event
+        past_frob = vat.past_frob(self.web3.eth.blockNumber, self.ilk)  # TODO: put past_block in cache
+        for frob in past_frob:
+            last_note_event[frob.urn] = frob
 
         for urn_addr in last_note_event:
-            ilk = last_note_event[urn_addr].ilk
+            ilk = vat.ilk(frob.ilk)
             current_urn = vat.urn(ilk, urn_addr)
-            safe = current_urn.ink * vat.spot(ilk) >= current_urn.art * vat.ilk(ilk.name).rate
+            safe = current_urn.ink * ilk.spot >= current_urn.art * vat.ilk(ilk.name).rate
             if not safe:
                 self.logger.info(f'Found an unsafe CDP: {current_urn}')
-                # TODO this should happen asynchronously
+                # TODO: Execute this asynchronously, such that it doesn't block detection of new auctions
+                #       when the next block is mined.
                 self.cat.bite(ilk, current_urn).transact()
 
-        # Look for pending collateral auctions and start them when DAI balance is sufficient
-        for i in range(self.cat.nflip()):
-            flip = self.cat.flips(i)
-
-            # Check both debt and if this auction-keeper will handle the auction
-            if flip.tab > Wad(0) and (self.cat.flipper(flip.urn.ilk) == self.flipper.address):
-                self.logger.info(f'Found an outstanding collateral auction: {flip}')
-
-                lump = self.cat.lump(flip.urn.ilk)
-
-                # Check our balance and if balances available then flip() an auction
-                dai_balance = Wad(vat.dai(self.our_address))
-                min_balance = Wad(0)  # TODO: determine minimum balance ...
-
-                if dai_balance > min_balance:
-
-                    if flip.tab < lump and dai_balance > flip.tab:
-                        # TODO this should happen asynchronously
-                        self.cat.flip(flip, flip.tab).transact()
-                    elif flip.tab > lump and dai_balance > lump:
-                        # TODO this should happen asynchronously
-                        self.cat.flip(flip, lump).transact()
-                else:
-                    self.logger.warning(f'Not enough balance to flip({flip.id}): '
-                                        f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
+        # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
         # Check if Vow has a surplus of Dai compared to bad debt

@@ -45,7 +45,7 @@ class FlipperStrategy(Strategy):
         self.beg = flipper.beg()
 
     def approve(self):
-        self.flipper.approve(hope_directly())
+        self.flipper.approve(self.flipper.vat(), hope_directly())
 
     def kicks(self) -> int:
         return self.flipper.kicks()

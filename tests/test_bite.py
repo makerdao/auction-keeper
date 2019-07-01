@@ -14,6 +14,8 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import logging
 import pytest
 
 from pymaker.deployment import DssDeployment
@@ -22,14 +24,30 @@ from web3 import Web3, HTTPProvider
 
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address
-from pymaker.numeric import Wad
+from pymaker.feed import DSValue
+from pymaker.keys import register_keys
+from pymaker.numeric import Wad, Ray, Rad
+from pymaker.token import DSEthToken
+
 from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
 
 
 @pytest.fixture(scope="session")
 def web3():
-    web3 = Web3(HTTPProvider("http://localhost:8555"))
-    web3.eth.defaultAccount = web3.eth.accounts[0]
+    web3 = Web3(HTTPProvider("http://0.0.0.0:8545"))
+    web3.eth.defaultAccount = "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
+    register_keys(web3,
+                  ["key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key1.json,pass_file=/dev/null",
+                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key2.json,pass_file=/dev/null",
+                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key3.json,pass_file=/dev/null",
+                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key4.json,pass_file=/dev/null",
+                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key.json,pass_file=/dev/null"])
+
+    # reduce logspew
+    logging.getLogger("web3").setLevel(logging.INFO)
+    logging.getLogger("urllib3").setLevel(logging.INFO)
+    logging.getLogger("asyncio").setLevel(logging.INFO)
+
     return web3
 
 
@@ -53,31 +71,80 @@ def gal_address(web3):
     return Address(web3.eth.accounts[3])
 
 
+def wrap_eth(mcd: DssDeployment, address: Address, amount: Wad):
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(address, Address)
+    assert isinstance(amount, Wad)
+    assert amount > Wad(0)
+
+    collateral = [c for c in mcd.collaterals if c.gem.symbol() == "WETH"][0]
+    assert isinstance(collateral.gem, DSEthToken)
+    assert collateral.gem.deposit(amount).transact(from_address=address)
+
+
+def get_collateral_price(collateral: Collateral):
+    assert isinstance(collateral, Collateral)
+    return Wad(Web3.toInt(collateral.pip.read()))
+
+
+def set_collateral_price(mcd: DssDeployment, collateral: Collateral, price: Wad):
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(collateral, Collateral)
+    assert isinstance(price, Wad)
+    assert price > Wad(0)
+
+    pip = collateral.pip
+    assert isinstance(pip, DSValue)
+
+    print(f"Changing price of {collateral.ilk.name} to {price}")
+    assert pip.poke_with_int(price.value).transact(from_address=pip.get_owner())
+    assert mcd.spotter.poke(ilk=collateral.ilk).transact(from_address=pip.get_owner())
+
+    assert get_collateral_price(collateral) == price
+
+
+def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -> Wad:
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(collateral, Collateral)
+    assert isinstance(our_address, Address)
+
+    urn = mcd.vat.urn(collateral.ilk, our_address)
+    ilk = mcd.vat.ilk(collateral.ilk.name)
+
+    # change in debt = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
+    dart = urn.ink * ilk.spot - urn.art
+
+    # prevent the change in debt from exceeding the collateral debt ceiling
+    if (Rad(urn.art) + Rad(dart)) >= ilk.line:
+        dart = Wad(ilk.line - Rad(urn.art))
+
+    # prevent the change in debt from exceeding the total debt ceiling
+    debt = mcd.vat.debt() + Rad(ilk.rate * dart)
+    line = Rad(ilk.line)
+    if (debt + Rad(dart)) >= line:
+        dart = Wad(debt - Rad(urn.art))
+
+    assert dart > Wad(0)
+    return dart
+
+
 @pytest.fixture(scope="session")
-def d(web3, our_address, keeper_address, gal_address):
-    # dss = """
-    # {"MCD_VAT": "0x08a3a91978B277c5797747A3671bDb6eE86e900E", "MCD_VOW": "0x7ef07c8DfddEECC23D50672b09310e45C8692ad2", "MCD_DRIP": "0xdc127E4DfF5F68740B8e21dEA687A4C3C690c176", "MCD_PIT": "0xaccbA2bB146405241507D7F3e39B85C5d1179d2B", "MCD_CAT": "0x41541A8692e00b9F5db706305dA1ee395Ba4680E", "MCD_FLOP": "0x5958E69d5795823F0F84b2ccbCE8D210cb67f418", "MCD_DAI": "0x787Cb94B57C23b9617265F1a6B80569d10dAaa42", "MCD_JOIN_DAI": "0xCc13a1a2E5AE9F6eC05CA7aF762967c5BD1Dd53f", "MCD_MOVE_DAI": "0x18792385d6c9AE2236cAc48473eb30D7d669BfFC", "MCD_GOV": "0xbE8Ae37bE4a1b1e22bAFD0cDdD921bc8FD5aD134", "COLLATERALS": ["WETH"], "WETH": "0x4Cdd635f050f9ca5bD7533D8c86044c4B86339A5", "MCD_JOIN_WETH": "0x050B6E24a805A027E3a31e7D4dE7E79A88A84e6D", "MCD_MOVE_WETH": "0x2ae154E870F53AC72f0D2E39FA2bb3a812b6A55d", "MCD_FLIP_WETH": "0x0953b1f31BBFA2633d7Ec92eb0C16511269aD4d0", "MCD_SPOT_WETH": "0x3731b266f67A9307CfaC6407D893070944F0684F", "PIP_WETH": "0x4C4EC6939152E7cD455D6586BC3eb5fF22ED94BE"}
-    # """
-    # return DssDeployment.from_json(web3=web3, conf=dss)
-    d = DssDeployment.deploy(web3=web3, debt_ceiling=Wad.from_number(100000000))
-    c = d.collaterals[0]
-    assert d.pit.file_line(c.ilk, Wad.from_number(100000000)).transact()  # Set collateral debt ceiling
-    assert d.cat.file_lump(c.ilk, Wad.from_number(100)).transact()  # Set liquidation Quantity of c at 100
+def mcd(web3, our_address, keeper_address):
 
-    # mint gem for cdp frob() by gal_address and our_address to draw dai
-    assert c.gem.mint(Wad.from_number(2000000)).transact()
-    assert c.gem.transfer(gal_address, Wad.from_number(1000000)).transact()
-
-    # Require to join the adapter
-    assert c.gem.approve(c.adapter.address).transact()
-    assert c.gem.approve(c.adapter.address).transact(from_address=gal_address)
+    mcd = DssDeployment.from_json(web3=web3, conf=open("lib/pymaker/tests/config/addresses.json", "r").read())
+    c = mcd.collaterals[0]
 
     # draw dai for our_address
-    assert c.adapter.join(Urn(our_address), Wad.from_number(1000000)).transact()
-    assert d.pit.frob(c.ilk, Wad.from_number(1000000), Wad.from_number(1000000)).transact()
-    assert d.dai_move.move(our_address, keeper_address, Wad.from_number(10000)).transact()
+    collateral_amount = Wad.from_number(4)
+    wrap_eth(mcd, our_address, collateral_amount)
+    c.approve(our_address)
+    assert c.adapter.join(our_address, collateral_amount).transact()
+    assert mcd.vat.frob(c.ilk, urn_address=our_address, collateral_owner=our_address, dai_recipient=keeper_address,
+                        dink=collateral_amount, dart=Wad.from_number(500)).transact()
+    mcd.approve_dai(keeper_address)
+    assert mcd.dai_adapter.exit(keeper_address, Wad.from_number(500))
 
-    return d
+    return mcd
 
 
 @pytest.fixture(scope="session")
@@ -92,9 +159,7 @@ def keeper(web3, c: Collateral, keeper_address: Address, mcd):
                                      f"--cat {mcd.cat.address} "
                                      f"--ilk {c.ilk.name} "
                                      f"--model ./bogus-model.sh"), web3=web3)
-
     keeper.approve()
-
     return keeper
 
 
@@ -105,37 +170,33 @@ def other_keeper(web3, c: Collateral, other_address: Address, mcd):
                                      f"--cat {mcd.cat.address} "
                                      f"--ilk {c.ilk.name} "
                                      f"--model ./bogus-model.sh"), web3=web3)
-
     keeper.approve()
-
     return keeper
 
 
 @pytest.fixture()
 def unsafe_cdp(our_address, gal_address, mcd, c: Collateral):
     # Add collateral to gal CDP
-    assert c.adapter.join(Urn(gal_address), Wad.from_number(1)).transact(from_address=gal_address)
-    assert mcd.pit.frob(c.ilk, Wad.from_number(1), Wad(0)).transact(from_address=gal_address)
+    wrap_eth(mcd, gal_address, Wad.from_number(1))
+    c.approve(gal_address)
+    assert c.adapter.join(gal_address, Wad.from_number(1)).transact(from_address=gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, Wad.from_number(1), Wad(0)).transact(from_address=gal_address)
 
     # Put gal CDP at max possible debt
-    our_urn = mcd.vat.urn(c.ilk, gal_address)
-    max_dart = our_urn.ink * mcd.pit.spot(c.ilk) - our_urn.art
-    to_price = Wad(c.pip.read_as_int()) - Wad.from_number(1)
-    assert mcd.pit.frob(c.ilk, Wad(0), max_dart).transact(from_address=gal_address)
+    dart = max_dart(mcd, c, gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
     # Manipulate price to make gal CDP underwater
-    assert c.pip.poke_with_int(to_price.value).transact(from_address=our_address)
-    assert c.spotter.poke().transact()
+    to_price = Wad(c.pip.read_as_int()) - Wad.from_number(1)
+    set_collateral_price(mcd, c, to_price)
 
     return mcd.vat.urn(c.ilk, gal_address)
 
 
-@pytest.mark.skip(reason="Needs to be updated to accommodate DSS changes")
 class TestAuctionKeeperBite(TransactionIgnoringTest):
     def test_bite_and_flip(self, c: Collateral, keeper: AuctionKeeper, mcd, unsafe_cdp: Urn):
         # given
-        nflip = mcd.cat.nflip()
-        nkick = c.flipper.kicks()
+        assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
 
         # when
         keeper.check_cdps()
@@ -145,22 +206,4 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
         assert urn.art == Wad(0)  # unsafe cdp has been biten
         assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
-        assert mcd.cat.nflip() == nflip + 1  # One more flip available
-        assert c.flipper.kicks() == nkick +1  # One auction started
-
-
-    def test_bite_only(self, other_keeper: AuctionKeeper, mcd, c: Collateral, unsafe_cdp: Urn):
-        # given
-        nflip = mcd.cat.nflip()
-        nkick = c.flipper.kicks()
-
-        # when
-        other_keeper.check_cdps()
-        wait_for_other_threads()
-
-        # then
-        urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
-        assert urn.art == Wad(0)  # unsafe cdp has been biten
-        assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
-        assert mcd.cat.nflip() == nflip + 1 # One more flip available
-        assert c.flipper.kicks() == nkick  # No auction started because no available fund to tend()
+        assert c.flipper.kicks() == 1  # One auction started
