@@ -22,7 +22,8 @@ from typing import Optional
 from pymaker.numeric import Ray
 
 from auction_keeper.process import Process
-from pymaker import Wad, Address
+from pymaker import Address
+from pymaker.numeric import Wad, Ray, Rad
 
 
 class Parameters:
@@ -71,9 +72,10 @@ class Status:
         assert isinstance(flipper, Address) or (flipper is None)
         assert isinstance(flapper, Address) or (flapper is None)
         assert isinstance(flopper, Address) or (flopper is None)
-        assert isinstance(bid, Wad)
-        assert isinstance(lot, Wad)
-        assert isinstance(tab, Wad) or (tab is None)
+        # Numeric type of bid and lot depends on auction type; Dai values are bid in Rad, collateral and MKR in Wad.
+        assert isinstance(bid, Wad) or isinstance(bid, Rad)
+        assert isinstance(lot, Wad) or isinstance(lot, Rad)
+        assert isinstance(tab, Rad) or (tab is None)
         assert isinstance(beg, Ray)
         assert isinstance(guy, Address)
         assert isinstance(era, int)

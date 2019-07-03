@@ -20,9 +20,10 @@ from web3 import Web3
 
 from auction_keeper.model import Status
 
-from pymaker import Transact, Wad
+from pymaker import Transact
 from pymaker.approval import directly, hope_directly
 from pymaker.auctions import Flopper, Flapper, Flipper
+from pymaker.numeric import Wad, Ray, Rad
 
 
 def era(web3: Web3):
@@ -61,15 +62,15 @@ class FlipperStrategy(Strategy):
                       flipper=self.flipper.address,
                       flapper=None,
                       flopper=None,
-                      bid=bid.bid,
-                      lot=bid.lot,
+                      bid=bid.bid,  # Rad
+                      lot=bid.lot,  # Wad
                       tab=bid.tab,
                       beg=self.beg,
                       guy=bid.guy,
                       era=era(self.flipper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
+                      price=(Wad(bid.bid) / bid.lot) if bid.lot != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert isinstance(id, int)
@@ -89,8 +90,8 @@ class FlipperStrategy(Strategy):
 
         # tend phase
         else:
-            our_bid = Wad.min(bid.lot * price, bid.tab)
-            our_price = price if our_bid < bid.tab else bid.bid / bid.lot
+            our_bid = Rad.min(Rad(bid.lot) * price, bid.tab)
+            our_price = price if our_bid < bid.tab else bid.bid / Rad(bid.lot)
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
                 return our_price, self.flipper.tend(id, bid.lot, our_bid)
