@@ -168,7 +168,7 @@ class TestAuctionKeeperVow:
         # then
         assert mcd.flap.kicks() == kicks + 1
 
-    def test_flop(self, flop_keeper, bid_id, mcd):
+    def test_flop(self, flop_keeper, kick, mcd):
         print(mcd)
         # given
         kicks = mcd.flop.kicks()
