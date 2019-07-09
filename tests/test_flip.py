@@ -21,21 +21,20 @@ import pytest
 from datetime import datetime
 from mock import MagicMock
 from typing import Optional
-from web3 import Web3, HTTPProvider
 
 from auction_keeper.logic import Stance
-from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
-from tests.conftest import wrap_eth
-from pymaker import Address, Contract
-from pymaker.approval import directly, hope_directly
+from pymaker import Address
+from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Urn, Collateral
+from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
-from pymaker.token import DSToken
-from tests.conftest import get_collateral_price, simulate_frob, create_unsafe_cdp
+from tests.conftest import web3, wrap_eth, keeper_address, simulate_frob, create_unsafe_cdp, get_collateral_price
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
+
+
+tend_lot = Wad.from_number(1.2)
 
 
 # TODO: Figure out how to reset collateral debt ceiling after an auction,
@@ -43,7 +42,7 @@ from tests.helper import args, time_travel_by, wait_for_other_threads, Transacti
 @pytest.fixture()
 def kick(mcd, c: Collateral, gal_address):
     # Bite gal CDP
-    unsafe_cdp = create_unsafe_cdp(mcd, c, gal_address)
+    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
     bites = mcd.cat.past_bite(1)
     assert len(bites) == 1
@@ -65,7 +64,14 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
     assert isinstance(usr, Address)
     assert isinstance(amount, Wad)
 
-    collateral_required = Wad.from_number(1)  # amount / get_collateral_price(c)
+    # Determine how much collateral is needed (for eth, 1 or 2 should suffice for these tests)
+    rate = mcd.vat.ilk(c.ilk.name).rate
+    collateral_price = get_collateral_price(c)
+    assert rate >= Ray.from_number(1)
+    assert isinstance(collateral_price, Wad)
+    # TODO: Get liquidation ratio (mat) from cat; hardcoded to 1.8 here
+    collateral_required = ((amount / collateral_price) * Wad(rate) * Wad.from_number(1.8)) + Wad(10)
+
     wrap_eth(mcd, usr, collateral_required)
     c.approve(usr)
     assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
@@ -80,6 +86,10 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
 
 
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
+    def setup_method(self):
+        self.web3 = web3()
+        self.keeper_address = keeper_address(self.web3)
+
     def gem_balance(self, address: Address) -> Wad:
         assert (isinstance(address, Address))
         return Wad(self.gem.balance_of(address))
@@ -90,16 +100,18 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
         model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
 
-    @staticmethod
-    def simulate_model_bid(mcd: DssDeployment, c: Collateral, price: Wad, keeper_address: Address, model):
+    def simulate_model_bid(self, mcd: DssDeployment, c: Collateral, model: object,
+                           price: Wad, gas_price: Optional[int] = None):
         assert (isinstance(mcd, DssDeployment))
         assert (isinstance(c, Collateral))
+        assert (isinstance(price, Wad))
+        assert (isinstance(gas_price, int)) or gas_price is None
 
         flipper = c.flipper
         initial_bid = flipper.bids(1)
         our_bid = price * initial_bid.lot
-        reserve_dai(mcd, c, keeper_address, our_bid)
-        TestAuctionKeeperFlipper.simulate_model_output(model=model, price=price)
+        reserve_dai(mcd, c, self.keeper_address, our_bid)
+        TestAuctionKeeperFlipper.simulate_model_output(model=model, price=price, gas_price=gas_price)
 
     @staticmethod
     def tend(flipper: Flipper, id: int, address: Address, lot: Wad, bid: Rad):
@@ -119,6 +131,25 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert (bid >= Rad(flipper.beg()) * current_bid.bid) or (bid == current_bid.tab)
 
         assert flipper.tend(id, lot, bid).transact(from_address=address)
+
+    @staticmethod
+    def dent(flipper: Flipper, id: int, address: Address, lot: Wad, bid: Rad):
+        assert (isinstance(flipper, Flipper))
+        assert (isinstance(id, int))
+        assert (isinstance(lot, Wad))
+        assert (isinstance(bid, Rad))
+
+        current_bid = flipper.bids(id)
+        assert current_bid.guy != Address("0x0000000000000000000000000000000000000000")
+        assert current_bid.tic > datetime.now().timestamp() or current_bid.tic == 0
+        assert current_bid.end > datetime.now().timestamp()
+
+        assert bid == current_bid.bid
+        assert bid == current_bid.tab
+        assert lot < current_bid.lot
+        assert (flipper.beg() * Ray(lot)) <= Ray(current_bid.lot)
+
+        assert flipper.dent(id, lot, bid).transact(from_address=address)
 
     @staticmethod
     def tend_with_dai(mcd: DssDeployment, c: Collateral, flipper: Flipper, id: int, address: Address, bid: Rad):
@@ -168,9 +199,8 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.tic == 0
         assert status.price == Wad(0)
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_provide_model_with_updated_info_after_our_own_bid(self, mcd, c, gal_address, keeper_address,
-                                                                      keeper, models):
+    #@pytest.mark.skip(reason="Working")
+    def test_should_provide_model_with_updated_info_after_our_own_bid(self, mcd, c, gal_address, keeper, models):
         # given
         (model, model_factory) = models
         flipper = c.flipper
@@ -186,7 +216,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         initial_bid = flipper.bids(1)
         our_price = Wad.from_number(30)
         our_bid = our_price * initial_bid.lot
-        reserve_dai(mcd, c, keeper_address, our_bid)
+        reserve_dai(mcd, c, self.keeper_address, our_bid)
         self.simulate_model_output(model=model, price=our_price)
         keeper.check_for_bids()
 
@@ -208,15 +238,14 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.lot == previous_bid.lot
         assert status.tab == previous_bid.tab
         assert status.beg == Ray.from_number(1.05)
-        assert status.guy == keeper_address
+        assert status.guy == self.keeper_address
         assert status.era > 0
         assert status.end > status.era
         assert status.tic > status.era
         assert status.price == our_price
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, mcd, c,
-                                                                             gal_address, keeper_address, other_address,
+    #@pytest.mark.skip(reason="Working")
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, mcd, c, other_address,
                                                                              keeper, models):
         # given
         (model, model_factory) = models
@@ -257,7 +286,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.price == (Wad(new_bid_amount) / previous_bid.lot)
 
     @pytest.mark.skip(reason="This works but it's stupid slow")
-    def test_should_terminate_model_if_auction_expired_due_to_tau(self, web3, c, keeper, models):
+    def test_should_terminate_model_if_auction_expired_due_to_tau(self, c, keeper, models):
         # given
         (model, model_factory) = models
         flipper = c.flipper
@@ -270,7 +299,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        time_travel_by(web3, flipper.tau() + 1)
+        time_travel_by(self.web3, flipper.tau() + 1)
         # and
         keeper.check_all_auctions()
         wait_for_other_threads()
@@ -279,7 +308,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
     @pytest.mark.skip(reason="Working")
-    def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, web3, mcd, c,
+    def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, mcd, c,
                                                                                            other_address,
                                                                                            keeper, models):
         # given
@@ -301,7 +330,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         reserve_dai(mcd, c, other_address, Wad(new_bid_amount))
         TestAuctionKeeperFlipper.tend(flipper, 1, other_address, previous_bid.lot, new_bid_amount)
         # and
-        time_travel_by(web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, flipper.ttl() + 1)
         # and
         keeper.check_all_auctions()
         wait_for_other_threads()
@@ -310,7 +339,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
     @pytest.mark.skip(reason="Working")
-    def test_should_terminate_model_if_auction_is_dealt(self, web3, mcd, c, other_address, keeper, models):
+    def test_should_terminate_model_if_auction_is_dealt(self, mcd, c, other_address, keeper, models):
         # given
         (model, model_factory) = models
         flipper = c.flipper
@@ -325,7 +354,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # when
         TestAuctionKeeperFlipper.tend_with_dai(mcd, c, flipper, 1, other_address, Rad.from_number(90))
         # and
-        time_travel_by(web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, flipper.ttl() + 1)
         # and
         flipper.deal(1).transact(from_address=other_address)
         # and
@@ -336,14 +365,14 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
     @pytest.mark.skip(reason="Working")
-    def test_should_not_instantiate_model_if_auction_is_dealt(self, web3, mcd, c, other_address, keeper, models):
+    def test_should_not_instantiate_model_if_auction_is_dealt(self, mcd, c, other_address, keeper, models):
         # given
         (model, model_factory) = models
         flipper = c.flipper
         # and
         TestAuctionKeeperFlipper.tend_with_dai(mcd, c, flipper, 1, other_address, Rad.from_number(90))
         # and
-        time_travel_by(web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, flipper.ttl() + 1)
         # and
         flipper.deal(1).transact(from_address=other_address)
 
@@ -353,9 +382,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         model_factory.create_model.assert_not_called()
 
-    def test_should_not_do_anything_if_no_output_from_model(self, web3, keeper):
+    def test_should_not_do_anything_if_no_output_from_model(self, keeper):
         # given
-        previous_block_number = web3.eth.blockNumber
+        previous_block_number = self.web3.eth.blockNumber
 
         # when
         # [no output from model]
@@ -363,15 +392,16 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        assert web3.eth.blockNumber == previous_block_number
+        assert self.web3.eth.blockNumber == previous_block_number
 
+    @pytest.mark.skip(reason="Working")
     def test_should_make_initial_bid(self, mcd, c, keeper, models, keeper_address):
         # given
         (model, model_factory) = models
         flipper = c.flipper
 
         # when
-        self.simulate_model_bid(mcd, c, Wad.from_number(16.0), keeper_address, model)
+        self.simulate_model_bid(mcd, c, model, Wad.from_number(16.0))
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
@@ -380,6 +410,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         auction = flipper.bids(1)
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(16.0), 2)
 
+    @pytest.mark.skip(reason="Working")
     def test_should_bid_even_if_there_is_already_a_bidder(self, mcd, c, keeper, models, keeper_address, other_address):
         # given
         (model, model_factory) = models
@@ -389,7 +420,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert flipper.bids(1).bid == Rad.from_number(21)
 
         # when
-        self.simulate_model_bid(mcd, c, Wad.from_number(23), keeper_address, model)
+        self.simulate_model_bid(mcd, c, model, Wad.from_number(23))
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
@@ -398,190 +429,211 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         auction = flipper.bids(1)
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(23), 2)
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_sequentially_tend_and_dent_if_price_takes_us_to_the_dent_phrase(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_sequentially_tend_and_dent_if_price_takes_us_to_the_dent_phrase(self, mcd, c, keeper, models,
+                                                                                    keeper_address):
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(80.0))
+        our_bid_price = Wad.from_number(150)
+        assert our_bid_price * flipper.bids(1).lot > Wad(flipper.bids(1).tab)
+        self.simulate_model_bid(mcd, c, model, our_bid_price)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(100)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == auction.tab
+        assert auction.lot == tend_lot
 
         # when
-        self.keeper.check_all_auctions()
+        reserve_dai(mcd, c, keeper_address, Wad(auction.tab))
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(62.5)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(80.0), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == auction.tab
+        assert auction.lot < tend_lot
+        assert round(auction.bid / Rad(auction.lot), 2) == round(Rad(our_bid_price), 2)
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_use_most_up_to_date_price_for_dent_even_if_it_gets_updated_during_tend(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_use_most_up_to_date_price_for_dent_even_if_it_gets_updated_during_tend(self, mcd, c, keeper, models,
+                                                                                           keeper_address):
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(80.0))
+        first_bid_price = Wad.from_number(140)
+        self.simulate_model_bid(mcd, c, model, first_bid_price)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(100)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == auction.tab
+        assert auction.lot == tend_lot
 
         # when
-        self.simulate_model_output(price=Wad.from_number(100.0))
+        second_bid_price = Wad.from_number(150)
+        self.simulate_model_bid(mcd, c, model, second_bid_price)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
-        # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(50.0)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(100.0), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == auction.tab
+        assert auction.lot == Wad(auction.bid / Rad(second_bid_price))
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_only_tend_if_bid_is_only_slightly_above_tab(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_only_tend_if_bid_is_only_slightly_above_tab(self, mcd, c, keeper, models, keeper_address):
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(50.1))
+        auction = flipper.bids(1)
+        bid_price = Wad(auction.tab) + Wad.from_number(0.1)
+        self.simulate_model_bid(mcd, c, model, bid_price)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(100)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == auction.tab
+        assert auction.lot == tend_lot
 
         # when
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(100)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+        auction = flipper.bids(1)
+        assert flipper.bids(1).bid == auction.tab
+        assert flipper.bids(1).lot == tend_lot
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slightly_below_tab(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slightly_below_tab(self, mcd, c, keeper, models,
+                                                                             keeper_address):
+        """I assume the point of this test is that the bid increment should be ignored when `tend`ing the `tab`
+        to transition the auction into _dent_ phase."""
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(49.99))
+        auction = flipper.bids(1)
+        assert auction.bid == Rad(0)
+        bid_price = (Wad(auction.tab) / tend_lot) - Wad.from_number(0.01)
+        self.simulate_model_bid(mcd, c, model, bid_price)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(4999)
-        assert self.flipper.bids(1).lot == Wad.from_number(100)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(49.99), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == Rad(bid_price * tend_lot)
+        assert auction.lot == tend_lot
 
         # when
-        self.simulate_model_output(price=Wad.from_number(50.0))
+        price_to_reach_tab = Wad(auction.tab / Rad(tend_lot)) + Wad(1)
+        self.simulate_model_bid(mcd, c, model, price_to_reach_tab)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flipper.bids(1)
-        assert self.flipper.bids(1).bid == Wad.from_number(5000)
-        assert self.flipper.bids(1).lot == Wad.from_number(100)
-        assert round(auction.bid / auction.lot, 2) == round(Wad.from_number(50.0), 2)
+        auction = flipper.bids(1)
+        assert auction.bid == auction.tab
+        assert auction.lot == tend_lot
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_overbid_itself_if_model_has_updated_the_price(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_overbid_itself_if_model_has_updated_the_price(self, mcd, c, keeper, models, keeper_address):
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(15.0))
+        first_bid = Wad.from_number(15.0)
+        self.simulate_model_bid(mcd, c, model, first_bid)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flipper.bids(1).bid == Wad.from_number(1500.0)
+        assert flipper.bids(1).bid == Rad(first_bid * tend_lot)
 
         # when
-        self.simulate_model_output(price=Wad.from_number(20.0))
-        self.keeper.check_all_auctions()
+        second_bid = Wad.from_number(20.0)
+        self.simulate_model_bid(mcd, c, model, second_bid)
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flipper.bids(1).bid == Wad.from_number(2000.0)
+        assert flipper.bids(1).bid == Rad(second_bid * tend_lot)
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, mcd, c,
+                                                                                            keeper, models,
+                                                                                            keeper_address):
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(20.0), gas_price=10)
+        bid_price = Wad.from_number(20.0)
+        reserve_dai(mcd, c, keeper_address, bid_price * tend_lot)
+        self.simulate_model_output(model=model, price=bid_price, gas_price=10)
         # and
         self.start_ignoring_transactions()
         # and
-        self.keeper.check_all_auctions()
-        # and
-        time.sleep(5)
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         # and
         self.end_ignoring_transactions()
         # and
-        self.simulate_model_output(price=Wad.from_number(20.0), gas_price=15)
+        self.simulate_model_output(model=model, price=bid_price, gas_price=15)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flipper.bids(1).bid == Wad.from_number(2000.0)
+        assert flipper.bids(1).bid == Rad(bid_price * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    @pytest.mark.skip(reason="needs updating")
-    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self):
+    @pytest.mark.skip(reason="Working")
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, mcd, c,
+                                                                                             keeper, models,
+                                                                                             keeper_address):
         # given
-        self.flipper.kick(self.gal_address, self.gal_address, Wad.from_number(5000), Wad.from_number(100),
-                          Wad.from_number(1000)) \
-            .transact(from_address=self.gal_address)
+        # tab = Wad.from_number(5000),
+        # lot = Wad.from_number(100),
+        # bid = Wad.from_number(1000)
+        (model, model_factory) = models
+        flipper = c.flipper
 
         # when
-        self.simulate_model_output(price=Wad.from_number(15.0), gas_price=10)
+        self.simulate_model_bid(mcd, c, model, price=Wad.from_number(15.0), gas_price=10)
         # and
         self.start_ignoring_transactions()
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_all_auctions()
+        keeper.check_for_bids()
         # and
         time.sleep(5)
         # and
         self.end_ignoring_transactions()
         # and
-        self.simulate_model_output(price=Wad.from_number(20.0), gas_price=15)
+        self.simulate_model_bid(mcd, c, model, price=Wad.from_number(20.0), gas_price=15)
         # and
-        self.keeper.check_all_auctions()
+        keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flipper.bids(1).bid == Wad.from_number(2000.0)
+        assert flipper.bids(1).bid == Rad(Wad.from_number(20.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
     @pytest.mark.skip(reason="needs updating")

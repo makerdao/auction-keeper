@@ -197,7 +197,7 @@ def is_cdp_safe(ilk: Ilk, urn: Urn) -> bool:
     return (Ray(urn.art) * ilk.rate) <= Ray(urn.ink) * ilk.spot
 
 
-def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, gal_address: Address):
+def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address):
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
@@ -207,7 +207,7 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, gal_address: Address):
     assert is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
 
     # Add collateral to gal CDP
-    collateral_amount = Wad.from_number(1.2)
+    collateral_amount = Wad.from_number(collateral_amount)
     wrap_eth(mcd, gal_address, collateral_amount)
     c.approve(gal_address)
     assert c.adapter.join(gal_address, collateral_amount).transact(from_address=gal_address)

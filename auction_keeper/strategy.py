@@ -80,7 +80,7 @@ class FlipperStrategy(Strategy):
 
         # dent phase
         if bid.bid == bid.tab:
-            our_lot = bid.bid / price
+            our_lot = Wad(bid.bid / Rad(price))
 
             if (our_lot * self.beg <= bid.lot) and (our_lot < bid.lot):
                 return price, self.flipper.dent(id, our_lot, bid.bid)

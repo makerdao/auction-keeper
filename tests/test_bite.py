@@ -30,7 +30,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         # given
         c = mcd.collaterals[0]
         keeper = create_keeper(mcd, c)
-        unsafe_cdp = create_unsafe_cdp(mcd, c, gal_address)
+        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1.2), gal_address)
         assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
 
         # when
