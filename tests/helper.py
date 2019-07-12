@@ -70,13 +70,14 @@ class TransactionIgnoringTest:
         self.web3.eth.getTransaction = MagicMock(return_value={'nonce': self.original_nonce})
 
     def end_ignoring_transactions(self):
-        def second_send_transaction(transaction):
-            assert transaction['nonce'] == self.original_nonce
-
-            # TestRPC doesn't support `sendTransaction` calls with the `nonce` parameter
-            # (unlike proper Ethereum nodes which handle it very well)
-            transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
-            return self.original_send_transaction(transaction_without_nonce)
-
-        self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
+        # def second_send_transaction(transaction):
+        #     assert transaction['nonce'] == self.original_nonce
+        #
+        #     # TestRPC doesn't support `sendTransaction` calls with the `nonce` parameter
+        #     # (unlike proper Ethereum nodes which handle it very well)
+        #     transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
+        #     return self.original_send_transaction(transaction_without_nonce)
+        #
+        # self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
+        self.web3.eth.sendTransaction = self.original_send_transaction
         self.web3.eth.getTransaction = self.original_get_transaction

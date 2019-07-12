@@ -541,27 +541,27 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slightly_below_tab(self, mcd, c, keeper, models,
+    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slightly_below_tab(self, mcd, c, kick, keeper,
                                                                              keeper_address):
         """I assume the point of this test is that the bid increment should be ignored when `tend`ing the `tab`
         to transition the auction into _dent_ phase."""
         # given
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick)
         flipper = c.flipper
 
         # when
-        auction = flipper.bids(1)
+        auction = flipper.bids(kick)
         assert auction.bid == Rad(0)
-        bid_price = (Wad(auction.tab) / tend_lot) - Wad.from_number(0.01)
+        bid_price = Wad(auction.tab / Rad(tend_lot)) - Wad.from_number(0.01)
         self.simulate_model_bid(mcd, c, model, bid_price)
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(1)
-        assert auction.bid == Rad(bid_price * tend_lot)
+        auction = flipper.bids(kick)
+        assert auction.bid < auction.tab
+        assert round(auction.bid, 2) == round(Rad(bid_price * tend_lot), 2)
         assert auction.lot == tend_lot
 
         # when
@@ -572,14 +572,17 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(1)
+        auction = flipper.bids(kick)
         assert auction.bid == auction.tab
         assert auction.lot == tend_lot
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_overbid_itself_if_model_has_updated_the_price(self, mcd, c, keeper, models, keeper_address):
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
+    def test_should_overbid_itself_if_model_has_updated_the_price(self, mcd, c, kick, keeper, keeper_address):
         # given
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick)
         flipper = c.flipper
 
         # when
@@ -590,7 +593,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).bid == Rad(first_bid * tend_lot)
+        assert flipper.bids(kick).bid == Rad(first_bid * tend_lot)
 
         # when
         second_bid = Wad.from_number(20.0)
@@ -599,13 +602,15 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).bid == Rad(second_bid * tend_lot)
+        assert flipper.bids(kick).bid == Rad(second_bid * tend_lot)
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, mcd, c,
-                                                                                            keeper, models):
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, mcd, c, kick, keeper):
         # given
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick)
         flipper = c.flipper
 
         # when
@@ -625,14 +630,17 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).bid == Rad(bid_price * tend_lot)
+        assert flipper.bids(kick).bid == Rad(bid_price * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, mcd, c,
-                                                                                             keeper, models):
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, mcd, c, kick,
+                                                                                             keeper):
         # given
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick)
         flipper = c.flipper
 
         # when
@@ -643,8 +651,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_all_auctions()
         keeper.check_for_bids()
         # and
-        time.sleep(5)
-        # and
         self.end_ignoring_transactions()
         # and
         self.simulate_model_bid(mcd, c, model, price=Wad.from_number(20.0), gas_price=15)
@@ -652,16 +658,19 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).bid == Rad(Wad.from_number(20.0) * tend_lot)
+        assert flipper.bids(kick).bid == Rad(Wad.from_number(20.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, mcd, c,
-                                                                                             keeper, models):
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
+    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, mcd, c, kick,
+                                                                                             keeper):
         """ Assuming we want all bids to be submitted as soon as output from the model is parsed,
         this test seems impractical.  In real applications, the model would be unable to submit a lower bid. """
         # given
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick)
         flipper = c.flipper
 
         # when
@@ -681,8 +690,12 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).bid == Rad(Wad.from_number(15.0) * tend_lot)
+        assert flipper.bids(kick).bid == Rad(Wad.from_number(15.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
+
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
 
     @pytest.mark.skip(reason="Working")
     def test_should_not_tend_on_rounding_errors_with_small_amounts(self, mcd, c, keeper, models):
@@ -759,14 +772,13 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         collateral_after = c.gem.balance_of(self.keeper_address)
         assert collateral_before < collateral_after
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self, mcd, c, keeper, other_address):
+    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self, mcd, c, kick, keeper, other_address):
         # given
         flipper = c.flipper
         # and
         bid = Rad.from_number(66)
-        self.tend_with_dai(mcd, c, flipper, 1, other_address, bid)
-        assert flipper.bids(1).bid == bid
+        self.tend_with_dai(mcd, c, flipper, kick, other_address, bid)
+        assert flipper.bids(kick).bid == bid
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
 
         # when
@@ -777,33 +789,41 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_obey_gas_price_provided_by_the_model(self, mcd, c, keeper, models):
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
+    def test_should_obey_gas_price_provided_by_the_model(self, mcd, c, kick, keeper):
         # given
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick)
 
         # when
         self.simulate_model_bid(mcd, c, model, price=Wad.from_number(15.0), gas_price=175000)
-        assert c.flipper.bids(1).bid == Wad.from_number(15.0)
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
+        assert c.flipper.bids(kick).bid == Rad(Wad.from_number(15.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, mcd, c, keeper, models):
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, mcd, c, keeper):
         # given
-        (model, model_factory) = models
+        flipper = c.flipper
+        kick = flipper.kicks()
+        (model, model_factory) = self.models(keeper, kick)
 
         # when
         self.simulate_model_bid(mcd, c, model, price=Wad.from_number(16.0))
-        assert c.flipper.bids(1).bid == Wad.from_number(16.0)
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
+        assert flipper.bids(kick).bid == Rad(Wad.from_number(16.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[
                    0].gasPrice == self.web3.eth.gasPrice
+
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
