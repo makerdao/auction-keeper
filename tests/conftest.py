@@ -152,6 +152,7 @@ def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, 
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
     print(f"[urn.ink={urn.ink}, urn.art={urn.art}] [ilk.art={ilk.art}, ilk.line={ilk.line}] [dink={dink}, dart={dart}]")
+    print(f"[debt={str(mcd.vat.debt())} line={str(mcd.vat.line())}]")
     ink = urn.ink + dink
     art = urn.art + dart
     ilk_art = ilk.art + dart
@@ -171,9 +172,9 @@ def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, 
     under_collateral_debt_ceiling = Rad(ilk_art * rate) <= ilk.line
     if not under_collateral_debt_ceiling:
         print(f"CDP would exceed collateral debt ceiling of {ilk.line}")
-    under_total_debt_ceiling = debt < ilk.line
+    under_total_debt_ceiling = debt < mcd.vat.line()
     if not under_total_debt_ceiling:
-        print(f"CDP would exceed total debt ceiling of {ilk.line}")
+        print(f"CDP would exceed total debt ceiling of {mcd.vat.line()}")
     calm = under_collateral_debt_ceiling and under_total_debt_ceiling
 
     safe = (urn.art * rate) <= ink * ilk.spot
@@ -193,7 +194,7 @@ def is_cdp_safe(ilk: Ilk, urn: Urn) -> bool:
     assert urn.ink is not None
     assert ilk.spot is not None
 
-    print(f'{urn.art} * {ilk.rate} <=? {urn.ink} * {ilk.spot}')
+    #print(f'{urn.art} * {ilk.rate} <=? {urn.ink} * {ilk.spot}')
     return (Ray(urn.art) * ilk.rate) <= Ray(urn.ink) * ilk.spot
 
 
@@ -205,6 +206,8 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
     # Ensure CDP isn't already unsafe (if so, this shouldn't be called)
     urn = mcd.vat.urn(c.ilk, gal_address)
     assert is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
+    assert urn.ink == Wad(0)
+    assert urn.art == Wad(0)
 
     # Add collateral to gal CDP
     collateral_amount = Wad.from_number(collateral_amount)
