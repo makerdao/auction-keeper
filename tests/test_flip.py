@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
 import pytest
 
 from datetime import datetime
@@ -29,27 +28,39 @@ from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral
+from pymaker.dss import Collateral, Urn
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import web3, wrap_eth, keeper_address, simulate_frob, create_unsafe_cdp, get_collateral_price
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
 tend_lot = Wad.from_number(1.2)
+tend_small_lot = Wad(2000)
 
 
-# TODO: Figure out how to reset collateral debt ceiling after an auction,
-#  that this may be called multiple times.
 @pytest.fixture()
-def kick(mcd, c: Collateral, gal_address):
+def kick(mcd, c: Collateral, gal_address) -> int:
     # Bite gal CDP
     unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
+    return bite(mcd, c, unsafe_cdp)
+
+
+@pytest.fixture()
+def kick_small_lot(mcd, c: Collateral, gal_address) -> int:
+    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_small_lot, gal_address)
+    return bite(mcd, c, unsafe_cdp)
+
+
+def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(c, Collateral)
+    assert isinstance(unsafe_cdp, Urn)
+
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
     bites = mcd.cat.past_bite(1)
     assert len(bites) == 1
     id = c.flipper.kicks()
     auction = c.flipper.bids(id)
-    print(f'Kicked off flip auction {id} with tab={str(auction.tab)}, lot={str(auction.lot)}')
     return id
 
 
@@ -66,14 +77,12 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
     assert rate >= Ray.from_number(1)
     assert isinstance(collateral_price, Wad)
     # FIXME: Figure out why this is too low without the coefficient.
-    print(f'(amount={str(amount)} / collateral_price={str(collateral_price)}) * rate={str(rate)} * 2')
     collateral_required = ((amount / collateral_price) * Wad(rate) * Wad.from_number(2))
 
     wrap_eth(mcd, usr, collateral_required)
     c.approve(usr)
     assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
     simulate_frob(mcd, c, usr, collateral_required, amount)
-    print(f'frobbing with dink={str(collateral_required)} and dart={str(amount)}')
     assert mcd.vat.frob(c.ilk, usr, collateral_required, amount).transact(from_address=usr)
     assert mcd.vat.urn(c.ilk, usr).art >= Wad(amount)
 
@@ -291,7 +300,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == (Wad(new_bid_amount) / previous_bid.lot)
 
-    @pytest.mark.skip(reason="takes too long")
     def test_should_terminate_model_if_auction_expired_due_to_tau(self, c, keeper):
         # given
         (model, model_factory) = self.models(keeper, 1)
@@ -697,12 +705,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_not_tend_on_rounding_errors_with_small_amounts(self, mcd, c, keeper, models):
+    def test_should_not_tend_on_rounding_errors_with_small_amounts(self, mcd, c, kick_small_lot, keeper):
         # given
-        # TODO: Rework this test to spin off it's own auction with the following parameters:
-        #       tab=Wad(5000), lot=Wad(2), bid=Wad(4)
-        (model, model_factory) = models
+        (model, model_factory) = self.models(keeper, kick_small_lot)
         flipper = c.flipper
         assert flipper.bids(1).bid == Rad(0)
 
@@ -714,7 +719,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).bid == Rad(bid_price * tend_lot)
+        assert flipper.bids(kick_small_lot).bid == Rad(bid_price * tend_small_lot)
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -725,24 +730,22 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip(reason="Working")
-    def test_should_not_dent_on_rounding_errors_with_small_amounts(self, mcd, c, keeper, models):
+    def test_should_not_dent_on_rounding_errors_with_small_amounts(self, mcd, c, keeper):
         # given
-        # TODO: Rework this to run with the same auction as the previous test, whose parameters have
-        #       an unreasonably small lot size.
-        (model, model_factory) = models
         flipper = c.flipper
+        kick_small_lot = flipper.kicks()
+        (model, model_factory) = self.models(keeper, kick_small_lot)
 
         # when
-        auction = flipper.bids(1)
-        bid_price = Wad(auction.tab / Rad(tend_lot))
+        auction = flipper.bids(kick_small_lot)
+        bid_price = Wad(auction.tab / Rad(tend_small_lot))
         self.simulate_model_bid(mcd, c, model, bid_price)
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(1).lot == auction.lot
+        assert flipper.bids(kick_small_lot).lot == auction.lot
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -753,17 +756,18 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip(reason="Working")
     def test_should_deal_when_we_won_the_auction(self, mcd, c, keeper):
         # given
         flipper = c.flipper
+        kick = flipper.kicks()
 
         # when
         collateral_before = c.gem.balance_of(self.keeper_address)
 
         # when
         time_travel_by(self.web3, flipper.ttl() + 1)
-        lot_won = flipper.bids(1).lot
+        lot_won = flipper.bids(kick).lot
+        assert lot_won > Wad(0)
         # and
         keeper.check_all_auctions()
         wait_for_other_threads()
@@ -779,19 +783,18 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         bid = Rad.from_number(66)
         self.tend_with_dai(mcd, c, flipper, kick, other_address, bid)
         assert flipper.bids(kick).bid == bid
-        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
 
         # when
         time_travel_by(self.web3, flipper.ttl() + 1)
         # and
         keeper.check_all_auctions()
         wait_for_other_threads()
-        # then
-        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
+        # then ensure the bid hasn't been deleted
+        assert flipper.bids(kick).bid == bid
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
+        assert flipper.bids(kick).bid == Rad(0)
 
     def test_should_obey_gas_price_provided_by_the_model(self, mcd, c, kick, keeper):
         # given

@@ -198,7 +198,7 @@ def is_cdp_safe(ilk: Ilk, urn: Urn) -> bool:
     return (Ray(urn.art) * ilk.rate) <= Ray(urn.ink) * ilk.spot
 
 
-def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address):
+def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address) -> Urn:
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
