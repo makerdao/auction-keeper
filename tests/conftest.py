@@ -20,7 +20,9 @@ import pytest
 
 from web3 import Web3, HTTPProvider
 
+from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
+from mock import MagicMock
 from pymaker import Address
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
@@ -28,8 +30,8 @@ from pymaker.feed import DSValue
 from pymaker.keys import register_keys
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken
-
 from tests.helper import args
+from typing import Optional
 
 
 @pytest.fixture(scope="session")
@@ -231,27 +233,19 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
     return urn
 
 
-def create_keeper(mcd: DssDeployment, c: Collateral, address=None):
-    assert isinstance(mcd, DssDeployment)
-    assert isinstance(c, Collateral)
-    if address is None:
-        address = Address(mcd.web3.eth.accounts[1])
-    assert isinstance(address, Address)
+def models(keeper: AuctionKeeper, id: int):
+    assert (isinstance(keeper, AuctionKeeper))
+    assert (isinstance(id, int))
 
-    keeper = AuctionKeeper(args=args(f"--eth-from {address} "
-                                     f"--flipper {c.flipper.address} "
-                                     f"--cat {mcd.cat.address} "
-                                     f"--ilk {c.ilk.name} "
-                                     f"--model ./bogus-model.sh"), web3=mcd.web3)
-    keeper.approve()
-    return keeper
+    model = MagicMock()
+    model.get_stance = MagicMock(return_value=None)
+    model.id = id
+    model_factory = keeper.auctions.model_factory
+    model_factory.create_model = MagicMock(return_value=model)
+    return (model, model_factory)
 
 
-@pytest.fixture()
-def keeper(web3, c: Collateral, keeper_address: Address, mcd):
-    return create_keeper(mcd, c, keeper_address)
+def simulate_model_output(model: object, price: Wad, gas_price: Optional[int] = None):
+    assert (isinstance(price, Wad))
 
-
-@pytest.fixture()
-def other_keeper(web3, c: Collateral, other_address: Address, mcd):
-    return create_keeper(mcd, c, other_address)
+    model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))

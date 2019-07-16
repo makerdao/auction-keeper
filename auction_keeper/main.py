@@ -60,6 +60,7 @@ class AuctionKeeper:
 
         parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
         parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
+        parser.add_argument('--mkr', type=str, help="Address of the MKR governance token")
 
         parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
 
@@ -92,6 +93,7 @@ class AuctionKeeper:
 
         self.cat = Cat(web3=self.web3, address=Address(self.arguments.cat)) if self.arguments.cat else None
         self.vow = Vow(web3=self.web3, address=Address(self.arguments.vow)) if self.arguments.vow else None
+        self.mkr = DSToken(web3=self.web3, address=Address(self.arguments.mkr)) if self.arguments.mkr else None
         self.ilk = Ilk(self.arguments.ilk) if self.arguments.ilk else None
 
         self.flipper = Flipper(web3=self.web3,
@@ -110,7 +112,7 @@ class AuctionKeeper:
         elif self.flapper:
             if self.vow is None:
                 self.logger.warning(f"Flapper auction selected but no Vow address specified so we won't flip()")
-            self.strategy = FlapperStrategy(self.flapper)
+            self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
             if self.vow is None:
                 self.logger.warning(f"Flopper auction selected but no Vow address specified so we won't flap()")

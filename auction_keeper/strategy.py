@@ -20,7 +20,7 @@ from web3 import Web3
 
 from auction_keeper.model import Status
 
-from pymaker import Transact
+from pymaker import Address, Transact
 from pymaker.approval import directly, hope_directly
 from pymaker.auctions import Flopper, Flapper, Flipper
 from pymaker.numeric import Wad, Ray, Rad
@@ -104,14 +104,16 @@ class FlipperStrategy(Strategy):
 
 
 class FlapperStrategy(Strategy):
-    def __init__(self, flapper: Flapper):
+    def __init__(self, flapper: Flapper, mkr: Address):
         assert isinstance(flapper, Flapper)
+        assert isinstance(mkr, Address)
 
         self.flapper = flapper
         self.beg = flapper.beg()
+        self.mkr = mkr
 
     def approve(self):
-        self.flapper.approve(directly())
+        self.flapper.approve(self.mkr, directly())
 
     def kicks(self) -> int:
         return self.flapper.kicks()
