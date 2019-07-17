@@ -29,7 +29,7 @@ from pymaker.dss import Collateral, Ilk, Urn
 from pymaker.feed import DSValue
 from pymaker.keys import register_keys
 from pymaker.numeric import Wad, Ray, Rad
-from pymaker.token import DSEthToken
+from pymaker.token import DSEthToken, DSToken
 from tests.helper import args
 from typing import Optional
 
@@ -82,6 +82,19 @@ def wrap_eth(mcd: DssDeployment, address: Address, amount: Wad):
     collateral = [c for c in mcd.collaterals if c.gem.symbol() == "WETH"][0]
     assert isinstance(collateral.gem, DSEthToken)
     assert collateral.gem.deposit(amount).transact(from_address=address)
+
+
+def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
+    assert isinstance(mkr, DSToken)
+    assert isinstance(recipient_address, Address)
+    assert isinstance(amount, Wad)
+    assert amount > Wad(0)
+
+    deployment_address = Address("0x00a329c0648769A73afAc7F9381E08FB43dBEA72")
+    assert mkr.mint(amount).transact(from_address=deployment_address)
+    assert mkr.balance_of(deployment_address) > Wad(0)
+    assert mkr.approve(recipient_address).transact(from_address=deployment_address)
+    assert mkr.transfer(recipient_address, amount).transact(from_address=deployment_address)
 
 
 @pytest.fixture(scope="session")

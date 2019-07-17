@@ -70,7 +70,7 @@ class FlipperStrategy(Strategy):
                       era=era(self.flipper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(Wad(bid.bid) / bid.lot) if bid.lot != Wad(0) else None)
+                      price=Wad(bid.bid / Rad(bid.lot)) if bid.lot != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert isinstance(id, int)
@@ -137,17 +137,17 @@ class FlapperStrategy(Strategy):
                       era=era(self.flapper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(bid.lot / bid.bid) if bid.bid != Wad(0) else None)
+                      price=Wad(bid.lot / Rad(bid.bid)) if bid.bid != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
         bid = self.flapper.bids(id)
-        our_bid = bid.lot / price
+        our_bid = bid.lot / Rad(price)
 
-        if our_bid >= bid.bid * self.beg and our_bid > bid.bid:
-            return price, self.flapper.tend(id, bid.lot, our_bid)
+        if our_bid >= Rad(bid.bid) * Rad(self.beg) and our_bid > Rad(bid.bid):
+            return price, self.flapper.tend(id, bid.lot, Wad(our_bid))
         else:
             return None, None
 
