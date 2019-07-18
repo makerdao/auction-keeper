@@ -51,10 +51,7 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
 
 @pytest.fixture()
 def kick(mcd, c: Collateral, gal_address) -> int:
-    print(f'debt before={str(mcd.vat.debt())}')
     urn = create_cdp_with_surplus(mcd, c, gal_address)
-    print(f'urn={urn}')
-    print(f'debt after={str(mcd.vat.debt())}')
 
     assert mcd.vow.flap().transact(from_address=gal_address)
     kick = mcd.flap.kicks()
@@ -82,7 +79,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
                                               f"--flapper {self.mcd.flap.address} "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
-        # print('created and approved keeper')
 
         self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
@@ -320,7 +316,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.flapper.bids(kick).bid == Wad.from_number(16)
 
         # when
-        print(f'lot={str(auction.lot)}, auction={self.flapper.bids(kick)}')
         simulate_model_output(model=model, price=Wad.from_number(0.0000005))
         # and
         self.keeper.check_all_auctions()
@@ -386,12 +381,10 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flapper.ttl() + 1)
         assert self.flapper.deal(kick).transact()
 
-    @pytest.mark.skip("Can't get this working; the gasPrice isn't updating as expected")
     def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
         lot = self.flapper.bids(kick).lot
-        print(f'bid before test={str(self.flapper.bids(kick).bid)}')
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(9.0), gas_price=10)
@@ -401,16 +394,15 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         # and
+        time.sleep(1)
+        # and
         self.end_ignoring_transactions()
         # and
-        print(f'bid before increasing price={str(self.flapper.bids(kick).bid)}')
         simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
         # and
-        self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        print(f'bid after test={str(self.flapper.bids(kick).bid)}')
         assert round(self.flapper.bids(kick).bid, 2) == round(Wad(lot / Rad.from_number(8.0)), 2)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 

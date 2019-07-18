@@ -136,7 +136,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         initial_bid = flipper.bids(model.id)
         assert initial_bid.lot > Wad(0)
         our_bid = price * initial_bid.lot
-        print(f'model delivering price of {str(price)} for auction {model.id}')
         reserve_dai(mcd, c, self.keeper_address, our_bid)
         simulate_model_output(model=model, price=price, gas_price=gas_price)
 
@@ -335,12 +334,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # given
         (model, model_factory) = models(keeper, kick)
         flipper = c.flipper
-        # FIXME: This hack prevents me from waiting 60s while the previous test completes.
-        #        Instead, reduce `tau` on the DSS deployment, unskip the previous test, and remove this hack.
-        if flipper.bids(1).bid != Rad(0):
-            print("cleaning up old auction")
-            time_travel_by(self.web3, flipper.ttl() + 1)
-            assert flipper.deal(1).transact()
 
         # when
         keeper.check_all_auctions()
