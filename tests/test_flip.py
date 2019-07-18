@@ -715,7 +715,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # given
         (model, model_factory) = models(keeper, kick_small_lot)
         flipper = c.flipper
-        assert flipper.bids(1).bid == Rad(0)
 
         # when
         bid_price = Wad.from_number(3.0)
@@ -731,7 +730,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
         # and
         keeper.check_all_auctions()
-        keeper.check_for_bids()
         wait_for_other_threads()
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count

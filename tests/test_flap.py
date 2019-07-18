@@ -16,20 +16,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import time
-from typing import Optional
 
 import pytest
 
-from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from pymaker import Address
 from pymaker.approval import directly
-from pymaker.auctions import Flapper
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral, Ilk, Urn
+from pymaker.dss import Collateral, Urn
 from pymaker.numeric import Wad, Ray, Rad
-from pymaker.token import DSToken
 from tests.conftest import web3, wrap_eth, mint_mkr, mcd, our_address, keeper_address, other_address, gal_address, \
     simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
@@ -47,7 +43,6 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
         from_address=gal_address)
     assert mcd.vat.frob(c.ilk, gal_address, dink=collateral_amount, dart=Wad.from_number(100)).transact(
         from_address=gal_address)
-    #assert mcd.vat.dai(mcd.vow.address) == Rad(0)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
     assert mcd.vat.dai(mcd.vow.address) > mcd.vat.sin(mcd.vow.address) + mcd.vow.bump() + mcd.vow.hump()
@@ -66,12 +61,12 @@ def kick(mcd, c: Collateral, gal_address) -> int:
     assert kick > 0
 
     current_bid = mcd.flap.bids(kick)
-    assert current_bid.lot > Rad(0)
+    assert current_bid.lot == mcd.vow.bump()
 
     return kick
 
 
-@pytest.mark.timeout(200)
+@pytest.mark.timeout(300)
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = web3()
@@ -87,11 +82,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
                                               f"--flapper {self.mcd.flap.address} "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
+        # print('created and approved keeper')
 
         self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
-        mint_mkr(self.mcd.mkr, self.keeper_address, Wad.from_number(5000000))
-        mint_mkr(self.mcd.mkr, self.other_address, Wad.from_number(5000000))
+        mint_mkr(self.mcd.mkr, self.keeper_address, Wad.from_number(50000))
+        mint_mkr(self.mcd.mkr, self.other_address, Wad.from_number(50000))
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
         # given
@@ -287,7 +283,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         model_factory.create_model.assert_not_called()
 
-    @pytest.mark.skip("Needs updating")
     def test_should_not_do_anything_if_no_output_from_model(self, kick):
         # given
         previous_block_number = self.web3.eth.blockNumber
@@ -300,144 +295,173 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.blockNumber == previous_block_number
 
-    @pytest.mark.skip("Needs updating")
     def test_should_make_initial_bid(self):
         # given
         kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
-        self.simulate_model_output(model=model, price=Wad.from_number(10.0))
+        simulate_model_output(model=model, price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
         auction = self.flapper.bids(kick)
-        assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
-        assert self.dai.balance_of(self.keeper_address) == Wad(0)
+        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(10.0), 2)
 
-    @pytest.mark.skip("Needs updating")
     def test_should_bid_even_if_there_is_already_a_bidder(self):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        kick = self.flapper.kicks()
+        (model, model_factory) = models(self.keeper, kick)
         # and
-        self.flapper.tend(1, Wad.from_number(200), Wad.from_number(16)).transact(from_address=self.other_address)
-        assert self.flapper.bids(1).bid == Wad.from_number(16)
+        auction = self.flapper.bids(kick)
+        self.flapper.tend(kick, auction.lot, Wad.from_number(16)).transact(from_address=self.other_address)
+        assert self.flapper.bids(kick).bid == Wad.from_number(16)
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0))
+        print(f'lot={str(auction.lot)}, auction={self.flapper.bids(kick)}')
+        simulate_model_output(model=model, price=Wad.from_number(0.0000005))
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.flapper.bids(1)
-        assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
-        assert self.dai.balance_of(self.keeper_address) == Wad(0)
+        auction = self.flapper.bids(kick)
+        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(0.0000005), 2)
 
-    @pytest.mark.skip("Needs updating")
     def test_should_overbid_itself_if_model_has_updated_the_price(self):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        kick = self.flapper.kicks()
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0))
+        first_bid = Wad.from_number(0.0000004)
+        simulate_model_output(model=model, price=first_bid)
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flapper.bids(1).bid == Wad.from_number(20.0)
+        assert self.flapper.bids(kick).bid == Wad(lot / Rad(first_bid))
 
         # when
-        self.simulate_model_output(price=Wad.from_number(5.0))
+        second_bid = Wad.from_number(0.0000003)
+        simulate_model_output(model=model, price=second_bid)
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flapper.bids(1).bid == Wad.from_number(40.0)
+        assert self.flapper.bids(kick).bid == Wad(lot / Rad(second_bid))
 
-    @pytest.mark.skip("Needs updating")
-    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, kick):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=10)
+        simulate_model_output(model=model, price=Wad.from_number(10.0), gas_price=10)
         # and
         self.start_ignoring_transactions()
         # and
         self.keeper.check_all_auctions()
-        # and
-        time.sleep(5)
+        self.keeper.check_for_bids()
         # and
         self.end_ignoring_transactions()
         # and
-        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=15)
+        simulate_model_output(model=model, price=Wad.from_number(10.0), gas_price=15)
         # and
-        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flapper.bids(1).bid == Wad.from_number(20.0)
+        assert self.flapper.bids(kick).bid == Wad(lot) / Wad.from_number(10.0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    @pytest.mark.skip("Needs updating")
-    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    @pytest.mark.skip("Can't get this working; the gasPrice isn't updating as expected")
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, kick):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
+        print(f'bid before test={str(self.flapper.bids(kick).bid)}')
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=10)
+        simulate_model_output(model=model, price=Wad.from_number(9.0), gas_price=10)
         # and
         self.start_ignoring_transactions()
         # and
         self.keeper.check_all_auctions()
-        # and
-        time.sleep(5)
+        self.keeper.check_for_bids()
         # and
         self.end_ignoring_transactions()
         # and
-        self.simulate_model_output(price=Wad.from_number(5.0), gas_price=15)
+        print(f'bid before increasing price={str(self.flapper.bids(kick).bid)}')
+        simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flapper.bids(1).bid == Wad.from_number(40.0)
+        print(f'bid after test={str(self.flapper.bids(kick).bid)}')
+        assert round(self.flapper.bids(kick).bid, 2) == round(Wad(lot / Rad.from_number(8.0)), 2)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    @pytest.mark.skip("Needs updating")
-    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, kick):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=10)
+        simulate_model_output(model=model, price=Wad.from_number(10.0), gas_price=10)
         # and
         self.start_ignoring_transactions()
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         # and
-        time.sleep(5)
+        time.sleep(1)
         # and
         self.end_ignoring_transactions()
         # and
-        self.simulate_model_output(price=Wad.from_number(8.0), gas_price=15)
+        simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flapper.bids(1).bid == Wad.from_number(25.0)
+        assert self.flapper.bids(kick).bid == Wad(lot) / Wad.from_number(8.0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    @pytest.mark.skip("Needs updating")
-    def test_should_not_bid_on_rounding_errors_with_small_amounts(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_not_bid_on_rounding_errors_with_small_amounts(self, kick):
         # given
-        self.flapper.kick(self.gal_address, Wad(20), Wad(1)).transact(from_address=self.gal_address)
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
 
         # when
-        self.simulate_model_output(price=Wad.from_number(9.95))
+        price = Wad.from_number(9.0)-Wad(5)
+        simulate_model_output(model=model, price=price)
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.flapper.bids(1).bid == Wad(2)
+        assert self.flapper.bids(kick).bid == Wad(lot) / Wad(price)
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -447,67 +471,71 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip("Needs updating")
     def test_should_deal_when_we_won_the_auction(self):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        kick = self.flapper.kicks()
+        (model, model_factory) = models(self.keeper, kick)
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0))
+        simulate_model_output(model=model, price=Wad.from_number(8.0))
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        auction = self.flapper.bids(kick)
+        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(8.0), 2)
+        dai_before = self.mcd.vat.dai(self.keeper_address)
+
+        # when
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
+        dai_after = self.mcd.vat.dai(self.keeper_address)
         # then
-        auction = self.flapper.bids(1)
-        assert round(auction.lot / auction.bid, 2) == round(Wad.from_number(10.0), 2)
-        assert self.dai.balance_of(self.keeper_address) == Wad(0)
+        assert dai_before < dai_after
 
-        # when
-        time_travel_by(self.web3, self.flapper.ttl() + 5)
-        # and
-        self.keeper.check_all_auctions()
-        wait_for_other_threads()
-        # then
-        assert self.dai.balance_of(self.keeper_address) > Wad(0)
-
-    @pytest.mark.skip("Needs updating")
-    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self):
+    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self, kick):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
         # and
-        self.flapper.tend(1, Wad.from_number(200), Wad.from_number(16)).transact(from_address=self.other_address)
-        assert self.flapper.bids(1).bid == Wad.from_number(16)
+        assert self.flapper.tend(kick, lot, Wad.from_number(16)).transact(from_address=self.other_address)
+        assert self.flapper.bids(kick).bid == Wad.from_number(16)
 
         # when
-        time_travel_by(self.web3, self.flapper.ttl() + 5)
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        assert self.dai.balance_of(self.other_address) == Wad(0)
+        assert self.flapper.bids(kick).bid == Wad.from_number(16)
 
-    @pytest.mark.skip("Needs updating")
-    def test_should_obey_gas_price_provided_by_the_model(self):
+    def test_should_obey_gas_price_provided_by_the_model(self, kick):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        (model, model_factory) = models(self.keeper, kick)
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0), gas_price=175000)
+        simulate_model_output(model=model, price=Wad.from_number(10.0), gas_price=175000)
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    @pytest.mark.skip("Needs updating")
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self):
         # given
-        self.flapper.kick(self.gal_address, Wad.from_number(200), Wad.from_number(10)).transact(from_address=self.gal_address)
+        kick = self.flapper.kicks()
+        (model, model_factory) = models(self.keeper, kick)
 
         # when
-        self.simulate_model_output(price=Wad.from_number(10.0))
+        simulate_model_output(model=model, price=Wad.from_number(10.0))
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == self.web3.eth.gasPrice
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.web3.eth.gasPrice
