@@ -30,7 +30,6 @@ from pymaker.feed import DSValue
 from pymaker.keys import register_keys
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken, DSToken
-from tests.helper import args
 from typing import Optional
 
 
@@ -156,6 +155,29 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     return dart
 
 
+def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(c, Collateral)
+    assert isinstance(usr, Address)
+    assert isinstance(amount, Wad)
+    assert amount > Wad(0)
+
+    # Determine how much collateral is needed (for eth, 1 or 2 should suffice for these tests)
+    rate = mcd.vat.ilk(c.ilk.name).rate
+    collateral_price = get_collateral_price(c)
+    assert rate >= Ray.from_number(1)
+    assert isinstance(collateral_price, Wad)
+    # FIXME: Figure out why this is too low without the coefficient.
+    collateral_required = ((amount / collateral_price) * Wad(rate) * Wad.from_number(2))
+
+    wrap_eth(mcd, usr, collateral_required)
+    c.approve(usr)
+    assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
+    simulate_frob(mcd, c, usr, collateral_required, amount)
+    assert mcd.vat.frob(c.ilk, usr, collateral_required, amount).transact(from_address=usr)
+    assert mcd.vat.urn(c.ilk, usr).art >= Wad(amount)
+
+
 def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, dink: Wad, dart: Wad):
     assert isinstance(mcd, DssDeployment)
     assert isinstance(collateral, Collateral)
@@ -260,5 +282,4 @@ def models(keeper: AuctionKeeper, id: int):
 
 def simulate_model_output(model: object, price: Wad, gas_price: Optional[int] = None):
     assert (isinstance(price, Wad))
-
     model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))

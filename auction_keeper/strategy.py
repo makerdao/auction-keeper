@@ -163,7 +163,7 @@ class FlopperStrategy(Strategy):
         self.beg = flopper.beg()
 
     def approve(self):
-        self.flopper.approve(hope_directly())
+        self.flopper.approve(self.flopper.vat(), hope_directly())
 
     def kicks(self) -> int:
         return self.flopper.kicks()
@@ -187,17 +187,17 @@ class FlopperStrategy(Strategy):
                       era=era(self.flopper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
+                      price=Wad(bid.bid / Rad(bid.lot)) if bid.lot != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
         bid = self.flopper.bids(id)
-        our_lot = bid.bid / price
+        our_lot = bid.bid / Rad(price)
 
-        if our_lot * self.beg <= bid.lot and our_lot < bid.lot:
-            return price, self.flopper.dent(id, our_lot, bid.bid)
+        if Ray(our_lot) * self.beg <= Ray(bid.lot) and our_lot < Rad(bid.lot):
+            return price, self.flopper.dent(id, Wad(our_lot), bid.bid)
 
         else:
             return None, None

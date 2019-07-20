@@ -73,6 +73,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.gal_address = gal_address(self.web3)
         self.mcd = mcd(self.web3, our_address, keeper_address)
         self.flapper = self.mcd.flap
+        self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--mkr {self.mcd.mkr.address} "
@@ -80,10 +81,11 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
-        self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
         mint_mkr(self.mcd.mkr, self.keeper_address, Wad.from_number(50000))
         mint_mkr(self.mcd.mkr, self.other_address, Wad.from_number(50000))
+
+    # TODO: Add test which creates a surplus and confirms the keeper will automatically kick.
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
         # given

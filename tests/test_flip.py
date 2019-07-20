@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018-2019 reverendus, bargst, EdNoepel
+# Copyright (C) 2018-2019 reverendus, bargst
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -28,7 +28,7 @@ from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Urn
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import web3, wrap_eth, simulate_frob, create_unsafe_cdp, get_collateral_price, \
+from tests.conftest import web3, reserve_dai, create_unsafe_cdp, \
                            keeper_address, models, simulate_model_output
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
@@ -85,29 +85,6 @@ def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     bites = mcd.cat.past_bite(1)
     assert len(bites) == 1
     return c.flipper.kicks()
-
-
-def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
-    assert isinstance(mcd, DssDeployment)
-    assert isinstance(c, Collateral)
-    assert isinstance(usr, Address)
-    assert isinstance(amount, Wad)
-    assert amount > Wad(0)
-
-    # Determine how much collateral is needed (for eth, 1 or 2 should suffice for these tests)
-    rate = mcd.vat.ilk(c.ilk.name).rate
-    collateral_price = get_collateral_price(c)
-    assert rate >= Ray.from_number(1)
-    assert isinstance(collateral_price, Wad)
-    # FIXME: Figure out why this is too low without the coefficient.
-    collateral_required = ((amount / collateral_price) * Wad(rate) * Wad.from_number(2))
-
-    wrap_eth(mcd, usr, collateral_required)
-    c.approve(usr)
-    assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
-    simulate_frob(mcd, c, usr, collateral_required, amount)
-    assert mcd.vat.frob(c.ilk, usr, collateral_required, amount).transact(from_address=usr)
-    assert mcd.vat.urn(c.ilk, usr).art >= Wad(amount)
 
 
 @pytest.mark.timeout(350)
