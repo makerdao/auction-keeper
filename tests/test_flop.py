@@ -42,26 +42,27 @@ wad_maxvalue = Wad(1157920892373161954235709850086879078532699846656405640394575
 
 
 @pytest.fixture()
-def kick(web3: Web3, mcd: DssDeployment, c: Collateral, gal_address, other_address) -> int:
+def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
     # Bite gal CDP
+    c = mcd.collaterals[1]
     unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(2), other_address)
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
     flip_kick = c.flipper.kicks()
     last_bite = mcd.cat.past_bite(1)[0]
 
     # Generate some Dai, bid on and win the flip auction without covering all the debt
-    wrap_eth(mcd, other_address, Wad.from_number(1))
-    c.approve(other_address)
-    assert c.adapter.join(other_address, Wad.from_number(1)).transact(from_address=other_address)
-    assert mcd.vat.frob(c.ilk, other_address, dink=Wad.from_number(1), dart=Wad(0)).transact(
-        from_address=other_address)
-    assert mcd.vat.frob(c.ilk, other_address, dink=Wad(0), dart=max_dart(mcd, c, other_address)).transact(
-        from_address=other_address)
-    c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=other_address)
+    wrap_eth(mcd, gal_address, Wad.from_number(1))
+    c.approve(gal_address)
+    assert c.adapter.join(gal_address, Wad.from_number(1)).transact(from_address=gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, dink=Wad.from_number(1), dart=Wad(0)).transact(
+        from_address=gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, dink=Wad(0), dart=max_dart(mcd, c, gal_address)).transact(
+        from_address=gal_address)
+    c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=gal_address)
     current_bid = c.flipper.bids(flip_kick)
     bid = Rad(237)
-    assert mcd.vat.dai(other_address) > bid
-    assert c.flipper.tend(flip_kick, current_bid.lot, bid).transact(from_address=other_address)
+    assert mcd.vat.dai(gal_address) > bid
+    assert c.flipper.tend(flip_kick, current_bid.lot, bid).transact(from_address=gal_address)
     time_travel_by(web3, c.flipper.ttl()+1)
     assert c.flipper.deal(flip_kick).transact()
 
@@ -94,6 +95,9 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.approve()
 
         reserve_dai(self.mcd, self.mcd.collaterals[0], self.keeper_address, Wad.from_number(100.00000))
+        reserve_dai(self.mcd, self.mcd.collaterals[0], self.other_address, Wad.from_number(100.00000))
+
+        self.sump = self.mcd.vow.sump()
 
     # TODO: Add test which creates debt and confirms the keeper will automatically kick.
 
@@ -125,6 +129,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.tic == 0
         assert status.price == Wad(0)
 
+    #@pytest.mark.skip("meddling with amounts")
     def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
         kick = self.flopper.kicks()
@@ -165,10 +170,11 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == price
 
-    @pytest.mark.skip()
+    #@pytest.mark.skip("meddling with amounts")
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
         # given
-        self.flopper.kick(self.gal_address, Wad.from_number(2), Wad.from_number(10)).transact()
+        kick = self.flopper.kicks()
+        (model, model_factory) = models(self.keeper, kick)
 
         # when
         self.keeper.check_all_auctions()
@@ -177,27 +183,29 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert model.send_status.call_count == 1
 
         # when
-        self.flopper.approve(directly(from_address=self.other_address))
-        self.flopper.dent(1, Wad.from_number(1), Wad.from_number(10)).transact(from_address=self.other_address)
+        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.other_address)
+        lot = Wad.from_number(0.0000001)
+        assert self.flopper.dent(kick, lot, self.sump).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
         assert model.send_status.call_count > 1
         # and
-        assert model.send_status.call_args[0][0].id == 1
-        assert model.send_status.call_args[0][0].flipper is None
-        assert model.send_status.call_args[0][0].flapper is None
-        assert model.send_status.call_args[0][0].flopper == self.flopper.address
-        assert model.send_status.call_args[0][0].bid == Wad.from_number(10)
-        assert model.send_status.call_args[0][0].lot == Wad.from_number(1)
-        assert model.send_status.call_args[0][0].tab is None
-        assert model.send_status.call_args[0][0].beg == Ray.from_number(1.05)
-        assert model.send_status.call_args[0][0].guy == self.other_address
-        assert model.send_status.call_args[0][0].era > 0
-        assert model.send_status.call_args[0][0].end > model.send_status.call_args[0][0].era + 3600
-        assert model.send_status.call_args[0][0].tic > model.send_status.call_args[0][0].era + 3600
-        assert model.send_status.call_args[0][0].price == Wad.from_number(10.0)
+        status = model.send_status.call_args[0][0]
+        assert status.id == 1
+        assert status.flipper is None
+        assert status.flapper is None
+        assert status.flopper == self.flopper.address
+        assert status.bid == self.sump
+        assert status.lot == lot
+        assert status.tab is None
+        assert status.beg == Ray.from_number(1.05)
+        assert status.guy == self.other_address
+        assert status.era > 0
+        assert status.end > status.era
+        assert status.tic > status.era
+        assert status.price == Wad(self.sump / Rad(lot))
 
     @pytest.mark.skip()
     def test_should_terminate_model_if_auction_expired_due_to_tau(self):

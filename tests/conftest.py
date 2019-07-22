@@ -155,7 +155,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     return dart
 
 
-def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
+def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, extra_collateral=Wad.from_number(1)):
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(usr, Address)
@@ -163,12 +163,12 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
     assert amount > Wad(0)
 
     # Determine how much collateral is needed (for eth, 1 or 2 should suffice for these tests)
-    rate = mcd.vat.ilk(c.ilk.name).rate
-    collateral_price = get_collateral_price(c)
+    ilk = mcd.vat.ilk(c.ilk.name)
+    rate = ilk.rate  # Ray
+    spot = ilk.spot  # Ray
     assert rate >= Ray.from_number(1)
-    assert isinstance(collateral_price, Wad)
-    # FIXME: Figure out why this is too low without the coefficient.
-    collateral_required = ((amount / collateral_price) * Wad(rate) * Wad.from_number(2))
+    collateral_required = Wad((Ray(amount) / spot) * rate) * extra_collateral + Wad(1)
+    print(f'collateral_required for {str(amount)} dai is {str(collateral_required)}')
 
     wrap_eth(mcd, usr, collateral_required)
     c.approve(usr)
