@@ -4,32 +4,36 @@
 [![codecov](https://codecov.io/gh/makerdao/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/makerdao/auction-keeper)
 
 The _DAI Stablecoin System_ incentivizes external agents, called _keepers_,
-to automate certain operations around the Ethereum blockchain.
+to automate certain operations around the Ethereum blockchain. Check out the 
+<a href="https://youtu.be/wevzK3ADEjo?t=733">July 23rd, 2019 community meeting</a> for some more information about the 
+auctions and the purpose of this component.
 
 `auction-keeper` can participate in `flip` (collateral sale), `flap` (MKR buy-and-burn)
 and `flop` (MKR minting) auctions. Its unique feature is the ability to plug in external
 _bidding models_, which tell the keeper when and how high to bid. This keeper can be safely
-left running in background. The moment it notices a new auction it will spawn a new instance
+left running in background. The moment it notices or starts a new auction it will spawn a new instance
 of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
 be automatically terminated by the keeper the moment the auction expires.  The keeper also
 automatically `deal`s expired auctions if it's us who won them.
 
-Bear in mind that this keeper is still **early work in progress**. Many of the things described
-here may still change.
+Bear in mind that this keeper is still a **work in progress**. Status as of 2019.07.24:
+ * Supports DSS 0.2.8
+ * Unit testing nearing completion
+ * Testchain integration testing not started
+ * Kovan integration testing not started
 
 <https://chat.makerdao.com/channel/keeper>
 
 
 ## Overall architecture
 
-`auction-keeper` is responsible for directly interacting with `Flipper`, `Flapper` and `Flopper` auction contracts
-deployed to the Ethereum blockchain. It it responsible for querying and monitoring the current auction
-state, and also for sending all Ethereum transactions. At the same time all all decision making
-is delegated to _bidding models_.
+`auction-keeper` directly interacts with `Flipper`, `Flapper` and `Flopper` auction contracts
+deployed to the Ethereum blockchain. Decisions which involve pricing are delegated to _bidding models_.
 
 _Bidding models_ are simple processes, external to the main `auction-keeper` process. As they do not have to know
 anything about blockchain and smart contracts, they can be implemented in basically any programming language.
-The only thing they need to do is to read and write JSON documents they exchange with `auction-keeper`.
+The only thing they need to do is to read and write JSON documents they exchange with `auction-keeper`. The simplest 
+example of a bidding model is a shell script which echoes a fixed price.
 
 
 ### Monitoring ongoing auctions and discovering new ones
@@ -158,6 +162,7 @@ optional arguments:
   --flipper FLIPPER     Ethereum address of the Flipper contract
   --flapper FLAPPER     Ethereum address of the Flapper contract
   --flopper FLOPPER     Ethereum address of the Flopper contract
+  --mkr MKR             Address of the MKR governance token, required for flap auctions
   --model MODEL         Commandline to use in order to start the bidding model
   --debug               Enable debug output
 ```

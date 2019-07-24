@@ -60,7 +60,7 @@ class AuctionKeeper:
 
         parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
         parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
-        parser.add_argument('--mkr', type=str, help="Address of the MKR governance token")
+        parser.add_argument('--mkr', type=str, help="Address of the MKR governance token, required for flap auctions")
 
         parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
 
