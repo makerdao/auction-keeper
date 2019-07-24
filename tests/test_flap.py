@@ -461,6 +461,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count

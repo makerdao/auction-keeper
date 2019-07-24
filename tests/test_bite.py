@@ -15,21 +15,23 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import pytest
-
 from auction_keeper.main import AuctionKeeper
-from pymaker.dss import Urn, Collateral
 from pymaker.numeric import Wad, Ray, Rad
 
-from tests.conftest import create_unsafe_cdp, create_keeper
-from tests.helper import TransactionIgnoringTest, wait_for_other_threads
+from tests.conftest import create_unsafe_cdp
+from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
 class TestAuctionKeeperBite(TransactionIgnoringTest):
-    def test_bite_and_flip(self, mcd, gal_address):
+    def test_bite_and_flip(self, web3, mcd, gal_address, keeper_address):
         # given
         c = mcd.collaterals[0]
-        keeper = create_keeper(mcd, c)
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--flipper {c.flipper.address} "
+                                         f"--cat {mcd.cat.address} "
+                                         f"--ilk {c.ilk.name} "
+                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
+        keeper.approve()
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1.2), gal_address)
         assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
 
@@ -39,6 +41,9 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
 
         # then
         urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
-        assert urn.art == Wad(0)  # unsafe cdp has been biten
+        assert urn.art == Wad(0)  # unsafe cdp has been bitten
         assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
         assert c.flipper.kicks() == 1  # One auction started
+
+        # cleanup
+        time_travel_by(web3, c.flipper.tau() + 1)

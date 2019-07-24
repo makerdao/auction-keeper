@@ -137,7 +137,6 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
 
     # change in debt = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
     dart = urn.ink * ilk.spot - urn.art
-    print(f'max_dart: ilk.spot is {ilk.spot}, dart is {dart}')
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
