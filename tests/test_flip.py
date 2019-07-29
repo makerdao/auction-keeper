@@ -26,9 +26,9 @@ from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral, Urn
+from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import web3, wrap_eth, mcd, reserve_dai, create_unsafe_cdp, \
+from tests.conftest import web3,  mcd, reserve_dai, create_unsafe_cdp, bite, flog_and_heal, \
                            keeper_address, models, simulate_model_output
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
@@ -39,6 +39,11 @@ tend_small_lot = Wad(2000)
 
 @pytest.fixture()
 def kick(mcd, c: Collateral, gal_address) -> int:
+    # Ensure we start with a clean urn
+    urn = mcd.vat.urn(c.ilk, gal_address)
+    assert urn.ink == Wad(0)
+    assert urn.art == Wad(0)
+
     # Bite gal CDP
     unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
     return bite(mcd, c, unsafe_cdp)
@@ -74,17 +79,6 @@ def keeper(web3, c: Collateral, keeper_address: Address, mcd):
 @pytest.fixture()
 def other_keeper(web3, c: Collateral, other_address: Address, mcd):
     return create_keeper(mcd, c, other_address)
-
-
-def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
-    assert isinstance(mcd, DssDeployment)
-    assert isinstance(c, Collateral)
-    assert isinstance(unsafe_cdp, Urn)
-
-    assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
-    bites = mcd.cat.past_bite(1)
-    assert len(bites) == 1
-    return c.flipper.kicks()
 
 
 @pytest.mark.timeout(350)
@@ -203,8 +197,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     def test_should_provide_model_with_updated_info_after_our_own_bid(self, mcd, c, gal_address, keeper):
         # given
-        (model, model_factory) = models(keeper, 1)
         flipper = c.flipper
+        kick = flipper.kicks()
+        (model, model_factory) = models(keeper, kick)
 
         # when
         keeper.check_all_auctions()
@@ -214,7 +209,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert model.send_status.call_count == 1
 
         # when
-        initial_bid = flipper.bids(model.id)
+        initial_bid = flipper.bids(kick)
         our_price = Wad.from_number(30)
         our_bid = our_price * initial_bid.lot
         reserve_dai(mcd, c, self.keeper_address, our_bid)
@@ -231,7 +226,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert model.send_status.call_count > 1
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == model.id
+        assert status.id == kick
         assert status.flipper == flipper.address
         assert status.flapper is None
         assert status.flopper is None
@@ -247,8 +242,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, mcd, c, other_address, keeper):
         # given
-        (model, model_factory) = models(keeper, 1)
         flipper = c.flipper
+        kick = flipper.kicks()
+        (model, model_factory) = models(keeper, kick)
 
         # when
         keeper.check_all_auctions()
@@ -258,7 +254,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
         # when
         flipper.approve(flipper.vat(), approval_function=hope_directly(), from_address=other_address)
-        previous_bid = flipper.bids(model.id)
+        previous_bid = flipper.bids(kick)
         new_bid_amount = Rad.from_number(80)
         self.tend_with_dai(mcd, c, flipper, model.id, other_address, new_bid_amount)
         # and
@@ -268,7 +264,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert model.send_status.call_count > 1
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == model.id
+        assert status.id == kick
         assert status.flipper == flipper.address
         assert status.flapper is None
         assert status.flopper is None
@@ -284,8 +280,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     def test_should_terminate_model_if_auction_expired_due_to_tau(self, c, keeper):
         # given
-        (model, model_factory) = models(keeper, 1)
         flipper = c.flipper
+        kick = flipper.kicks()
+        (model, model_factory) = models(keeper, kick)
 
         # when
         keeper.check_all_auctions()
@@ -304,7 +301,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
         # cleanup
-        assert flipper.deal(model.id).transact()
+        assert flipper.deal(kick).transact()
 
     def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, mcd, c, kick,
                                                                                            other_address, keeper):
@@ -805,3 +802,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # cleanup
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
+
+    @classmethod
+    def teardown_class(cls):
+        flog_and_heal(web3(), mcd(web3()), past_blocks=1200)

@@ -16,9 +16,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from auction_keeper.main import AuctionKeeper
+from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
 
-from tests.conftest import create_unsafe_cdp
+from tests.conftest import create_unsafe_cdp, reserve_dai, web3, mcd, keeper_address
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -45,5 +46,31 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
         assert c.flipper.kicks() == 1  # One auction started
 
-        # cleanup
-        time_travel_by(web3, c.flipper.tau() + 1)
+    @classmethod
+    def teardown_class(cls):
+        cls.eliminate_queued_debt(web3(), mcd(web3()), keeper_address(web3()))
+
+    @classmethod
+    def eliminate_queued_debt(cls, web3, mcd, keeper_address):
+        # given the existence of queued debt
+        assert mcd.vat.sin(mcd.vow.address) > Rad(0)
+        c = mcd.collaterals[0]
+        kick = c.flipper.kicks()
+        last_bite = mcd.cat.past_bite(1)[0]
+
+        # when a bid covers the CDP debt
+        auction = c.flipper.bids(kick)
+        reserve_dai(mcd, c, keeper_address, Wad(auction.tab) + Wad(1))
+        c.flipper.approve(c.flipper.vat(), approval_function=hope_directly(), from_address=keeper_address)
+        c.approve(keeper_address)
+        assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=keeper_address)
+        time_travel_by(web3, c.flipper.ttl() + 1)
+        assert c.flipper.deal(kick).transact()
+
+        # when a bid covers the vow debt
+        assert mcd.vow.sin_of(last_bite.era(web3)) > Rad(0)
+        assert mcd.vow.flog(last_bite.era(web3)).transact(from_address=keeper_address)
+        assert mcd.vow.heal(mcd.vat.sin(mcd.vow.address)).transact()
+
+        # then ensure queued debt has been auctioned off
+        assert mcd.vat.sin(mcd.vow.address) == Rad(0)

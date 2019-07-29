@@ -97,7 +97,7 @@ def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
 
 
 @pytest.fixture(scope="session")
-def mcd(web3, our_address, keeper_address):
+def mcd(web3):
     return DssDeployment.from_json(web3=web3, conf=open("lib/pymaker/tests/config/addresses.json", "r").read())
 
 
@@ -135,8 +135,11 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     urn = mcd.vat.urn(collateral.ilk, our_address)
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
-    # change in debt = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
-    dart = urn.ink * ilk.spot - urn.art
+    # change in art = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
+    dart = urn.ink * ilk.spot - Wad(Ray(urn.art) * ilk.rate)
+
+    # change in debt must also take the rate into account
+    dart = dart * Wad(Ray.from_number(1) / ilk.rate)
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
@@ -187,22 +190,19 @@ def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, 
     urn = mcd.vat.urn(collateral.ilk, address)
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
-    print(f"[urn.ink={urn.ink}, urn.art={urn.art}] [ilk.art={ilk.art}, ilk.line={ilk.line}] [dink={dink}, dart={dart}]")
-    print(f"[debt={str(mcd.vat.debt())} line={str(mcd.vat.line())}]")
+    print(f"[urn.ink={urn.ink}, urn.art={urn.art}] [ilk.rate={ilk.rate} ilk.art={ilk.art}, ilk.line={ilk.line}]")
+    print(f"[dink={dink}, dart={dart}] [debt={str(mcd.vat.debt())} line={str(mcd.vat.line())}]")
     ink = urn.ink + dink
     art = urn.art + dart
     ilk_art = ilk.art + dart
     rate = ilk.rate
 
-    gem = mcd.vat.gem(collateral.ilk, urn.address) - dink
-    dai = mcd.vat.dai(urn.address) + Rad(rate * dart)
     debt = mcd.vat.debt() + Rad(rate * dart)
 
     # stablecoin debt does not increase
     cool = dart <= Wad(0)
     # collateral balance does not decrease
     firm = dink >= Wad(0)
-    nice = cool and firm
 
     # CDP remains under both collateral and total debt ceilings
     under_collateral_debt_ceiling = Rad(ilk_art * rate) <= ilk.line
@@ -216,7 +216,7 @@ def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, 
     safe = (urn.art * rate) <= ink * ilk.spot
 
     assert calm or cool
-    assert nice or safe
+    assert (cool and firm) or safe
 
     assert Rad(ilk_art * rate) >= ilk.dust or (art == Wad(0))
     assert rate != Ray(0)
@@ -242,15 +242,17 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
     # Ensure CDP isn't already unsafe (if so, this shouldn't be called)
     urn = mcd.vat.urn(c.ilk, gal_address)
     assert is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
-    assert urn.ink == Wad(0)
-    assert urn.art == Wad(0)
 
-    # Add collateral to gal CDP
-    collateral_amount = Wad.from_number(collateral_amount)
-    wrap_eth(mcd, gal_address, collateral_amount)
+    # Add collateral to gal CDP if necessary
     c.approve(gal_address)
-    assert c.adapter.join(gal_address, collateral_amount).transact(from_address=gal_address)
-    assert mcd.vat.frob(c.ilk, gal_address, collateral_amount, Wad(0)).transact(from_address=gal_address)
+    dink = collateral_amount - urn.ink
+    if dink > Wad(0):
+        balance = c.gem.balance_of(gal_address)
+        if balance < dink:
+            wrap_eth(mcd, gal_address, dink - balance)
+            assert c.adapter.join(gal_address, dink - balance).transact(from_address=gal_address)
+        simulate_frob(mcd, c, gal_address, dink, Wad(0))
+        assert mcd.vat.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
 
     # Put gal CDP at max possible debt
     dart = max_dart(mcd, c, gal_address) - Wad(1)
@@ -265,6 +267,38 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
     urn = mcd.vat.urn(c.ilk, gal_address)
     assert not is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
     return urn
+
+
+def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(c, Collateral)
+    assert isinstance(unsafe_cdp, Urn)
+
+    assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
+    bites = mcd.cat.past_bite(1)
+    assert len(bites) == 1
+    return c.flipper.kicks()
+
+
+def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True):
+    # Raise debt from the queue (note that vow.wait is 0 on our testchain)
+    bites = mcd.cat.past_bite(past_blocks)
+    for bite in bites:
+        era_bite = bite.era(web3)
+        print(f'flogging era={era_bite} from block={bite.raw["blockNumber"]} with sin={str(mcd.vow.sin_of(era_bite))}')
+        assert mcd.vow.flog(era_bite).transact()
+        assert mcd.vow.sin_of(era_bite) == Rad(0)
+
+    # Ensure there is no on-auction debt which a previous test failed to clean up
+    if kiss and mcd.vow.ash() > Rad.from_number(0):
+        assert mcd.vow.kiss(mcd.vow.ash()).transact()
+        assert mcd.vow.ash() == Rad.from_number(0)
+
+    # Cancel out surplus and debt
+    dai_vow = mcd.vat.dai(mcd.vow.address)
+    woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
+    assert dai_vow <= woe
+    assert mcd.vow.heal(dai_vow).transact()
 
 
 def models(keeper: AuctionKeeper, id: int):

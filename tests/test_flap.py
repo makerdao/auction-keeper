@@ -22,12 +22,13 @@ import pytest
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from pymaker import Address
-from pymaker.approval import directly
+from pymaker.approval import directly, hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Urn
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import web3, wrap_eth, mint_mkr, mcd, our_address, keeper_address, other_address, gal_address, \
-    simulate_model_output, models
+from tests.conftest import web3, wrap_eth, mint_mkr, mcd, c, reserve_dai, set_collateral_price, \
+    our_address, keeper_address, other_address, gal_address, \
+    simulate_frob, max_dart, is_cdp_safe, bite, simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
@@ -35,6 +36,9 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
+
+    # Ensure there is no debt which a previous test failed to clean up
+    assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
     collateral_amount = Wad.from_number(1)
     wrap_eth(mcd, gal_address, collateral_amount)
@@ -45,6 +49,8 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
         from_address=gal_address)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
+    print(f"dai(vow)={str(mcd.vat.dai(mcd.vow.address))} >? sin(vow)={str(mcd.vat.sin(mcd.vow.address))} " 
+          f"+ vow.bump={str(mcd.vow.bump())} + vow.hump={str(mcd.vow.hump())}")
     assert mcd.vat.dai(mcd.vow.address) > mcd.vat.sin(mcd.vow.address) + mcd.vow.bump() + mcd.vow.hump()
     return mcd.vat.urn(c.ilk, gal_address)
 
@@ -71,7 +77,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper_address = keeper_address(self.web3)
         self.other_address = other_address(self.web3)
         self.gal_address = gal_address(self.web3)
-        self.mcd = mcd(self.web3, our_address, keeper_address)
+        self.mcd = mcd(self.web3)
         self.flapper = self.mcd.flap
         self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
@@ -534,3 +540,76 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.web3.eth.gasPrice
+
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+
+    @classmethod
+    def teardown_class(cls):
+        cls.mcd = mcd(web3())
+        # One of these methods should be able to clear up the gal's CDP.
+        #cls.clean_up_urn(cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
+        cls.liquidate_urn(web3(), cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
+
+    @classmethod
+    def clean_up_urn(cls, mcd, c, gal_address, our_address):
+        urn = mcd.vat.urn(c.ilk, gal_address)
+        print(f'urn before cleanup={urn}')
+        tab = Ray(urn.art) * mcd.vat.ilk(c.ilk.name).rate
+        print(f'art={str(urn.art)}, tab={str(tab)}')
+
+        # Reserve dai in another account to repay stability fees
+        c.approve(our_address)
+        mcd.dai_adapter.approve(hope_directly(from_address=our_address), mcd.vat.address)
+        fees = Wad(tab) - urn.art + Wad(1)
+        reserve_dai(mcd, c, our_address, fees * 2)
+        our_urn = mcd.vat.urn(c.ilk, our_address)
+        assert our_urn.art > fees
+        assert mcd.dai_adapter.exit(our_address, fees).transact(from_address=our_address)
+        mcd.dai.approve(gal_address, fees).transact(from_address=our_address)
+        assert mcd.dai.transfer_from(our_address, gal_address, fees).transact(from_address=our_address)
+
+        mcd.approve_dai(gal_address)
+        mcd.dai_adapter.approve(hope_directly(from_address=gal_address), mcd.vat.address)
+        c.approve(gal_address)
+        assert mcd.dai.balance_of(gal_address) == fees
+        print(f'balance={str(mcd.dai.balance_of(gal_address))} gal dai={str(mcd.vat.dai(gal_address))}, fees={str(fees)}')
+        # FIXME: bloody join doesn't work
+        assert mcd.dai_adapter.join(gal_address, Wad.from_number(0.1)).transact(from_address=gal_address)
+        assert mcd.vat.frob(c.ilk, gal_address, Wad(0), tab * -1).transact(from_address=gal_address)
+        assert mcd.vat.frob(c.ilk, gal_address, urn.ink * -1, Wad(0)).transact(from_address=gal_address)
+
+        urn = mcd.vat.urn(c.ilk, gal_address)
+        print(f'urn after cleanup={urn}')
+        assert urn.ink == Wad(0)
+        assert urn.art == Wad(0)
+
+    @classmethod
+    def liquidate_urn(cls, web3, mcd, c, gal_address, our_address):
+        # Ensure the CDP isn't safe
+        urn = mcd.vat.urn(c.ilk, gal_address)
+        dart = max_dart(mcd, c, gal_address) - Wad.from_number(1)
+        assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
+        set_collateral_price(mcd, c, Wad.from_number(115))
+        assert not is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
+
+        # Bite and kick off the auction
+        kick = bite(mcd, c, urn)
+        assert kick > 0
+
+        # Bid on and win the auction
+        auction = c.flipper.bids(kick)
+        bid = Wad(auction.tab) + Wad(1)
+        reserve_dai(mcd, c, our_address, bid)
+        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=our_address)
+        assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=our_address)
+        time_travel_by(web3, c.flipper.ttl() + 1)
+        assert c.flipper.deal(kick).transact()
+
+        set_collateral_price(mcd, c, Wad.from_number(230))
+        urn = mcd.vat.urn(c.ilk, gal_address)
+        assert urn.ink == Wad(0)
+        assert urn.art == Wad(0)
+

@@ -26,7 +26,7 @@ from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import web3, reserve_dai, mcd, our_address, keeper_address, other_address, gal_address, \
-    create_unsafe_cdp, simulate_model_output, models
+    create_unsafe_cdp, flog_and_heal, simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
@@ -52,19 +52,21 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
     time_travel_by(web3, c.flipper.ttl()+1)
     assert c.flipper.deal(flip_kick).transact()
 
-    # Raise debt from the queue
-    assert mcd.vow.flog(last_bite.era(web3)).transact(from_address=gal_address)
-    # Cancel out surplus and debt
-    assert bid <= mcd.vat.dai(mcd.vow.address)
-    woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
-    assert bid <= woe
-    assert mcd.vow.heal(mcd.vat.dai(mcd.vow.address)).transact()
+    flog_and_heal(web3, mcd, past_blocks=1200)
 
     # Kick off the flop auction
+    woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
     assert mcd.vow.sump() <= woe
     assert mcd.vat.dai(mcd.vow.address) == Rad(0)
     assert mcd.vow.flop().transact(from_address=gal_address)
     return mcd.flop.kicks()
+
+
+def joysin(mcd) -> str:
+    return f"joy={str(mcd.vat.dai(mcd.vow.address))[:6]}, "\
+        f"sin={str(mcd.vat.sin(mcd.vow.address))[:6]}, Sin={str(mcd.vow.sin())[:6]}, "\
+        f"ash={str(mcd.vow.ash())[:6]}, "\
+        f"woe={str((mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash())[:6]}"
 
 
 @pytest.mark.timeout(450)
@@ -75,7 +77,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper_address = keeper_address(self.web3)
         self.other_address = other_address(self.web3)
         self.gal_address = gal_address(self.web3)
-        self.mcd = mcd(self.web3, our_address, keeper_address)
+        self.mcd = mcd(self.web3)
         self.flopper = self.mcd.flop
         self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.keeper_address)
         self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.other_address)
@@ -304,6 +306,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # given
         kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
+        mkr_before = self.mcd.mkr.balance_of(self.keeper_address)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(575.0))
@@ -314,14 +317,15 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # then
         auction = self.flopper.bids(kick)
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(575.0), 2)
-        assert self.mcd.mkr.balance_of(self.keeper_address) == Wad(0)
+        mkr_after = self.mcd.mkr.balance_of(self.keeper_address)
+        assert mkr_before == mkr_after
 
     def test_should_bid_even_if_there_is_already_a_bidder(self):
         # given
         kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
+        mkr_before = self.mcd.mkr.balance_of(self.keeper_address)
         # and
-        print(f'lot={str(self.flopper.bids(kick).lot)}')
         lot = Wad.from_number(0.000000016)
         assert self.flopper.dent(kick, lot, self.sump).transact(from_address=self.other_address)
         assert self.flopper.bids(kick).lot == lot
@@ -335,7 +339,8 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # then
         auction = self.flopper.bids(kick)
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(825.0), 2)
-        assert self.mcd.mkr.balance_of(self.keeper_address) == Wad(0)
+        mkr_after = self.mcd.mkr.balance_of(self.keeper_address)
+        assert mkr_before == mkr_after
 
     def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
         # given
