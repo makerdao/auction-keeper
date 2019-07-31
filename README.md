@@ -129,6 +129,14 @@ sleep 1000000
 ```
 
 
+### Limitations
+
+* Bidding on collateral or MKR with Dai requires `join`ing Dai to a `vat` rather than merely possessing the tokens. 
+This keeper does not yet offer a facility to `join` or `exit` Dai from the `vat`.
+* This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
+outstanding, the keeper will not request a `yank` to refund the bid.
+
+
 ## Installation
 
 This project uses *Python 3.6.6*.

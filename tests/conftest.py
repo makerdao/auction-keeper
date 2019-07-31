@@ -269,6 +269,29 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
     return urn
 
 
+def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Address) -> Urn:
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(c, Collateral)
+    assert isinstance(gal_address, Address)
+
+    # Ensure there is no debt which a previous test failed to clean up
+    assert mcd.vat.sin(mcd.vow.address) == Rad(0)
+
+    collateral_amount = Wad.from_number(1)
+    wrap_eth(mcd, gal_address, collateral_amount)
+    c.approve(gal_address)
+    assert c.adapter.join(gal_address, collateral_amount).transact(
+        from_address=gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, dink=collateral_amount, dart=Wad.from_number(100)).transact(
+        from_address=gal_address)
+    assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
+    # total surplus > total debt + surplus auction lot size + surplus buffer
+    print(f"dai(vow)={str(mcd.vat.dai(mcd.vow.address))} >? sin(vow)={str(mcd.vat.sin(mcd.vow.address))} " 
+          f"+ vow.bump={str(mcd.vow.bump())} + vow.hump={str(mcd.vow.hump())}")
+    assert mcd.vat.dai(mcd.vow.address) > mcd.vat.sin(mcd.vow.address) + mcd.vow.bump() + mcd.vow.hump()
+    return mcd.vat.urn(c.ilk, gal_address)
+
+
 def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)

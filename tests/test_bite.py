@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import pytest
+
 from auction_keeper.main import AuctionKeeper
 from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
@@ -23,6 +25,7 @@ from tests.conftest import create_unsafe_cdp, reserve_dai, web3, mcd, keeper_add
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
+@pytest.mark.timeout(60)
 class TestAuctionKeeperBite(TransactionIgnoringTest):
     def test_bite_and_flip(self, web3, mcd, gal_address, keeper_address):
         # given

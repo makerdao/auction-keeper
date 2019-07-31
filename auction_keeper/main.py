@@ -23,12 +23,13 @@ import threading
 
 from web3 import Web3, HTTPProvider
 
-from pymaker import Address, Wad
+from pymaker import Address
 from pymaker.auctions import Flopper, Flipper, Flapper
 from pymaker.dss import Ilk, Cat, Vat, Vow
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
+from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSToken
 
 from auction_keeper.gas import UpdatableGasPrice
@@ -185,9 +186,9 @@ class AuctionKeeper:
 
     def check_flap(self):
         # Check if Vow has a surplus of Dai compared to bad debt
-        joy = self.vow.joy()
-        awe = self.vow.awe()
-        mkr = DSToken(self.web3, self.flapper.gem())
+        vat = Vat(self.web3, self.cat.vat())
+        joy = vat.dai(self.vow.address)
+        awe = vat.sin(self.vow.address)
 
         # Check if Vow has Dai in excess
         if joy > awe:
@@ -195,15 +196,15 @@ class AuctionKeeper:
             hump = self.vow.hump()
 
             # Check our balance
-            mkr_balance = mkr.balance_of(self.our_address)
+            mkr_balance = self.mkr.balance_of(self.our_address)
             min_balance = Wad(0)  # TODO: determine minimum balance ...
 
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
             if (joy - awe) >= (bump + hump) and mkr_balance > min_balance:
-                woe = self.vow.woe()
+                woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
                 # Heal the system to bring Woe to 0
-                if woe > Wad(0):
+                if woe > Rad(0):
                     self.vow.heal(woe).transact()
                 self.vow.flap().transact()
 
@@ -212,13 +213,14 @@ class AuctionKeeper:
 
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
-        joy = self.vow.joy()
-        awe = self.vow.awe()
+        vat = Vat(self.web3, self.cat.vat())
+        joy = vat.dai(self.vow.address)
+        awe = vat.sin(self.vow.address)
         vat = Vat(self.web3, self.vow.vat())
 
         # Check if Vow has bad debt in excess
         if joy < awe:
-            woe = self.vow.woe()
+            woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
             sin = self.vow.sin()
             sump = self.vow.sump()
 
@@ -232,26 +234,28 @@ class AuctionKeeper:
 
                 # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
                 ash = self.vow.ash()
-                if ash > Wad(0):
+                if ash > Rad(0):
                     self.vow.kiss(ash).transact()
 
                 # Convert enough sin in woe to have woe >= sump + joy
                 if woe < sump and self.cat is not None:
-                    flog_amount = Wad(0)
                     for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
                         era = bite_event.era(self.web3)
                         sin = self.vow.sin_of(era)
-                        if sin > Wad(0):
+                        if sin > Rad(0):
                             self.vow.flog(era).transact()
 
                             # flog() sin until woe is above sump + joy
-                            if self.vow.woe() - self.vow.joy() >= sump:
+                            joy = vat.dai(self.vow.address)
+                            woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                            if woe - joy >= sump:
                                 break
 
                 # use heal() for removing the remaining joy
-                joy = self.vow.joy()
-                if joy > Wad(0):
-                    self.logger.debug(f"healing joy={self.vow.joy()} woe={self.vow.woe()}")
+                joy = vat.dai(self.vow.address)
+                woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                if joy > Rad(0):
+                    self.logger.debug(f"healing joy={joy} woe={woe}")
                     self.vow.heal(joy).transact()
 
                 if woe < sump and self.cat is None:
@@ -261,7 +265,7 @@ class AuctionKeeper:
                     self.vow.flop().transact()
 
             if woe + sin >= sump and dai_balance <= min_balance:
-                self.logger.warning('Flop auction is possible but not enought DAI balance available to participate')
+                self.logger.warning('Flop auction is possible but not enough DAI balance available to participate')
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
