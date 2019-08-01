@@ -17,8 +17,8 @@ be automatically terminated by the keeper the moment the auction expires.  The k
 automatically `deal`s expired auctions if it's us who won them.
 
 Bear in mind that this keeper is still a **work in progress**. Status as of 2019.07.24:
- * Supports DSS 0.2.8
- * Unit testing nearing completion
+ * Supports DSS 0.2.10
+ * Unit testing completed
  * Testchain integration testing not started
  * Kovan integration testing not started
 
@@ -173,6 +173,21 @@ optional arguments:
   --mkr MKR             Address of the MKR governance token, required for flap auctions
   --model MODEL         Commandline to use in order to start the bidding model
   --debug               Enable debug output
+```
+
+## Testing
+
+This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized 
+local testchain included in `lib\pymaker\tests\config`.
+
+In order to be able to run tests, please install development dependencies first by executing:
+```
+pip3 install -r requirements-dev.txt
+```
+
+You can then run all tests with:
+```
+./test.sh
 ```
 
 

@@ -308,9 +308,12 @@ def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True):
     bites = mcd.cat.past_bite(past_blocks)
     for bite in bites:
         era_bite = bite.era(web3)
-        print(f'flogging era={era_bite} from block={bite.raw["blockNumber"]} with sin={str(mcd.vow.sin_of(era_bite))}')
-        assert mcd.vow.flog(era_bite).transact()
-        assert mcd.vow.sin_of(era_bite) == Rad(0)
+        sin = mcd.vow.sin_of(era_bite)
+        if sin > Rad(0):
+            print(f'flogging era={era_bite} from block={bite.raw["blockNumber"]} '
+                  f'with sin={str(mcd.vow.sin_of(era_bite))}')
+            assert mcd.vow.flog(era_bite).transact()
+            assert mcd.vow.sin_of(era_bite) == Rad(0)
 
     # Ensure there is no on-auction debt which a previous test failed to clean up
     if kiss and mcd.vow.ash() > Rad.from_number(0):

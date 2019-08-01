@@ -211,9 +211,12 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == Wad(self.sump / Rad(lot))
 
-    def test_should_terminate_model_if_auction_expired_due_to_tau(self):
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
+    def test_should_terminate_model_if_auction_expired_due_to_tau(self, kick):
         # given
-        kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -231,9 +234,6 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # then
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
-
-        # cleanup
-        assert self.flopper.deal(kick).transact()
 
     def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, kick):
         # given

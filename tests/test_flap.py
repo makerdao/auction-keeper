@@ -323,9 +323,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         auction = self.flapper.bids(kick)
         assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(0.0000005), 2)
 
-    def test_should_overbid_itself_if_model_has_updated_the_price(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
         # given
-        kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
         lot = self.flapper.bids(kick).lot
 
