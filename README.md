@@ -131,10 +131,9 @@ sleep 1000000
 
 ### Limitations
 
-* Bidding on collateral or MKR with Dai requires `join`ing Dai to a `vat` rather than merely possessing the tokens. 
-This keeper does not yet offer a facility to `join` or `exit` Dai from the `vat`.
 * This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
-outstanding, the keeper will not request a `yank` to refund the bid.
+outstanding, the keeper will not request a `yank` to refund the bid.  Workaround is to call `yank` directly using 
+`seth`.
 
 
 ## Installation
@@ -171,9 +170,19 @@ optional arguments:
   --flapper FLAPPER     Ethereum address of the Flapper contract
   --flopper FLOPPER     Ethereum address of the Flopper contract
   --mkr MKR             Address of the MKR governance token, required for flap auctions
+  --dai-join DAI_JOIN   Ethereum address of the DaiJoin contract
+  --vat-dai-target VAT_DAI_TARGET
+                        Amount of Dai to keep in the Vat contract
+  --keep-dai-in-vat-on-exit
+                        Retain Dai in the Vat on exit, saving gas when
+                        restarting the keeper
+
   --model MODEL         Commandline to use in order to start the bidding model
   --debug               Enable debug output
 ```
+`flip` and `flop` auctions require Dai to be `join`ed to the `Vat` to participate.  
+Using an `eth-from` account with an open CDP is discouraged, as debt will hinder `auction-keeper`'s ability to `exit` 
+Dai from the `Vat`.
 
 ## Testing
 

@@ -35,6 +35,7 @@ from typing import Optional
 
 @pytest.fixture(scope="session")
 def web3():
+    # These details are specific to the MCD testchain used for pymaker unit tests.
     web3 = Web3(HTTPProvider("http://0.0.0.0:8545"))
     web3.eth.defaultAccount = "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
     register_keys(web3,
