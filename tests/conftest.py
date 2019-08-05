@@ -165,7 +165,7 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, ex
     assert isinstance(amount, Wad)
     assert amount > Wad(0)
 
-    # Determine how much collateral is needed (for eth, 1 or 2 should suffice for these tests)
+    # Determine how much collateral is needed
     ilk = mcd.vat.ilk(c.ilk.name)
     rate = ilk.rate  # Ray
     spot = ilk.spot  # Ray

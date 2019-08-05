@@ -24,8 +24,9 @@ import threading
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
+from pymaker.approval import hope_directly
 from pymaker.auctions import Flopper, Flipper, Flapper
-from pymaker.dss import Ilk, Cat, Vat, Vow
+from pymaker.dss import Ilk, Cat, Vat, Vow, DaiJoin
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
@@ -62,6 +63,12 @@ class AuctionKeeper:
         parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
         parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
         parser.add_argument('--mkr', type=str, help="Address of the MKR governance token, required for flap auctions")
+
+        parser.add_argument('--dai-join', type=str, help="Ethereum address of the DaiJoin contract")
+        parser.add_argument('--vat-dai-target', type=float, help="Amount of Dai to keep in the Vat contract")
+
+        parser.add_argument('--keep-dai-in-vat-on-exit', dest='empty_vat_on_exit', action='store_false',
+                            help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
 
         parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
 
@@ -121,10 +128,26 @@ class AuctionKeeper:
                 self.logger.warning(f"Flopper auction selected but no Cat address specified so we won't flog()")
             self.strategy = FlopperStrategy(self.flopper)
 
+        if self.cat is not None:
+            self.vat = Vat(self.web3, self.cat.vat())
+        elif self.vow is not None:
+            self.vat = Vat(self.web3, self.vow.vat())
+
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(self.arguments.model))
+
+        self.dai_join = DaiJoin(self.web3, Address(self.arguments.dai_join)) if self.arguments.dai_join else None
+        self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
+            self.arguments.vat_dai_target is not None else None
+        if self.vat_dai_target is not None and self.dai_join is None:
+            self.logger.warning("Dai target specified but no DaiJoin address provided so we won't rebalance")
+        self.empty_vat_on_exit = self.arguments.empty_vat_on_exit
+
+        if self.empty_vat_on_exit and self.dai_join is None:
+            self.logger.warning("Cannot empty Vat on exit because no DaiJoin address was provided")
+        self.rebalance_dai()
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -134,6 +157,7 @@ class AuctionKeeper:
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
+            lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
                 def seq_func():
                     self.check_cdps()
@@ -161,21 +185,34 @@ class AuctionKeeper:
 
     def approve(self):
         self.strategy.approve()
+        if self.dai_join:
+            self.dai_join.approve(hope_directly(), self.vat.address)
+            self.dai_join.dai().approve(self.dai_join.address).transact()
+
+    def shutdown(self):
+        if not self.empty_vat_on_exit or not self.dai_join:
+            return
+
+        print(f"empty_vat_on_exit={self.empty_vat_on_exit}, dai_join={self.dai_join}")
+        keeper_address = Address(self.web3.eth.defaultAccount)
+        vat_balance = Wad(self.vat.dai(keeper_address))
+        if vat_balance > Wad(0):
+            self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
+            assert self.dai_join.exit(keeper_address, vat_balance).transact()
 
     def check_cdps(self):
         last_note_event = {}
-        vat = Vat(self.web3, self.cat.vat())
 
         # Look for unsafe CDPs and bite them
 
-        past_frob = vat.past_frob(self.web3.eth.blockNumber, self.ilk)  # TODO: put past_block in cache
+        past_frob = self.vat.past_frob(self.web3.eth.blockNumber, self.ilk)  # TODO: put past_block in cache
         for frob in past_frob:
             last_note_event[frob.urn] = frob
 
         for urn_addr in last_note_event:
-            ilk = vat.ilk(frob.ilk)
-            current_urn = vat.urn(ilk, urn_addr)
-            safe = current_urn.ink * ilk.spot >= current_urn.art * vat.ilk(ilk.name).rate
+            ilk = self.vat.ilk(frob.ilk)
+            current_urn = self.vat.urn(ilk, urn_addr)
+            safe = current_urn.ink * ilk.spot >= current_urn.art * self.vat.ilk(ilk.name).rate
             if not safe:
                 self.logger.info(f'Found an unsafe CDP: {current_urn}')
                 # TODO: Execute this asynchronously, such that it doesn't block detection of new auctions
@@ -186,9 +223,8 @@ class AuctionKeeper:
 
     def check_flap(self):
         # Check if Vow has a surplus of Dai compared to bad debt
-        vat = Vat(self.web3, self.cat.vat())
-        joy = vat.dai(self.vow.address)
-        awe = vat.sin(self.vow.address)
+        joy = self.vat.dai(self.vow.address)
+        awe = self.vat.sin(self.vow.address)
 
         # Check if Vow has Dai in excess
         if joy > awe:
@@ -201,7 +237,7 @@ class AuctionKeeper:
 
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
             if (joy - awe) >= (bump + hump) and mkr_balance > min_balance:
-                woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
                 # Heal the system to bring Woe to 0
                 if woe > Rad(0):
@@ -213,19 +249,17 @@ class AuctionKeeper:
 
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
-        vat = Vat(self.web3, self.cat.vat())
-        joy = vat.dai(self.vow.address)
-        awe = vat.sin(self.vow.address)
-        vat = Vat(self.web3, self.vow.vat())
+        joy = self.vat.dai(self.vow.address)
+        awe = self.vat.sin(self.vow.address)
 
         # Check if Vow has bad debt in excess
         if joy < awe:
-            woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+            woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
             sin = self.vow.sin()
             sump = self.vow.sump()
 
             # Check our balance
-            dai_balance = Wad(vat.dai(self.our_address))
+            dai_balance = Wad(self.vat.dai(self.our_address))
             min_balance = Wad(0)  # TODO: determine minimum balance ...
 
             # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
@@ -246,14 +280,14 @@ class AuctionKeeper:
                             self.vow.flog(era).transact()
 
                             # flog() sin until woe is above sump + joy
-                            joy = vat.dai(self.vow.address)
-                            woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                            joy = self.vat.dai(self.vow.address)
+                            woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
                             if woe - joy >= sump:
                                 break
 
                 # use heal() for removing the remaining joy
-                joy = vat.dai(self.vow.address)
-                woe = (vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                joy = self.vat.dai(self.vow.address)
+                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
                 if joy > Rad(0):
                     self.logger.debug(f"healing joy={joy} woe={woe}")
                     self.vow.heal(joy).transact()
@@ -304,6 +338,9 @@ class AuctionKeeper:
 
                 # Always using default gas price for `deal`
                 self.strategy.deal(id).transact(gas_price=DefaultGasPrice())
+
+                # Exit Dai from the Vat if appropriate
+                self.rebalance_dai()
 
             else:
                 # Try to remove the auction so the model terminates and we stop tracking it.
@@ -364,6 +401,29 @@ class AuctionKeeper:
                         self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
 
                         auction.gas_price.update_gas_price(output.gas_price)
+
+    def rebalance_dai(self):
+        if self.vat_dai_target is None or not self.dai_join:
+            return
+
+        dai = self.dai_join.dai()
+        token_balance = dai.balance_of(self.our_address)  # Wad
+        difference = Wad(self.vat.dai(self.our_address)) - self.vat_dai_target  # Wad
+        if difference < Wad(0):
+            # Join tokens to the vat
+            if token_balance > difference * -1:
+                self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
+                assert self.dai_join.join(self.our_address, difference * -1).transact()
+            else:
+                self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
+                                    "Dai to the Vat")
+                assert self.dai_join.join(self.our_address, token_balance).transact()
+        elif difference > Wad(0):
+            # Exit dai from the vat
+            self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
+            assert self.dai_join.exit(self.our_address, difference).transact()
+        else:
+            self.logger.debug("Vat contains the appropriate amount of Dai")
 
     @staticmethod
     def _run_future(future):
