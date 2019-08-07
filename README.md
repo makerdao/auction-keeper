@@ -131,9 +131,13 @@ sleep 1000000
 
 ### Limitations
 
+* MKR balances are not checked prior to submitting `flap` bids.
+* If an auction started before the keeper was started, this keeper will not participate in it until the next block 
+is mined.
 * This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
 outstanding, the keeper will not request a `yank` to refund the bid.  Workaround is to call `yank` directly using 
 `seth`.
+* Approvals are always submitted upon keeper startup, incurring a trivial gas fee.
 
 
 ## Installation

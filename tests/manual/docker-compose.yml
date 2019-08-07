@@ -1,0 +1,41 @@
+version: "3.2"
+services:
+  test1:
+    image: mcd-testchain
+    container_name: parity-auctionkeeper-test-1
+    ports:
+      - "8545:8545"
+      - "8546:8546"
+    expose:
+      - "8545"
+      - "8546"
+    user: root
+    working_dir: /home/parity
+    command: ["--chain=/home/parity/config/parity-dev-constantinopole.json",
+              "--tracing=on",
+              "--pruning=archive",
+              "--jsonrpc-interface=all",
+              "--jsonrpc-hosts=all",
+              "--node-key=f29dacec2c6535207fdb0e5b78a863208abe1b8417b4bd3770f926343c9323864dd51ddc8c918cb562390da2d08bf8f5a5b3e1ded06be583fbbe2c53d3bce278",
+              "--base-path=/home/parity/.local/share/io.parity.ethereum/"]
+
+  test2:
+    image: mcd-testchain
+    container_name: parity-auctionkeeper-test-2
+    ports:
+      - "8645:8645"
+      - "8646:8646"
+    expose:
+      - "8645"
+      - "8646"
+    user: root
+    working_dir: /home/parity
+    command: ["--chain=/home/parity/config/parity-dev-constantinopole.json",
+            "--tracing=on",
+            "--pruning=archive",
+            "--jsonrpc-interface=all",
+            "--jsonrpc-hosts=all",
+            "--jsonrpc-port=8645",
+            "--ws-port=8646",
+            "--bootnodes=enode://f29dacec2c6535207fdb0e5b78a863208abe1b8417b4bd3770f926343c9323864dd51ddc8c918cb562390da2d08bf8f5a5b3e1ded06be583fbbe2c53d3bce278@test1:30303",
+            "--base-path=/home/parity/.local/share/io.parity.ethereum/"]

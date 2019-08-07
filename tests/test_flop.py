@@ -15,10 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
-
 import pytest
-from web3 import Web3
+import time
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
@@ -28,6 +26,7 @@ from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import web3, reserve_dai, mcd, our_address, keeper_address, other_address, gal_address, \
     create_unsafe_cdp, bite, flog_and_heal, simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
+from web3 import Web3
 
 
 wad_maxvalue = Wad(115792089237316195423570985008687907853269984665640564039457584007913129639935)
@@ -176,9 +175,12 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == price
 
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self):
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, kick):
         # given
-        kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -331,9 +333,12 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         mkr_after = self.mcd.mkr.balance_of(self.keeper_address)
         assert mkr_before == mkr_after
 
-    def test_should_bid_even_if_there_is_already_a_bidder(self):
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
+    def test_should_bid_even_if_there_is_already_a_bidder(self, kick):
         # given
-        kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
         mkr_before = self.mcd.mkr.balance_of(self.keeper_address)
         # and
@@ -352,6 +357,10 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(825.0), 2)
         mkr_after = self.mcd.mkr.balance_of(self.keeper_address)
         assert mkr_before == mkr_after
+
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
 
     def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
         # given
@@ -374,9 +383,12 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # then
         assert self.lot_implies_price(kick, Wad.from_number(110.0))
 
-    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self):
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, kick):
         # given
-        kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -413,7 +425,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         # and
-        time.sleep(1)
+        time.sleep(2)
         # and
         self.end_ignoring_transactions()
         # and
@@ -440,8 +452,8 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # and
         self.keeper.check_all_auctions()
         # and
-        # time.sleep(5)
-        # # and
+        time.sleep(2)
+        # and
         self.end_ignoring_transactions()
         # and
         simulate_model_output(model=model, price=Wad.from_number(70.0), gas_price=15)

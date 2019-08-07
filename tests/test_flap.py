@@ -15,9 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import time
-
 import pytest
+import time
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
@@ -395,7 +394,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         # and
-        time.sleep(1)
+        time.sleep(2)
         # and
         self.end_ignoring_transactions()
         # and

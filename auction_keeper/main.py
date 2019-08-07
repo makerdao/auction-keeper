@@ -147,7 +147,6 @@ class AuctionKeeper:
 
         if self.empty_vat_on_exit and self.dai_join is None:
             self.logger.warning("Cannot empty Vat on exit because no DaiJoin address was provided")
-        self.rebalance_dai()
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -182,6 +181,7 @@ class AuctionKeeper:
 
     def startup(self):
         self.approve()
+        self.rebalance_dai()
 
     def approve(self):
         self.strategy.approve()
@@ -339,7 +339,8 @@ class AuctionKeeper:
                 # Always using default gas price for `deal`
                 self.strategy.deal(id).transact(gas_price=DefaultGasPrice())
 
-                # Exit Dai from the Vat if appropriate
+                # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
+                # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
                 self.rebalance_dai()
 
             else:
@@ -367,7 +368,17 @@ class AuctionKeeper:
         output = auction.model_output()
 
         if output is not None:
-            bid_price, bid_transact = self.strategy.bid(id, output.price)
+            bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+            # If we can't afford the bid, log a warning/error and back out.
+            # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
+            if cost is not None:
+                vat_dai = self.vat.dai(self.our_address)
+                if cost > vat_dai:
+                    self.logger.warning(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai};"
+                                        "bid will not be submitted")
+                    return
+                else:
+                    self.logger.debug(f"Bid cost {str(cost)} is below vat balance of {vat_dai}")
 
             if bid_price is not None and bid_transact is not None:
                 # if no transaction in progress, send a new one
@@ -424,6 +435,8 @@ class AuctionKeeper:
             assert self.dai_join.exit(self.our_address, difference).transact()
         else:
             self.logger.debug("Vat contains the appropriate amount of Dai")
+        self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
+                         f"Vat balance: {self.vat.dai(self.our_address)}")
 
     @staticmethod
     def _run_future(future):
