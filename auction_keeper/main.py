@@ -137,6 +137,7 @@ class AuctionKeeper:
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(self.arguments.model))
+        self.auctions_lock = threading.Lock()
 
         self.dai_join = DaiJoin(self.web3, Address(self.arguments.dai_join)) if self.arguments.dai_join else None
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
@@ -303,13 +304,15 @@ class AuctionKeeper:
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
-            if self.check_auction(id):
-                self.feed_model(id)
+            with self.auctions_lock:
+                if self.check_auction(id):
+                    self.feed_model(id)
 
     def check_for_bids(self):
-        self.logger.debug(f"Checking for bids in {len(self.auctions.auctions)} auctions")
-        for id, auction in self.auctions.auctions.items():
-            self.handle_bid(id=id, auction=auction)
+        with self.auctions_lock:
+            self.logger.debug(f"Checking for bids in {len(self.auctions.auctions)} auctions")
+            for id, auction in self.auctions.auctions.items():
+                self.handle_bid(id=id, auction=auction)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
