@@ -120,6 +120,8 @@ class AuctionKeeper:
         elif self.flapper:
             if self.vow is None:
                 self.logger.warning(f"Flapper auction selected but no Vow address specified so we won't flip()")
+            if self.mkr is None:
+                raise RuntimeError("Flapper auction selected by no MKR address specified so we can't participate")
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
             if self.vow is None:
@@ -183,6 +185,8 @@ class AuctionKeeper:
     def startup(self):
         self.approve()
         self.rebalance_dai()
+        if self.flapper:
+            self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
     def approve(self):
         self.strategy.approve()
@@ -375,13 +379,8 @@ class AuctionKeeper:
             # If we can't afford the bid, log a warning/error and back out.
             # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
             if cost is not None:
-                vat_dai = self.vat.dai(self.our_address)
-                if cost > vat_dai:
-                    self.logger.warning(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai};"
-                                        "bid will not be submitted")
+                if not self.check_bid_cost(cost):
                     return
-                else:
-                    self.logger.debug(f"Bid cost {str(cost)} is below vat balance of {vat_dai}")
 
             if bid_price is not None and bid_transact is not None:
                 # if no transaction in progress, send a new one
@@ -416,8 +415,31 @@ class AuctionKeeper:
 
                         auction.gas_price.update_gas_price(output.gas_price)
 
+    def check_bid_cost(self, cost: Rad) -> bool:
+        assert isinstance(cost, Rad)
+
+        # If this is an auction where we bid with Dai...
+        if self.flipper or self.flopper:
+            vat_dai = self.vat.dai(self.our_address)
+            if cost > vat_dai:
+                self.logger.warning(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                                    "bid will not be submitted")
+                return False
+            else:
+                self.logger.debug(f"Bid cost {str(cost)} is below vat balance of {vat_dai}")
+        # If this is an auction where we bid with MKR...
+        elif self.flapper:
+            mkr_balance = self.mkr.balance_of(self.our_address)
+            if cost > Rad(mkr_balance):
+                self.logger.warning(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
+                                    "bid will not be submitted")
+                return False
+            else:
+                self.logger.debug(f"Bid cost {str(cost)} is below MKR balance of {mkr_balance}")
+        return True
+
     def rebalance_dai(self):
-        if self.vat_dai_target is None or not self.dai_join:
+        if self.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
             return
 
         dai = self.dai_join.dai()
@@ -436,8 +458,6 @@ class AuctionKeeper:
             # Exit dai from the vat
             self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
             assert self.dai_join.exit(self.our_address, difference).transact()
-        else:
-            self.logger.debug("Vat contains the appropriate amount of Dai")
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
 

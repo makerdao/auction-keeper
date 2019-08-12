@@ -231,11 +231,12 @@ def is_cdp_safe(ilk: Ilk, urn: Urn) -> bool:
     assert urn.ink is not None
     assert ilk.spot is not None
 
-    #print(f'{urn.art} * {ilk.rate} <=? {urn.ink} * {ilk.spot}')
+    #print(f'art={urn.art} * rate={ilk.rate} <=? ink={urn.ink} * spot={ilk.spot}')
     return (Ray(urn.art) * ilk.rate) <= Ray(urn.ink) * ilk.spot
 
 
-def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address) -> Urn:
+def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
+                      draw_dai=True) -> Urn:
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
@@ -260,12 +261,18 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
     simulate_frob(mcd, c, gal_address, Wad(0), dart)
     assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
+    # Draw our Dai, simulating the usual behavior
+    urn = mcd.vat.urn(c.ilk, gal_address)
+    if draw_dai and urn.art > Wad(0):
+        mcd.approve_dai(gal_address)
+        assert mcd.dai_adapter.exit(gal_address, urn.art).transact(from_address=gal_address)
+        print(f"Exited {urn.art} Dai from urn")
+
     # Manipulate price to make gal CDP underwater
     to_price = Wad(c.pip.read_as_int()) - Wad.from_number(1)
     set_collateral_price(mcd, c, to_price)
 
     # Ensure the CDP is unsafe
-    urn = mcd.vat.urn(c.ilk, gal_address)
     assert not is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
     return urn
 

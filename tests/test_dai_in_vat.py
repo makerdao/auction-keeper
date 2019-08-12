@@ -29,6 +29,8 @@ class TestVatDai:
         self.mcd = mcd(web3())
         self.keeper_address = keeper_address(web3())
         self.mcd.approve_dai(self.keeper_address)
+        self.our_address = our_address(web3())
+        self.mcd.approve_dai(self.our_address)
 
     def get_token_balance(self) -> Wad:
         return self.mcd.dai.balance_of(self.keeper_address)
@@ -38,7 +40,7 @@ class TestVatDai:
 
     def purchase_dai(self, amount: Wad):
         assert isinstance(amount, Wad)
-        seller = our_address(self.web3)
+        seller = self.our_address
         reserve_dai(self.mcd, self.mcd.collaterals[2], seller, amount)
         assert self.mcd.dai_adapter.exit(seller, amount).transact(from_address=seller)
         assert self.mcd.dai.transfer_from(seller, self.keeper_address, amount).transact(from_address=seller)

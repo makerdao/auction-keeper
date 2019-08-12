@@ -147,7 +147,7 @@ class FlapperStrategy(Strategy):
         our_bid = bid.lot / Rad(price)
 
         if our_bid >= Rad(bid.bid) * Rad(self.beg) and our_bid > Rad(bid.bid):
-            return price, self.flapper.tend(id, bid.lot, Wad(our_bid)), None
+            return price, self.flapper.tend(id, bid.lot, Wad(our_bid)), Rad(our_bid)
         else:
             return None, None, None
 

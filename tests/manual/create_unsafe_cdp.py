@@ -16,11 +16,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import create_unsafe_cdp, mcd, gal_address, web3
+from tests.conftest import create_unsafe_cdp, is_cdp_safe, mcd, gal_address, web3
 
 mcd = mcd(web3())
 collateral = mcd.collaterals[2]
 address = gal_address(web3())
 
-create_unsafe_cdp(mcd, collateral, Wad.from_number(0.5), address)
-print("Created unsafe CDP")
+urn = mcd.vat.urn(collateral.ilk, address)
+if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
+    print("CDP is already unsafe; no action taken")
+else:
+    create_unsafe_cdp(mcd, collateral, Wad.from_number(1), address)
+    print("Created unsafe CDP")

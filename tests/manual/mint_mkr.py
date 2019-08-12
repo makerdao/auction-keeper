@@ -15,16 +15,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import sys
 
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import flog_and_heal, mcd, gal_address, web3
-
+from tests.conftest import keeper_address, mcd, mint_mkr, web3
 
 mcd = mcd(web3())
-address = gal_address(web3())
+collateral = mcd.collaterals[2]
+keeper_address = keeper_address(web3())
 
-# Test some flip auctions to build debt before calling this.
+amount = Wad.from_number(float(sys.argv[1]))
+assert amount > Wad(0)
 
-flog_and_heal(web3(), mcd, past_blocks=web3().eth.blockNumber, kiss=False, require_heal=False)
-print("flog_and_heal completed")
+mint_mkr(mcd.mkr, keeper_address, amount)
 
+print(f'Minted {str(amount)} MKR, keeper token balance is {str(mcd.mkr.balance_of(keeper_address))}')

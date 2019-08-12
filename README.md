@@ -131,13 +131,18 @@ sleep 1000000
 
 ### Limitations
 
-* MKR balances are not checked prior to submitting `flap` bids.
 * If an auction started before the keeper was started, this keeper will not participate in it until the next block 
 is mined.
 * This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
 outstanding, the keeper will not request a `yank` to refund the bid.  Workaround is to call `yank` directly using 
 `seth`.
 * Approvals are always submitted upon keeper startup, incurring a trivial gas fee.
+* The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in 
+response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too 
+imposes a gas fee.
+* Collateral won in a `flip` auction is not automatically exited from the Vat.  Collateral may be moved from the Vat 
+using the CDP portal.
+
 
 
 ## Installation
@@ -188,6 +193,10 @@ optional arguments:
 Using an `eth-from` account with an open CDP is discouraged, as debt will hinder `auction-keeper`'s ability to `exit` 
 Dai from the `Vat`.
 
+To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
+one for `flap` and another for `flop`.  When running multiple keepers using the same account, keep in mind the 
+balance of Dai in the `Vat` will be shared across keepers.  If using the feature, set `--vat-dai-target` accordingly.
+ 
 ## Testing
 
 This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized 
