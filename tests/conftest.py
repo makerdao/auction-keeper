@@ -191,8 +191,8 @@ def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, 
     urn = mcd.vat.urn(collateral.ilk, address)
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
-    print(f"[urn.ink={urn.ink}, urn.art={urn.art}] [ilk.rate={ilk.rate} ilk.art={ilk.art}, ilk.line={ilk.line}]")
-    print(f"[dink={dink}, dart={dart}] [debt={str(mcd.vat.debt())} line={str(mcd.vat.line())}]")
+    # print(f"[urn.ink={urn.ink}, urn.art={urn.art}] [ilk.rate={ilk.rate} ilk.art={ilk.art}, ilk.line={ilk.line}]")
+    # print(f"[dink={dink}, dart={dart}] [debt={str(mcd.vat.debt())} line={str(mcd.vat.line())}]")
     ink = urn.ink + dink
     art = urn.art + dart
     ilk_art = ilk.art + dart

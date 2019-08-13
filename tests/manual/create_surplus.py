@@ -15,9 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import create_cdp_with_surplus, flog_and_heal, mcd, gal_address, reserve_dai, simulate_frob, web3, wrap_eth
+from tests.conftest import mcd, gal_address, simulate_frob, web3, wrap_eth
 
 
 mcd = mcd(web3())
@@ -41,4 +40,3 @@ def create_cdp_with_surplus():
 
 
 create_cdp_with_surplus()
-flog_and_heal(web3(), mcd, past_blocks=web3().eth.blockNumber, kiss=False, require_heal=True)

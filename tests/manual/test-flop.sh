@@ -5,10 +5,9 @@ dir="$(dirname "$0")"
 export PYTHONPATH=$PYTHONPATH:$dir:$dir/lib/pymaker
 
 
-#python3 tests/manual/create_debt.py
+# To build debt, first run test-flip.sh against keepers which use a model with a low price.
 
-
-# Create a transaction every 13 seconds to simulate behavior on a real network
+# This loop merely monitors status while the debt is auctioned off.
 while true
 do
     # Just a simple transaction
