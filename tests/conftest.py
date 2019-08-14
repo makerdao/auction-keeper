@@ -329,12 +329,12 @@ def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True, requ
         assert mcd.vow.ash() == Rad.from_number(0)
 
     # Cancel out surplus and debt
-    dai_vow = mcd.vat.dai(mcd.vow.address)
+    joy = mcd.vat.dai(mcd.vow.address)
     woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
     if require_heal:
-        assert dai_vow <= woe
-    if dai_vow <= woe:
-        assert mcd.vow.heal(dai_vow).transact()
+        assert joy <= woe
+    if joy <= woe:
+        assert mcd.vow.heal(joy).transact()
 
 
 def models(keeper: AuctionKeeper, id: int):

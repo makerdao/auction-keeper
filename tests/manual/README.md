@@ -4,32 +4,12 @@ The collection of python and shell scripts herein may be used to test `auction-k
 and relevant smart contracts in `dss`.
 
 ## Starting a Testchain
-The included `docker-compose.yml` creates two containers from an image named `mcd-auction-testchain`.  This testchain 
-should be set up with meaningful `ttl` and `tau` values to facilitate testing without waiting eons for bids to expire.  
-A smaller `bump` may be desirable for testing `flap` auctions, as it would take time for rates to accumulate on a fresh 
-testchain.  Two containers are needed because the keeper requires at least two peers.  If the two containers do not 
-connect with each other (each showing `0/25 peers` instead of `1/25 peers`), try restarting the containers.
+The included `docker-compose.yml` creates two containers from an image named `mcd-auction-testchain`.  Two containers 
+are needed because the keeper requires at least two peers.  This testchain should be set up with meaningful `ttl` and 
+`tau` values to facilitate testing without waiting eons for bids to expire.  A smaller `bump` may be desirable for 
+testing `flap` auctions, as it would take time for rates to accumulate on a fresh testchain.  The testchain may be 
+reset by stopping and deleting both containers.
 
-## Starting Keepers
-
-`start-[auction type]-keeper.sh` runs a keeper for a particular auction type.  To test flip auctions for multiple 
-collateral types, `start-flip-keeper.sh` could be split out into multiple files, or an argument added for the 
-`FLIPPER_ADDRESS` for that collateral type.  As-is, these scripts take two arguments:
-* *model* is the name of the script to serve as price model.  Several fixed price model scripts are included, as 
-documented below.
-* *id* is used merely to log output to different files for each keeper; the string is a component of the log file name.
-
-`model_[price].sh` scripts serve as fixed price models for the keeper.  They are invoked directly by the keeper, and 
-are not useful to execute explicitly.
-
-### Multiplexing Terminals
-Since keepers communicate with models using stdin/stdout, running in a terminal window is prudent.  To run and monitor 
-multiple keepers with `tmux`:
- * `tmux new -s auctions` to create a new session
- * `Ctrl-B %` and `Ctrl-B "` to split into the desired number of panes
- * `Ctrl-B :` with the command `select-layout tiled` to arrange panes meaningfully
- * To change to the appropriate directory and source the virtualenv, `Ctrl-B :` with the command 
- `setw synchronize-panes on` is helpful.
 
 ## Testing Scenarios
 
@@ -55,8 +35,32 @@ export PYTHONPATH=$PYTHONPATH:.:lib/pymaker
 python3 tests/manual/mint_mkr.py 1.0
 ```
 
+You'll likely want to run `purchase_dai.py` and `mint_mkr.py` to procure tokens before starting your keepers.
+
 ### Shell scripts
 
 `test-[scenario]` scripts make use of the python scripts above.  Since the keepers automatically shut down if no block 
 is mined in several minutes, many of these scripts perform a menial task (e.g. purchasing 0.01 Dai) every 13 seconds to 
 simulate a "real" chain.
+
+
+## Starting Keepers
+
+`start-[auction type]-keeper.sh` runs a keeper for a particular auction type.  To test flip auctions for multiple 
+collateral types, `start-flip-keeper.sh` could be split out into multiple files, or an argument added for the 
+`FLIPPER_ADDRESS` for that collateral type.  As-is, these scripts take two arguments:
+* *model* is the name of the script to serve as price model.  Several fixed price model scripts are included, as 
+documented below.
+* *id* is used merely to log output to different files for each keeper; the string is a component of the log file name.
+
+`model_[price].sh` scripts serve as fixed price models for the keeper.  They are invoked directly by the keeper, and 
+are not useful to execute explicitly.
+
+### Multiplexing Terminals
+Since keepers communicate with models using stdin/stdout, running in a terminal window is prudent.  To run and monitor 
+multiple keepers with `tmux`:
+ * `tmux new -s auctions` to create a new session
+ * `Ctrl-B %` and `Ctrl-B "` to split into the desired number of panes
+ * `Ctrl-B :` with the command `select-layout tiled` to arrange panes meaningfully
+ * To change to the appropriate directory and source the virtualenv, `Ctrl-B :` with the command 
+ `setw synchronize-panes on` is helpful.

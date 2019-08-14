@@ -34,20 +34,25 @@ wad_maxvalue = Wad(1157920892373161954235709850086879078532699846656405640394575
 
 @pytest.fixture()
 def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
-    # Bite gal CDP
-    c = mcd.collaterals[1]
-    unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(2), other_address)
-    flip_kick = bite(mcd, c, unsafe_cdp)
+    joy = mcd.vat.dai(mcd.vow.address)
+    woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
+    print(f'joy={str(joy)[:6]}, woe={str(woe)[:6]}')
 
-    # Generate some Dai, bid on and win the flip auction without covering all the debt
-    reserve_dai(mcd, c, gal_address, Wad.from_number(100), extra_collateral=Wad.from_number(1.1))
-    c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=gal_address)
-    current_bid = c.flipper.bids(flip_kick)
-    bid = Rad.from_number(1.9)
-    assert mcd.vat.dai(gal_address) > bid
-    assert c.flipper.tend(flip_kick, current_bid.lot, bid).transact(from_address=gal_address)
-    time_travel_by(web3, c.flipper.ttl()+1)
-    assert c.flipper.deal(flip_kick).transact()
+    if woe < joy:
+        # Bite gal CDP
+        c = mcd.collaterals[1]
+        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(2), other_address, draw_dai=False)
+        flip_kick = bite(mcd, c, unsafe_cdp)
+
+        # Generate some Dai, bid on and win the flip auction without covering all the debt
+        reserve_dai(mcd, c, gal_address, Wad.from_number(100), extra_collateral=Wad.from_number(1.1))
+        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=gal_address)
+        current_bid = c.flipper.bids(flip_kick)
+        bid = Rad.from_number(1.9)
+        assert mcd.vat.dai(gal_address) > bid
+        assert c.flipper.tend(flip_kick, current_bid.lot, bid).transact(from_address=gal_address)
+        time_travel_by(web3, c.flipper.ttl()+1)
+        assert c.flipper.deal(flip_kick).transact()
 
     flog_and_heal(web3, mcd, past_blocks=1200, kiss=False)
 
@@ -93,7 +98,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         kicks = mcd.flop.kicks()
 
         # and an undercollateralized CDP is bitten
-        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1), other_address)
+        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1), other_address, draw_dai=False)
         assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
 
         # when the auction ends without debt being covered

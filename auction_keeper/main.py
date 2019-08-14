@@ -273,11 +273,11 @@ class AuctionKeeper:
 
                 # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
                 ash = self.vow.ash()
-                if ash > Rad(0):
+                if Rad(0) < ash < joy:
                     self.vow.kiss(ash).transact()
 
                 # Convert enough sin in woe to have woe >= sump + joy
-                if woe < sump and self.cat is not None:
+                if woe < (sump + joy) and self.cat is not None:
                     for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
                         era = bite_event.era(self.web3)
                         sin = self.vow.sin_of(era)
@@ -293,14 +293,14 @@ class AuctionKeeper:
                 # use heal() for removing the remaining joy
                 joy = self.vat.dai(self.vow.address)
                 woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
-                if joy > Rad(0):
-                    self.logger.debug(f"healing joy={joy} woe={woe}")
+                if Rad(0) < joy <= woe:
+                    self.logger.info(f"healing joy={joy} woe={woe}")
                     self.vow.heal(joy).transact()
+                    # heal() changes joy and woe (the balance of surplus and debt)
+                    joy = self.vat.dai(self.vow.address)
+                    woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
-                if woe < sump and self.cat is None:
-                    self.logger.warning('Not enough woe to flop() and Cat address is not known !')
-                else:
-                    # Start a flop auction
+                if sump <= woe and joy == Rad(0):
                     self.vow.flop().transact()
 
             if woe + sin >= sump and dai_balance <= min_balance:
