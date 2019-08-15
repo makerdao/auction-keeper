@@ -131,17 +131,21 @@ sleep 1000000
 
 ### Limitations
 
+* Collateral won in a `flip` auction is not automatically exited from the Vat.
 * If an auction started before the keeper was started, this keeper will not participate in it until the next block 
 is mined.
 * This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
 outstanding, the keeper will not request a `yank` to refund the bid.  Workaround is to call `yank` directly using 
 `seth`.
-* Approvals are always submitted upon keeper startup, incurring a trivial gas fee.
+* Some keeper functions incur gas fees regardless of whether a bid is submitted.  This includes, but is not limited to, 
+the following actions:
+  * submitting approvals
+  * adjusting the balance of surplus to debt
+  * biting a CDP or starting a flap or flop auction, even if insufficient funds exist to participate in it
 * The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in 
 response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too 
 imposes a gas fee.
-* Collateral won in a `flip` auction is not automatically exited from the Vat.  Collateral may be moved from the Vat 
-using the CDP portal.
+* After procuring more Dai, the keeper must be restarted to add it to the Vat.
 
 
 

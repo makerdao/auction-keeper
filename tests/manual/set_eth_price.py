@@ -18,27 +18,9 @@
 import sys
 
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import mcd, gal_address, simulate_frob, web3, wrap_eth
-
+from tests.conftest import mcd, set_collateral_price, web3
 
 mcd = mcd(web3())
-address = gal_address(web3())
+price = Wad.from_number(float(sys.argv[1]))
+set_collateral_price(mcd, mcd.collaterals[0], price)
 
-
-def create_cdp_with_surplus():
-    c = mcd.collaterals[0]
-    ilk = mcd.vat.ilk(c.ilk.name)
-    dink = Wad.from_number(float(sys.argv[1]))
-
-    wrap_eth(mcd, address, dink)
-    c.approve(address)
-    assert c.adapter.join(address, dink).transact(from_address=address)
-
-    dart = (dink * Wad(ilk.spot)) * Wad.from_number(0.99)
-    simulate_frob(mcd, c, address, dink, dart)
-    assert mcd.vat.frob(c.ilk, address, dink=dink, dart=dart).transact(from_address=address)
-
-    assert mcd.jug.drip(c.ilk).transact(from_address=address)
-
-
-create_cdp_with_surplus()

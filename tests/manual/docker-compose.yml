@@ -28,6 +28,8 @@ services:
     expose:
       - "8645"
       - "8646"
+    depends_on:
+      - test1
     user: root
     working_dir: /home/parity
     command: ["--chain=/home/parity/config/parity-dev-constantinopole.json",

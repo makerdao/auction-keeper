@@ -40,8 +40,8 @@ You'll likely want to run `purchase_dai.py` and `mint_mkr.py` to procure tokens 
 ### Shell scripts
 
 `test-[scenario]` scripts make use of the python scripts above.  Since the keepers automatically shut down if no block 
-is mined in several minutes, many of these scripts perform a menial task (e.g. purchasing 0.01 Dai) every 13 seconds to 
-simulate a "real" chain.
+is mined in several minutes, these scripts generally have a loop which transacts every 13 seconds to simulate a "real" 
+chain.
 
 
 ## Starting Keepers

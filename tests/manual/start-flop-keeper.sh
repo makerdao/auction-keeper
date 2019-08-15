@@ -20,7 +20,7 @@ ID=$2
     --vow ${VOW_ADDRESS?:} \
     --flopper ${FLOPPER_ADDRESS} \
     --dai-join ${DAI_JOIN_ADDRESS} \
-    --vat-dai-target 300 \
+    --vat-dai-target 5000000 \
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \
     2> >(tee -a ${LOGS_DIR?:}/auction-keeper-${ID}.log >&2)

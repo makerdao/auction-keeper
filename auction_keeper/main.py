@@ -262,6 +262,7 @@ class AuctionKeeper:
             woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
             sin = self.vow.sin()
             sump = self.vow.sump()
+            wait = self.vow.wait()
 
             # Check our balance
             dai_balance = Wad(self.vat.dai(self.our_address))
@@ -280,8 +281,10 @@ class AuctionKeeper:
                 if woe < (sump + joy) and self.cat is not None:
                     for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
                         era = bite_event.era(self.web3)
+                        now = self.web3.eth.getBlock('latest')['timestamp']
                         sin = self.vow.sin_of(era)
-                        if sin > Rad(0):
+                        # If the bite hasn't already been flogged and has aged past the `wait`
+                        if sin > Rad(0) and era + wait <= now:
                             self.vow.flog(era).transact()
 
                             # flog() sin until woe is above sump + joy
