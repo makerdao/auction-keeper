@@ -1,7 +1,7 @@
 version: "3.2"
 services:
   test1:
-    image: mcd-auction-testchain
+    image: makerdao/testchain-pymaker:integration-testing
     container_name: parity-auctionkeeper-test-1
     ports:
       - "8545:8545"
@@ -20,7 +20,7 @@ services:
               "--base-path=/home/parity/.local/share/io.parity.ethereum/"]
 
   test2:
-    image: mcd-auction-testchain
+    image: makerdao/testchain-pymaker:integration-testing
     container_name: parity-auctionkeeper-test-2
     ports:
       - "8645:8645"
