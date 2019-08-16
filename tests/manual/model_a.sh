@@ -1,4 +1,4 @@
 #!/bin/bash
 
-echo "{\"price\": \"100\"}"
-sleep 1000000
+echo "{\"price\": \"96\"}"
+sleep 15

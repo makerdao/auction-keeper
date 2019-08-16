@@ -125,8 +125,12 @@ you can use:
 #!/usr/bin/env bash
 
 echo "{\"price\": \"750.0\"}"  # put your price here
-sleep 1000000
+sleep 60
 ```
+
+The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The 
+sleep locks the price in place for a minute, after which the keeper will restart the price model and read a new price.  
+Consider this your price update interval.
 
 
 ### Limitations
