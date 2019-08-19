@@ -21,7 +21,7 @@ from auction_keeper.main import AuctionKeeper
 from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
 
-from tests.conftest import create_unsafe_cdp, reserve_dai, web3, mcd, keeper_address
+from tests.conftest import addresses, create_unsafe_cdp, keeper_address, mcd, reserve_dai, web3
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -29,10 +29,10 @@ from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for
 class TestAuctionKeeperBite(TransactionIgnoringTest):
     def test_bite_and_flip(self, web3, mcd, gal_address, keeper_address):
         # given
-        c = mcd.collaterals[0]
+        c = mcd.collaterals['ETH-A']
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                         f"--flipper {c.flipper.address} "
-                                         f"--cat {mcd.cat.address} "
+                                         f"--type flip "
+                                         f"--addresses {addresses} "
                                          f"--ilk {c.ilk.name} "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
         keeper.approve()
@@ -57,7 +57,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
     def eliminate_queued_debt(cls, web3, mcd, keeper_address):
         # given the existence of queued debt
         assert mcd.vat.sin(mcd.vow.address) > Rad(0)
-        c = mcd.collaterals[0]
+        c = mcd.collaterals['ETH-A']
         kick = c.flipper.kicks()
         last_bite = mcd.cat.past_bite(1)[0]
 

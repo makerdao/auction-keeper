@@ -27,8 +27,8 @@ from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import web3,  mcd, reserve_dai, create_unsafe_cdp, bite, flog_and_heal, \
-                           keeper_address, models, simulate_model_output
+from tests.conftest import addresses, bite, create_unsafe_cdp, flog_and_heal, keeper_address, mcd, models, \
+                           reserve_dai, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from typing import Optional
 
@@ -63,8 +63,8 @@ def create_keeper(mcd: DssDeployment, c: Collateral, address=None):
     assert isinstance(address, Address)
 
     keeper = AuctionKeeper(args=args(f"--eth-from {address} "
-                                     f"--flipper {c.flipper.address} "
-                                     f"--cat {mcd.cat.address} "
+                                     f"--type flip "
+                                     f"--addresses {addresses} "
                                      f"--ilk {c.ilk.name} "
                                      f"--model ./bogus-model.sh"), web3=mcd.web3)
     keeper.approve()

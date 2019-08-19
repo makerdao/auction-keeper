@@ -21,7 +21,7 @@ from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import keeper_address, mcd, mint_mkr, web3
 
 mcd = mcd(web3())
-collateral = mcd.collaterals[2]
+collateral = mcd.collaterals['ETH-C']
 keeper_address = keeper_address(web3())
 
 amount = Wad.from_number(float(sys.argv[1]))

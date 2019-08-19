@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import os
 import pytest
 
 from web3 import Web3, HTTPProvider
@@ -79,7 +80,7 @@ def wrap_eth(mcd: DssDeployment, address: Address, amount: Wad):
     assert isinstance(amount, Wad)
     assert amount > Wad(0)
 
-    collateral = [c for c in mcd.collaterals if c.gem.symbol() == "WETH"][0]
+    collateral = mcd.collaterals['ETH-A']
     assert isinstance(collateral.gem, DSEthToken)
     assert collateral.gem.deposit(amount).transact(from_address=address)
 
@@ -97,14 +98,18 @@ def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
     assert mkr.transfer(recipient_address, amount).transact(from_address=deployment_address)
 
 
+cwd = os.path.dirname(os.path.realpath(__file__))
+addresses = os.path.join(cwd, "../lib/pymaker/tests/config/addresses.json")
+
+
 @pytest.fixture(scope="session")
 def mcd(web3):
-    return DssDeployment.from_json(web3=web3, conf=open("lib/pymaker/tests/config/addresses.json", "r").read())
+    return DssDeployment.from_json(web3=web3, conf=open(addresses, "r").read())
 
 
 @pytest.fixture(scope="session")
 def c(mcd):
-    return mcd.collaterals[1]
+    return mcd.collaterals['ETH-B']
 
 
 def get_collateral_price(collateral: Collateral):

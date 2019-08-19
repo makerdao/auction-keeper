@@ -23,8 +23,8 @@ from auction_keeper.model import Parameters
 from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import web3, reserve_dai, mcd, our_address, keeper_address, other_address, gal_address, \
-    create_unsafe_cdp, bite, flog_and_heal, simulate_model_output, models
+from tests.conftest import addresses, bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
+    models, our_address, other_address, reserve_dai, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
 
@@ -40,7 +40,7 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
 
     if woe < joy:
         # Bite gal CDP
-        c = mcd.collaterals[1]
+        c = mcd.collaterals['ETH-B']
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(2), other_address, draw_dai=False)
         flip_kick = bite(mcd, c, unsafe_cdp)
 
@@ -78,14 +78,13 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.other_address)
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                              f"--flopper {self.flopper.address} "
-                                              f"--cat {self.mcd.cat.address} "
-                                              f"--vow {self.mcd.vow.address} "
+                                              f"--type flop "
+                                              f"--addresses {addresses} "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
-        reserve_dai(self.mcd, self.mcd.collaterals[2], self.keeper_address, Wad.from_number(200.00000))
-        reserve_dai(self.mcd, self.mcd.collaterals[2], self.other_address, Wad.from_number(200.00000))
+        reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.keeper_address, Wad.from_number(200.00000))
+        reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
 
         self.sump = self.mcd.vow.sump()  # Rad
 

@@ -25,13 +25,11 @@ from web3 import Web3, HTTPProvider
 
 from pymaker import Address
 from pymaker.approval import hope_directly
-from pymaker.auctions import Flopper, Flipper, Flapper
-from pymaker.dss import Ilk, Cat, Vat, Vow, DaiJoin
+from pymaker.deployment import DssDeployment
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
 from pymaker.numeric import Wad, Ray, Rad
-from pymaker.token import DSToken
 
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions
@@ -60,22 +58,20 @@ class AuctionKeeper:
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
-        parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
-        parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
-        parser.add_argument('--mkr', type=str, help="Address of the MKR governance token, required for flap auctions")
+        parser.add_argument('--addresses', type=str, required=True,
+                            help="path to addresses.json from the MCD deployment")
+        parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
+                            help="Auction type in which to participate")
+        parser.add_argument('--ilk', type=str, help="Name of the collateral type for a flip keeper")
+        # TODO: Uncomment, code, and test this parameter
+        # parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
+        #                     help="Do not take opportunities to create new auctions")
 
-        parser.add_argument('--dai-join', type=str, help="Ethereum address of the DaiJoin contract")
         parser.add_argument('--vat-dai-target', type=float, help="Amount of Dai to keep in the Vat contract")
-
-        parser.add_argument('--keep-dai-in-vat-on-exit', dest='empty_vat_on_exit', action='store_false',
+        parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
-
-        parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
-
-        contract = parser.add_mutually_exclusive_group(required=True)
-        contract.add_argument('--flipper', type=str, help="Ethereum address of the Flipper contract")
-        contract.add_argument('--flapper', type=str, help="Ethereum address of the Flapper contract")
-        contract.add_argument('--flopper', type=str, help="Ethereum address of the Flopper contract")
+        parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
+                            help="Retain collateral in the Vat on exit")
 
         parser.add_argument("--model", type=str, required=True,
                             help="Commandline to use in order to start the bidding model")
@@ -85,71 +81,57 @@ class AuctionKeeper:
 
         self.arguments = parser.parse_args(args)
 
+        # Configure connection to the chain
         if self.arguments.rpc_host.startswith("http"):
             endpoint_uri = f"{self.arguments.rpc_host}:{self.arguments.rpc_port}"
         else:
             # Should probably default this to use TLS, but I don't want to break existing configs
             endpoint_uri = f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}"
-
         self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(
             HTTPProvider(endpoint_uri=endpoint_uri,
                          request_kwargs={"timeout": self.arguments.rpc_timeout}))
-
         self.web3.eth.defaultAccount = self.arguments.eth_from
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
 
-        self.cat = Cat(web3=self.web3, address=Address(self.arguments.cat)) if self.arguments.cat else None
-        self.vow = Vow(web3=self.web3, address=Address(self.arguments.vow)) if self.arguments.vow else None
-        self.mkr = DSToken(web3=self.web3, address=Address(self.arguments.mkr)) if self.arguments.mkr else None
-        self.ilk = Ilk(self.arguments.ilk) if self.arguments.ilk else None
+        # Configure core and token contracts
+        if self.arguments.type == 'flip' and not self.arguments.ilk:
+            raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
+        mcd = DssDeployment.from_json(web3=self.web3, conf=open(self.arguments.addresses, "r").read())
+        self.vat = mcd.vat
+        self.cat = mcd.cat
+        self.vow = mcd.vow
+        self.mkr = mcd.mkr
+        self.dai_join = mcd.dai_adapter
+        if self.arguments.type == 'flip':
+            self.collateral = mcd.collaterals[self.arguments.ilk]
+            self.ilk = self.collateral.ilk
+            self.gem_join = self.collateral.adapter
+        else:
+            self.collateral = None
+            self.ilk = None
+            self.gem_join = None
 
-        self.flipper = Flipper(web3=self.web3,
-                               address=Address(self.arguments.flipper)) if self.arguments.flipper else None
-        self.flapper = Flapper(web3=self.web3,
-                               address=Address(self.arguments.flapper)) if self.arguments.flapper else None
-        self.flopper = Flopper(web3=self.web3,
-                               address=Address(self.arguments.flopper)) if self.arguments.flopper else None
-
+        # Configure auction contracts
+        self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
+        self.flapper = mcd.flap if self.arguments.type == 'flap' else None
+        self.flopper = mcd.flop if self.arguments.type == 'flop' else None
         if self.flipper:
             self.strategy = FlipperStrategy(self.flipper)
-            if self.cat is None:
-                self.logger.warning(f"Flipper auction selected but no Cat address specified so we won't bite()")
-                if self.ilk is None:
-                    self.logger.warning(f"bite() will operate on all CDP type because ilk is not specified")
         elif self.flapper:
-            if self.vow is None:
-                self.logger.warning(f"Flapper auction selected but no Vow address specified so we won't flip()")
-            if self.mkr is None:
-                raise RuntimeError("Flapper auction selected by no MKR address specified so we can't participate")
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
-            if self.vow is None:
-                self.logger.warning(f"Flopper auction selected but no Vow address specified so we won't flap()")
-            if self.cat is None:
-                self.logger.warning(f"Flopper auction selected but no Cat address specified so we won't flog()")
             self.strategy = FlopperStrategy(self.flopper)
 
-        if self.cat is not None:
-            self.vat = Vat(self.web3, self.cat.vat())
-        elif self.vow is not None:
-            self.vat = Vat(self.web3, self.vow.vat())
-
+        # Create the collection used to manage auctions relevant to this keeper
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(self.arguments.model))
         self.auctions_lock = threading.Lock()
 
-        self.dai_join = DaiJoin(self.web3, Address(self.arguments.dai_join)) if self.arguments.dai_join else None
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
-        if self.vat_dai_target is not None and self.dai_join is None:
-            self.logger.warning("Dai target specified but no DaiJoin address provided so we won't rebalance")
-        self.empty_vat_on_exit = self.arguments.empty_vat_on_exit
-
-        if self.empty_vat_on_exit and self.dai_join is None:
-            self.logger.warning("Cannot empty Vat on exit because no DaiJoin address was provided")
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -195,15 +177,26 @@ class AuctionKeeper:
             self.dai_join.dai().approve(self.dai_join.address).transact()
 
     def shutdown(self):
-        if not self.empty_vat_on_exit or not self.dai_join:
+        self.exit_dai_on_shutdown()
+        self.exit_collateral_on_shutdown()
+
+    def exit_dai_on_shutdown(self):
+        if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
             return
 
-        print(f"empty_vat_on_exit={self.empty_vat_on_exit}, dai_join={self.dai_join}")
-        keeper_address = Address(self.web3.eth.defaultAccount)
-        vat_balance = Wad(self.vat.dai(keeper_address))
+        vat_balance = Wad(self.vat.dai(self.our_address))
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
-            assert self.dai_join.exit(keeper_address, vat_balance).transact()
+            assert self.dai_join.exit(self.our_address, vat_balance).transact()
+
+    def exit_collateral_on_shutdown(self):
+        if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
+            return
+
+        vat_balance = self.vat.gem(self.ilk, self.our_address)
+        if vat_balance > Wad(0):
+            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat before shutdown")
+            assert self.gem_join.exit(self.our_address, vat_balance).transact()
 
     def check_cdps(self):
         last_note_event = {}
@@ -317,7 +310,7 @@ class AuctionKeeper:
 
     def check_for_bids(self):
         with self.auctions_lock:
-            self.logger.debug(f"Checking for bids in {len(self.auctions.auctions)} auctions")
+            # self.logger.debug(f"Checking for bids in {len(self.auctions.auctions)} auctions")
             for id, auction in self.auctions.auctions.items():
                 self.handle_bid(id=id, auction=auction)
 
@@ -376,6 +369,7 @@ class AuctionKeeper:
         assert isinstance(auction, Auction)
 
         output = auction.model_output()
+        # self.logger.debug(f'model output for auction {id} is {output}')
 
         if output is not None:
             bid_price, bid_transact, cost = self.strategy.bid(id, output.price)

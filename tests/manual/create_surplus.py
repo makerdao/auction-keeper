@@ -26,7 +26,7 @@ address = gal_address(web3())
 
 
 def create_cdp_with_surplus():
-    c = mcd.collaterals[0]
+    c = mcd.collaterals['ETH-A']
     ilk = mcd.vat.ilk(c.ilk.name)
     dink = Wad.from_number(float(sys.argv[1]))
 

@@ -23,7 +23,7 @@ from auction_keeper.model import Parameters
 from pymaker.approval import directly, hope_directly
 from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import web3, mint_mkr, mcd, c, reserve_dai, set_collateral_price, \
+from tests.conftest import addresses, c, mcd, mint_mkr, reserve_dai, set_collateral_price, web3, \
     our_address, keeper_address, other_address, gal_address, \
     max_dart, is_cdp_safe, bite, create_cdp_with_surplus, simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
@@ -56,10 +56,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                              f"--mkr {self.mcd.mkr.address} "
-                                              f"--flapper {self.mcd.flap.address} "
-                                              f"--cat {self.mcd.cat.address} "
-                                              f"--vow {self.mcd.vow.address} "
+                                              f"--type flap "
+                                              f"--addresses {addresses} "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
@@ -303,13 +301,16 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         auction = self.flapper.bids(kick)
         assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(10.0), 2)
 
-    def test_should_bid_even_if_there_is_already_a_bidder(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_bid_even_if_there_is_already_a_bidder(self, kick):
         # given
-        kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
         # and
         auction = self.flapper.bids(kick)
-        self.flapper.tend(kick, auction.lot, Wad.from_number(16)).transact(from_address=self.other_address)
+        assert self.flapper.tend(kick, auction.lot, Wad.from_number(16)).transact(from_address=self.other_address)
         assert self.flapper.bids(kick).bid == Wad.from_number(16)
 
         # when
@@ -423,7 +424,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         # and
-        time.sleep(1)
+        time.sleep(2)
         # and
         self.end_ignoring_transactions()
         # and
@@ -464,9 +465,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    def test_should_deal_when_we_won_the_auction(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_deal_when_we_won_the_auction(self, kick):
         # given
-        kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -477,6 +481,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = self.flapper.bids(kick)
+        assert auction.bid > Wad(0)
         assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(8.0), 2)
         dai_before = self.mcd.vat.dai(self.keeper_address)
 

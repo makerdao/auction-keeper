@@ -19,7 +19,7 @@ from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import create_unsafe_cdp, is_cdp_safe, mcd, gal_address, web3
 
 mcd = mcd(web3())
-collateral = mcd.collaterals[2]
+collateral = mcd.collaterals['ETH-C']
 address = gal_address(web3())
 
 urn = mcd.vat.urn(collateral.ilk, address)

@@ -183,27 +183,50 @@ optional arguments:
   --rpc-timeout RPC_TIMEOUT
                         JSON-RPC timeout (in seconds, default: 10)
   --eth-from ETH_FROM   Ethereum account from which to send transactions
-  --flipper FLIPPER     Ethereum address of the Flipper contract
-  --flapper FLAPPER     Ethereum address of the Flapper contract
-  --flopper FLOPPER     Ethereum address of the Flopper contract
-  --mkr MKR             Address of the MKR governance token, required for flap auctions
-  --dai-join DAI_JOIN   Ethereum address of the DaiJoin contract
+  --eth-key [ETH_KEY [ETH_KEY ...]]
+                        Ethereum private key(s) to use (e.g.
+                        'key_file=aaa.json,pass_file=aaa.pass')
+  --addresses ADDRESSES
+                        path to addresses.json from the MCD deployment
+  --type {flip,flap,flop}
+                        Auction type in which to participate
+  --ilk ILK             Name of the collateral type for a flip keeper
+
   --vat-dai-target VAT_DAI_TARGET
                         Amount of Dai to keep in the Vat contract
   --keep-dai-in-vat-on-exit
                         Retain Dai in the Vat on exit, saving gas when
                         restarting the keeper
+  --keep-gem-in-vat-on-exit
+                        Retain collateral in the Vat on exit
 
   --model MODEL         Commandline to use in order to start the bidding model
   --debug               Enable debug output
 ```
-`flip` and `flop` auctions require Dai to be `join`ed to the `Vat` to participate.  
-Using an `eth-from` account with an open CDP is discouraged, as debt will hinder `auction-keeper`'s ability to `exit` 
-Dai from the `Vat`.
 
 To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
-one for `flap` and another for `flop`.  When running multiple keepers using the same account, keep in mind the 
-balance of Dai in the `Vat` will be shared across keepers.  If using the feature, set `--vat-dai-target` accordingly.
+one for `flap` and another for `flop`.
+
+### Accounting
+
+Auction contracts exclusively interact with Dai (for all auctions) and collateral (for `flip` auctions) in the `Vat`. 
+More explicitly:
+ * Dai used to bid on auctions is withdrawn from the `Vat`.
+ * Collateral and surplus Dai won at auction is placed in the `Vat`.
+ 
+By default, all Dai and collateral in your `eth-from` account is `exit`ed from the Vat and added to your token balance 
+when the keeper is shut down.  This feature may be disabled using the `keep-dai-in-vat-on-exit` and 
+`keep-gem-in-vat-on-exit` switches respectively.  Using an `eth-from` account with an open CDP is discouraged, 
+as debt will hinder the auction contracts' ability to access your Dai, and `auction-keeper`'s ability to `exit` Dai 
+from the `Vat`.
+
+When running multiple keepers using the same account, the balance of Dai in 
+the `Vat` will be shared across keepers.  If using the feature, set `--vat-dai-target` to the same value on each 
+keeper, and sufficiently high to cover total desired exposure.
+
+MKR used to bid on `flap` auctions is directly withdrawn from your token balance.  MKR won at `flop` auctions is 
+directly deposited to your token balance.
+
  
 ## Testing
 

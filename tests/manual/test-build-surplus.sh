@@ -8,7 +8,7 @@ export PYTHONPATH=$PYTHONPATH:$dir:$dir/lib/pymaker
 while true
 do
     # Argument is the amount of collateral to place in the CDP, which impacts the stability fees
-    python3 tests/manual/create_surplus.py 100000
+    python3 tests/manual/create_surplus.py 100
     # Show change in surplus (joy)
     python3 tests/manual/print.py
     sleep 13

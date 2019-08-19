@@ -16,13 +16,9 @@ ID=$2
     --rpc-timeout 30 \
     --eth-from ${ACCOUNT_ADDRESS?:} \
     --eth-key ${ACCOUNT_KEY?:} \
-    --cat ${CAT_ADDRESS?:} \
-    --vow ${VOW_ADDRESS?:} \
-    --flapper ${FLAPPER_ADDRESS} \
-    --dai-join ${DAI_JOIN_ADDRESS} \
-    --mkr ${MKR_ADDRESS} \
+    --type flap \
+    --addresses ../../lib/pymaker/tests/config/addresses.json \
     --vat-dai-target 300 \
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \
     2> >(tee -a ${LOGS_DIR?:}/auction-keeper-${ID}.log >&2)
-

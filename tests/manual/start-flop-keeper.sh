@@ -16,10 +16,8 @@ ID=$2
     --rpc-timeout 30 \
     --eth-from ${ACCOUNT_ADDRESS?:} \
     --eth-key ${ACCOUNT_KEY?:} \
-    --cat ${CAT_ADDRESS?:} \
-    --vow ${VOW_ADDRESS?:} \
-    --flopper ${FLOPPER_ADDRESS} \
-    --dai-join ${DAI_JOIN_ADDRESS} \
+    --type flop \
+    --addresses ../../lib/pymaker/tests/config/addresses.json \
     --vat-dai-target 5000000 \
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \

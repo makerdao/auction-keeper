@@ -22,5 +22,5 @@ from tests.conftest import mcd, set_collateral_price, web3
 
 mcd = mcd(web3())
 price = Wad.from_number(float(sys.argv[1]))
-set_collateral_price(mcd, mcd.collaterals[0], price)
+set_collateral_price(mcd, mcd.collaterals['ETH-A'], price)
 
