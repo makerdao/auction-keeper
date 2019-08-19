@@ -191,7 +191,8 @@ optional arguments:
   --type {flip,flap,flop}
                         Auction type in which to participate
   --ilk ILK             Name of the collateral type for a flip keeper
-
+  --bid-only            Do not take opportunities to create new auctions
+  
   --vat-dai-target VAT_DAI_TARGET
                         Amount of Dai to keep in the Vat contract
   --keep-dai-in-vat-on-exit

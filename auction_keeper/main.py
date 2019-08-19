@@ -63,9 +63,9 @@ class AuctionKeeper:
         parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str, help="Name of the collateral type for a flip keeper")
-        # TODO: Uncomment, code, and test this parameter
-        # parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
-        #                     help="Do not take opportunities to create new auctions")
+
+        parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
+                            help="Do not take opportunities to create new auctions")
 
         parser.add_argument('--vat-dai-target', type=float, help="Amount of Dai to keep in the Vat contract")
         parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
@@ -144,19 +144,22 @@ class AuctionKeeper:
             lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
                 def seq_func():
-                    self.check_cdps()
+                    if self.arguments.create_auctions:
+                        self.check_cdps()
                     self.check_all_auctions()
 
                 lifecycle.on_block(seq_func)
             elif self.flapper and self.vow:
                 def seq_func():
-                    self.check_flap()
+                    if self.arguments.create_auctions:
+                        self.check_flap()
                     self.check_all_auctions()
 
                 lifecycle.on_block(seq_func)
             elif self.flopper and self.vow:
                 def seq_func():
-                    self.check_flop()
+                    if self.arguments.create_auctions:
+                        self.check_flop()
                     self.check_all_auctions()
 
                 lifecycle.on_block(seq_func)
