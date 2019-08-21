@@ -21,6 +21,7 @@ from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import mcd, set_collateral_price, web3
 
 mcd = mcd(web3())
-price = Wad.from_number(float(sys.argv[1]))
-set_collateral_price(mcd, mcd.collaterals['ETH-A'], price)
-
+price = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else Wad.from_number(200)
+ilk_name = str(sys.argv[2]) if len(sys.argv) > 2 else 'ETH-A'
+set_collateral_price(mcd, mcd.collaterals[ilk_name], price)
+print(f"spot={str(mcd.vat.ilk(ilk_name).spot)[:9]}")

@@ -43,6 +43,14 @@ You'll likely want to run `purchase_dai.py` and `mint_mkr.py` to procure tokens 
 is mined in several minutes, these scripts generally have a loop which transacts every 13 seconds to simulate a "real" 
 chain.
 
+`create-cdp.sh` and `create-cdps.sh` make use of `mcd-cli` to create CDPs using the CDP Manager.  This allows our tests 
+to create a large number of CDPs despite only having a handful of accounts on the testchain.  One way to configure 
+`mcd-cli` with the testchain:
+* Copy `addresses.json` to `~/.dapp/testnet/8545/config`
+* Copy key files to `~/.dapp/testnet/8545/keystore`
+* Modify the _testnet_ section of `libexec/mcd/mcd` to point to the correct IP
+* Redeploy `mcd-cli` using _automake_: `sudo make uninstall; sudo make install`
+
 
 ## Starting Keepers
 

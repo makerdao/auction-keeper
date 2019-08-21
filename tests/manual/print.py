@@ -35,11 +35,12 @@ address = gal_address(web3())
 
 def print_balances():
     joy = mcd.vat.dai(mcd.vow.address)
-    awe = mcd.vat.sin(mcd.vow.address)  # FIXME: this froze up after a few hours of running every 13 seconds
+    awe = mcd.vat.sin(mcd.vow.address)
     woe = (awe - mcd.vow.sin()) - mcd.vow.ash()
     print(f"joy={str(joy)[:6]}, awe={str(awe)[:9]}, woe={str(woe)[:9]}, "
           f"Sin={str(mcd.vow.sin())[:9]}, Ash={str(mcd.vow.ash())[:9]}, "
-          f"bump={str(mcd.vow.bump())[:9]}, sump={str(mcd.vow.sump())[:9]}")
+          f"debt={str(mcd.vat.debt())[:9]}, vice={str(mcd.vat.vice())[:9]}")
+          #f"bump={str(mcd.vow.bump())[:9]}, sump={str(mcd.vow.sump())[:9]}")
 
 
 def print_auctions():
