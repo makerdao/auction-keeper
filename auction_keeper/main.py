@@ -114,8 +114,8 @@ class AuctionKeeper:
 
         # Configure auction contracts
         self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
-        self.flapper = mcd.flap if self.arguments.type == 'flap' else None
-        self.flopper = mcd.flop if self.arguments.type == 'flop' else None
+        self.flapper = mcd.flapper if self.arguments.type == 'flap' else None
+        self.flopper = mcd.flopper if self.arguments.type == 'flop' else None
         if self.flipper:
             self.strategy = FlipperStrategy(self.flipper)
         elif self.flapper:
@@ -279,18 +279,18 @@ class AuctionKeeper:
                             if woe - joy >= sump:
                                 break
 
-                    # use heal() for removing the remaining joy
+                # use heal() for reconciling the remaining joy
+                joy = self.vat.dai(self.vow.address)
+                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                if Rad(0) < joy <= woe:
+                    self.logger.info(f"healing joy={joy} woe={woe}")
+                    self.vow.heal(joy).transact()
+                    # heal() changes joy and woe (the balance of surplus and debt)
                     joy = self.vat.dai(self.vow.address)
                     woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
-                    if Rad(0) < joy <= woe:
-                        self.logger.info(f"healing joy={joy} woe={woe}")
-                        self.vow.heal(joy).transact()
-                        # heal() changes joy and woe (the balance of surplus and debt)
-                        joy = self.vat.dai(self.vow.address)
-                        woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
-                    if sump <= woe and joy == Rad(0):
-                        self.vow.flop().transact()
+                if sump <= woe and joy == Rad(0):
+                    self.vow.flop().transact()
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):

@@ -34,10 +34,10 @@ def kick(mcd, c: Collateral, gal_address) -> int:
     create_cdp_with_surplus(mcd, c, gal_address)
 
     assert mcd.vow.flap().transact(from_address=gal_address)
-    kick = mcd.flap.kicks()
+    kick = mcd.flapper.kicks()
     assert kick > 0
 
-    current_bid = mcd.flap.bids(kick)
+    current_bid = mcd.flapper.bids(kick)
     assert current_bid.lot == mcd.vow.bump()
 
     return kick
@@ -52,7 +52,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.other_address = other_address(self.web3)
         self.gal_address = gal_address(self.web3)
         self.mcd = mcd(self.web3)
-        self.flapper = self.mcd.flap
+        self.flapper = self.mcd.flapper
         self.flapper.approve(self.mcd.mkr.address, directly(from_address=self.other_address))
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
@@ -67,7 +67,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def test_should_detect_flap(self, web3, mcd, c, gal_address, keeper_address):
         # given some MKR is available to the keeper and a count of flap auctions
         mint_mkr(mcd.mkr, keeper_address, Wad.from_number(50000))
-        kicks = mcd.flap.kicks()
+        kicks = mcd.flapper.kicks()
 
         # when surplus is generated
         create_cdp_with_surplus(mcd, c, gal_address)
@@ -75,10 +75,10 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
 
         # then ensure another flap auction was kicked off
-        assert mcd.flap.kicks() == kicks + 1
+        assert mcd.flapper.kicks() == kicks + 1
 
         # clean up by letting the auction expire
-        time_travel_by(web3, mcd.flap.tau() + 1)
+        time_travel_by(web3, mcd.flapper.tau() + 1)
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
         # given

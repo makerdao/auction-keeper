@@ -61,7 +61,7 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
     assert mcd.vow.sump() <= woe
     assert mcd.vat.dai(mcd.vow.address) == Rad(0)
     assert mcd.vow.flop().transact(from_address=gal_address)
-    return mcd.flop.kicks()
+    return mcd.flopper.kicks()
 
 
 @pytest.mark.timeout(600)
@@ -73,7 +73,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.other_address = other_address(self.web3)
         self.gal_address = gal_address(self.web3)
         self.mcd = mcd(self.web3)
-        self.flopper = self.mcd.flop
+        self.flopper = self.mcd.flopper
         self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.keeper_address)
         self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.other_address)
 
@@ -94,7 +94,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
     def test_should_detect_flop(self, web3, c, mcd, other_address, keeper_address):
         # given a count of flop auctions
         reserve_dai(mcd, c, keeper_address, Wad.from_number(230))
-        kicks = mcd.flop.kicks()
+        kicks = mcd.flopper.kicks()
 
         # and an undercollateralized CDP is bitten
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1), other_address, draw_dai=False)
@@ -102,14 +102,27 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
 
         # when the auction ends without debt being covered
         time_travel_by(web3, c.flipper.tau() + 1)
+
+        # then ensure testchain is in the appropriate state
+        joy = mcd.vat.dai(mcd.vow.address)
+        awe = mcd.vat.sin(mcd.vow.address)
+        woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
+        sin = mcd.vow.sin()
+        sump = mcd.vow.sump()
+        wait = mcd.vow.wait()
+        assert joy < awe
+        assert woe + sin >= sump
+        assert wait == 0
+
+        # when
         self.keeper.check_flop()
         wait_for_other_threads()
 
         # then ensure another flop auction was kicked off
-        assert mcd.flop.kicks() == kicks + 1
+        assert mcd.flopper.kicks() == kicks + 1
 
         # clean up by letting the auction expire
-        time_travel_by(web3, mcd.flap.tau() + 1)
+        time_travel_by(web3, mcd.flopper.tau() + 1)
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
         # given

@@ -1,4 +1,4 @@
 #!/bin/bash
 
 echo "{\"price\": \"1.0\"}"
-sleep 5
+sleep 360
