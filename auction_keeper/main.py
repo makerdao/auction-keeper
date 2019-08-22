@@ -232,21 +232,14 @@ class AuctionKeeper:
             bump = self.vow.bump()
             hump = self.vow.hump()
 
-            # Check our balance
-            mkr_balance = self.mkr.balance_of(self.our_address)
-            min_balance = Wad(0)  # TODO: determine minimum balance ...
-
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
-            if (joy - awe) >= (bump + hump) and mkr_balance > min_balance:
+            if (joy - awe) >= (bump + hump):
                 woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
                 # Heal the system to bring Woe to 0
                 if woe > Rad(0):
                     self.vow.heal(woe).transact()
                 self.vow.flap().transact()
-
-            if (joy - awe) >= (bump + hump) and mkr_balance <= min_balance:
-                self.logger.warning('Flap auction is possible but not enough MKR balance available to participate')
 
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
@@ -260,18 +253,15 @@ class AuctionKeeper:
             sump = self.vow.sump()
             wait = self.vow.wait()
 
-            # Check our balance
-            dai_balance = Wad(self.vat.dai(self.our_address))
-            min_balance = Wad(0)  # TODO: determine minimum balance ...
-
             # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
-            if woe + sin >= sump and dai_balance > min_balance:
+            if woe + sin >= sump:
                 # We need to bring Joy to 0 and Woe to at least sump
 
                 # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
                 ash = self.vow.ash()
-                if Rad(0) < ash < joy:
-                    self.vow.kiss(ash).transact()
+                goodnight = min(ash, joy)
+                if goodnight > Rad(0):
+                    self.vow.kiss(goodnight).transact()
 
                 # Convert enough sin in woe to have woe >= sump + joy
                 if woe < (sump + joy) and self.cat is not None:
@@ -289,21 +279,18 @@ class AuctionKeeper:
                             if woe - joy >= sump:
                                 break
 
-                # use heal() for removing the remaining joy
-                joy = self.vat.dai(self.vow.address)
-                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
-                if Rad(0) < joy <= woe:
-                    self.logger.info(f"healing joy={joy} woe={woe}")
-                    self.vow.heal(joy).transact()
-                    # heal() changes joy and woe (the balance of surplus and debt)
+                    # use heal() for removing the remaining joy
                     joy = self.vat.dai(self.vow.address)
                     woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                    if Rad(0) < joy <= woe:
+                        self.logger.info(f"healing joy={joy} woe={woe}")
+                        self.vow.heal(joy).transact()
+                        # heal() changes joy and woe (the balance of surplus and debt)
+                        joy = self.vat.dai(self.vow.address)
+                        woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
-                if sump <= woe and joy == Rad(0):
-                    self.vow.flop().transact()
-
-            if woe + sin >= sump and dai_balance <= min_balance:
-                self.logger.warning('Flop auction is possible but not enough DAI balance available to participate')
+                    if sump <= woe and joy == Rad(0):
+                        self.vow.flop().transact()
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
