@@ -205,8 +205,7 @@ class AuctionKeeper:
         last_note_event = {}
 
         # Look for unsafe CDPs and bite them
-
-        past_frob = self.vat.past_frob(self.web3.eth.blockNumber, self.ilk)  # TODO: put past_block in cache
+        past_frob = self.vat.past_frob(self.web3.eth.blockNumber, self.ilk)
         for frob in past_frob:
             last_note_event[frob.urn] = frob
 
@@ -216,9 +215,7 @@ class AuctionKeeper:
             safe = current_urn.ink * ilk.spot >= current_urn.art * self.vat.ilk(ilk.name).rate
             if not safe:
                 self.logger.info(f'Found an unsafe CDP: {current_urn}')
-                # TODO: Execute this asynchronously, such that it doesn't block detection of new auctions
-                #       when the next block is mined.
-                self.cat.bite(ilk, current_urn).transact()
+                self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
@@ -327,10 +324,8 @@ class AuctionKeeper:
         # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
         elif auction_finished:
             if input.guy == self.our_address:
-                # TODO this should happen asynchronously
-
                 # Always using default gas price for `deal`
-                self.strategy.deal(id).transact(gas_price=DefaultGasPrice())
+                self._run_future(self.strategy.deal(id).transact_async(gas_price=DefaultGasPrice()))
 
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.

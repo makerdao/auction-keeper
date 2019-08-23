@@ -16,11 +16,12 @@ of a _bidding model_ for it and then act according to its instructions. _Bidding
 be automatically terminated by the keeper the moment the auction expires.  The keeper also
 automatically `deal`s expired auctions if it's us who won them.
 
-Bear in mind that this keeper is still a **work in progress**. Status as of 2019.07.24:
+This keeper is intended to be a fully-functional reference implementation.  It may be used as-is, or pieces borrowed to 
+develop your own auction trading bot.  Status as of 2019.08.23:
  * Supports DSS 0.2.10
  * Unit testing completed
- * Testchain integration testing not started
- * Kovan integration testing not started
+ * Testchain integration testing completed
+ * Kovan integration testing not performed
 
 <https://chat.makerdao.com/channel/keeper>
 
@@ -135,7 +136,6 @@ Consider this your price update interval.
 
 ### Limitations
 
-* Collateral won in a `flip` auction is not automatically exited from the Vat.
 * If an auction started before the keeper was started, this keeper will not participate in it until the next block 
 is mined.
 * This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
@@ -145,6 +145,7 @@ outstanding, the keeper will not request a `yank` to refund the bid.  Workaround
 the following actions:
   * submitting approvals
   * adjusting the balance of surplus to debt
+  * queuing debt for auction
   * biting a CDP or starting a flap or flop auction, even if insufficient funds exist to participate in it
 * The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in 
 response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too 
