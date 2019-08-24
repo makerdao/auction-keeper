@@ -12,5 +12,5 @@ do
     echo Creating CDP with $ink collateral and drawing $art Dai
     ./create-cdp.sh $ink $art
     mcd -C testnet --ilk=ETH-C drip > /dev/null
-    sleep 33
+    sleep 13
 done
