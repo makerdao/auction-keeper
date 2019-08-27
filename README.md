@@ -3,10 +3,14 @@
 [![Build Status](https://travis-ci.org/makerdao/auction-keeper.svg?branch=master)](https://travis-ci.org/makerdao/auction-keeper)
 [![codecov](https://codecov.io/gh/makerdao/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/makerdao/auction-keeper)
 
-The _DAI Stablecoin System_ incentivizes external agents, called _keepers_,
-to automate certain operations around the Ethereum blockchain. Check out the 
-<a href="https://youtu.be/wevzK3ADEjo?t=733">July 23rd, 2019 community meeting</a> for some more information about the 
-auctions and the purpose of this component.
+The _DAI Stablecoin System_ incentivizes external agents, called _keepers_, to automate certain operations around the 
+Ethereum blockchain.  The purpose of `auction-keeper` is to:
+ * Seek out opportunities and start new auctions
+ * Detect auctions started by other participants
+ * Bid on auctions by converting token prices into bids
+
+Check out the <a href="https://youtu.be/wevzK3ADEjo?t=733">July 23rd, 2019 community meeting</a> 
+for some more information about MCD auctions and the purpose of this component.
 
 `auction-keeper` can participate in `flip` (collateral sale), `flap` (MKR buy-and-burn)
 and `flop` (MKR minting) auctions. Its unique feature is the ability to plug in external
@@ -16,7 +20,7 @@ of a _bidding model_ for it and then act according to its instructions. _Bidding
 be automatically terminated by the keeper the moment the auction expires.  The keeper also
 automatically `deal`s expired auctions if it's us who won them.
 
-This keeper is intended to be a fully-functional reference implementation.  It may be used as-is, or pieces borrowed to 
+This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to 
 develop your own auction trading bot.  Status as of 2019.08.23:
  * Supports DSS 0.2.10
  * Unit testing completed
@@ -26,7 +30,7 @@ develop your own auction trading bot.  Status as of 2019.08.23:
 <https://chat.makerdao.com/channel/keeper>
 
 
-## Overall architecture
+## Architecture
 
 `auction-keeper` directly interacts with `Flipper`, `Flapper` and `Flopper` auction contracts
 deployed to the Ethereum blockchain. Decisions which involve pricing are delegated to _bidding models_.
@@ -43,16 +47,9 @@ The main task of this keeper, as already outlined above, is to constantly monito
 discover new ones, ensure that an instance of _bidding model_ is running for each auction, provide
 these instances of the current status of their auctions and bid according to decisions taken by them.
 
-The way the auction discovery and monitoring mechanism works at the moment is pretty lame. It basically
-operates as a loop which kicks in on every new block and simply enumerates all auctions from `1` to `kicks`.
-Even if the _bidding model_ decides to send a bid, it will not be processed by the keeper until the next
-iteration of that loop. We definitely plan to upgrade this mechanism with something smarter in the future,
-especially that the current approach will stop performing well the moment the number of both current
-and historical auctions will rise. The GitHub issue for it is here: <https://github.com/makerdao/auction-keeper/issues/4>.
-
-Having said that, the current lame mechanism will probably stay around for a while as we first want
-to validate the whole architecture and only start optimizing it when it becomes necessary. Ultimately,
-good responsiveness of the keeper will be essential as the auctions space will become more competitive.
+The way the auction discovery and monitoring mechanism works at the moment is simplistic for illustration purposes. 
+It basically operates as a loop which kicks in on every new block enumerating all auctions from `1` to `kicks`.
+Bidding models are checked every 2 seconds and submitted where appropriate.
 
 
 ### Starting and stopping _bidding models_
@@ -105,7 +102,7 @@ process and tries to parse them as JSON documents. Then it extracts two fields f
   the model is willing to bid.
 * `gasPrice` (optional) - gas price in Wei to use when sending the bid.
 
-Sample message send from the model to the keeper may look like:
+A sample message sent from the model to the keeper may look like:
 ```json
 {"price": "750.0", "gasPrice": 7000000000}
 ```
@@ -134,7 +131,7 @@ sleep locks the price in place for a minute, after which the keeper will restart
 Consider this your price update interval.
 
 
-### Limitations
+## Limitations
 
 * If an auction started before the keeper was started, this keeper will not participate in it until the next block 
 is mined.
@@ -146,7 +143,7 @@ the following actions:
   * submitting approvals
   * adjusting the balance of surplus to debt
   * queuing debt for auction
-  * biting a CDP or starting a flap or flop auction, even if insufficient funds exist to participate in it
+  * biting a CDP or starting a flap or flop auction
 * The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in 
 response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too 
 imposes a gas fee.

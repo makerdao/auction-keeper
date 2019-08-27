@@ -2,7 +2,6 @@
 dir="$(dirname "$0")"
 
 source testnet.sh
-export FLIPPER_ADDRESS=0x226b5c00b65f57f981e5318be22521154c931245
 
 source ../../_virtualenv/bin/activate
 
@@ -24,4 +23,3 @@ ID=$2
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \
     2> >(tee -a ${LOGS_DIR?:}/auction-keeper-${ID}.log >&2)
-
