@@ -23,16 +23,16 @@ import threading
 
 from web3 import Web3, HTTPProvider
 
-from pymaker import Address, Wad
-from pymaker.auctions import Flopper, Flipper, Flapper
-from pymaker.dss import Ilk, Cat, Pit, Vat, Vow
+from pymaker import Address
+from pymaker.approval import hope_directly
+from pymaker.deployment import DssDeployment
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
-from pymaker.token import DSToken
+from pymaker.numeric import Wad, Ray, Rad
 
 from auction_keeper.gas import UpdatableGasPrice
-from auction_keeper.logic import Auctions
+from auction_keeper.logic import Auction, Auctions
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 
@@ -54,19 +54,24 @@ class AuctionKeeper:
 
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
-
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
-        parser.add_argument('--cat', type=str, help="Ethereum address of the Cat contract")
-        parser.add_argument('--vow', type=str, help="Ethereum address of the Vow contract")
+        parser.add_argument('--addresses', type=str, required=True,
+                            help="path to addresses.json from the MCD deployment")
+        parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
+                            help="Auction type in which to participate")
+        parser.add_argument('--ilk', type=str,
+                            help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A')")
+        parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
+                            help="Do not take opportunities to create new auctions")
 
-        parser.add_argument('--ilk', type=str, help="Ilk used for this keeper")
-
-        contract = parser.add_mutually_exclusive_group(required=True)
-        contract.add_argument('--flipper', type=str, help="Ethereum address of the Flipper contract")
-        contract.add_argument('--flapper', type=str, help="Ethereum address of the Flapper contract")
-        contract.add_argument('--flopper', type=str, help="Ethereum address of the Flopper contract")
+        parser.add_argument('--vat-dai-target', type=float,
+                            help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
+        parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
+                            help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
+        parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
+                            help="Retain collateral in the Vat on exit")
 
         parser.add_argument("--model", type=str, required=True,
                             help="Commandline to use in order to start the bidding model")
@@ -76,52 +81,57 @@ class AuctionKeeper:
 
         self.arguments = parser.parse_args(args)
 
+        # Configure connection to the chain
         if self.arguments.rpc_host.startswith("http"):
             endpoint_uri = f"{self.arguments.rpc_host}:{self.arguments.rpc_port}"
         else:
             # Should probably default this to use TLS, but I don't want to break existing configs
             endpoint_uri = f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}"
-
         self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(
             HTTPProvider(endpoint_uri=endpoint_uri,
                          request_kwargs={"timeout": self.arguments.rpc_timeout}))
-
         self.web3.eth.defaultAccount = self.arguments.eth_from
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
 
-        self.cat = Cat(web3=self.web3, address=Address(self.arguments.cat)) if self.arguments.cat else None
-        self.vow = Vow(web3=self.web3, address=Address(self.arguments.vow)) if self.arguments.vow else None
-        self.ilk = Ilk(self.arguments.ilk) if self.arguments.ilk else None
+        # Configure core and token contracts
+        if self.arguments.type == 'flip' and not self.arguments.ilk:
+            raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
+        mcd = DssDeployment.from_json(web3=self.web3, conf=open(self.arguments.addresses, "r").read())
+        self.vat = mcd.vat
+        self.cat = mcd.cat
+        self.vow = mcd.vow
+        self.mkr = mcd.mkr
+        self.dai_join = mcd.dai_adapter
+        if self.arguments.type == 'flip':
+            self.collateral = mcd.collaterals[self.arguments.ilk]
+            self.ilk = self.collateral.ilk
+            self.gem_join = self.collateral.adapter
+        else:
+            self.collateral = None
+            self.ilk = None
+            self.gem_join = None
 
-        self.flipper = Flipper(web3=self.web3,
-                               address=Address(self.arguments.flipper)) if self.arguments.flipper else None
-        self.flapper = Flapper(web3=self.web3,
-                               address=Address(self.arguments.flapper)) if self.arguments.flapper else None
-        self.flopper = Flopper(web3=self.web3,
-                               address=Address(self.arguments.flopper)) if self.arguments.flopper else None
-
+        # Configure auction contracts
+        self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
+        self.flapper = mcd.flapper if self.arguments.type == 'flap' else None
+        self.flopper = mcd.flopper if self.arguments.type == 'flop' else None
         if self.flipper:
             self.strategy = FlipperStrategy(self.flipper)
-            if self.cat is None:
-                self.logger.warning(f"Flipper auction selected but no Cat address specified so we won't bite()")
-                if self.ilk is None:
-                    self.logger.warning(f"bite() will operate on all CDP type because ilk is not specified")
         elif self.flapper:
-            if self.vow is None:
-                self.logger.warning(f"Flapper auction selected but no Vow address specified so we won't flip()")
-            self.strategy = FlapperStrategy(self.flapper)
+            self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
-            if self.vow is None:
-                self.logger.warning(f"Flopper auction selected but no Vow address specified so we won't flap()")
-            if self.cat is None:
-                self.logger.warning(f"Flopper auction selected but no Cat address specified so we won't flog()")
             self.strategy = FlopperStrategy(self.flopper)
 
+        # Create the collection used to manage auctions relevant to this keeper
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(self.arguments.model))
+        self.auctions_lock = threading.Lock()
+
+        self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
+            self.arguments.vat_dai_target is not None else None
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -131,171 +141,170 @@ class AuctionKeeper:
     def main(self):
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
+            lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
                 def seq_func():
-                    self.check_cdps()
+                    if self.arguments.create_auctions:
+                        self.check_cdps()
                     self.check_all_auctions()
 
                 lifecycle.on_block(seq_func)
             elif self.flapper and self.vow:
                 def seq_func():
-                    self.check_flap()
+                    if self.arguments.create_auctions:
+                        self.check_flap()
                     self.check_all_auctions()
 
                 lifecycle.on_block(seq_func)
             elif self.flopper and self.vow:
                 def seq_func():
-                    self.check_flop()
+                    if self.arguments.create_auctions:
+                        self.check_flop()
                     self.check_all_auctions()
 
                 lifecycle.on_block(seq_func)
             else:
                 lifecycle.on_block(self.check_all_auctions)
+            lifecycle.every(2, self.check_for_bids)
 
     def startup(self):
         self.approve()
+        self.rebalance_dai()
+        if self.flapper:
+            self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
     def approve(self):
         self.strategy.approve()
+        if self.dai_join:
+            self.dai_join.approve(hope_directly(), self.vat.address)
+            self.dai_join.dai().approve(self.dai_join.address).transact()
+
+    def shutdown(self):
+        self.exit_dai_on_shutdown()
+        self.exit_collateral_on_shutdown()
+
+    def exit_dai_on_shutdown(self):
+        if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
+            return
+
+        vat_balance = Wad(self.vat.dai(self.our_address))
+        if vat_balance > Wad(0):
+            self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
+            assert self.dai_join.exit(self.our_address, vat_balance).transact()
+
+    def exit_collateral_on_shutdown(self):
+        if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
+            return
+
+        vat_balance = self.vat.gem(self.ilk, self.our_address)
+        if vat_balance > Wad(0):
+            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat before shutdown")
+            assert self.gem_join.exit(self.our_address, vat_balance).transact()
 
     def check_cdps(self):
         last_note_event = {}
-        pit = Pit(self.web3, self.cat.pit())
-        vat = Vat(self.web3, self.cat.vat())
 
         # Look for unsafe CDPs and bite them
-        note_filter = {}
-        if self.ilk:
-            note_filter = {'ilk': self.ilk.toBytes()}
-
-        past_note = vat.past_note(self.web3.eth.blockNumber, event_filter=note_filter)  # TODO: put past_block in cache
-        for note_event in past_note:
-            last_note_event[note_event.urn.address] = note_event
+        past_frob = self.vat.past_frob(self.web3.eth.blockNumber, self.ilk)
+        for frob in past_frob:
+            last_note_event[frob.urn] = frob
 
         for urn_addr in last_note_event:
-            ilk = last_note_event[urn_addr].ilk
-            current_urn = vat.urn(ilk, urn_addr)
-            safe = current_urn.ink * vat.spot(ilk) >= current_urn.art * vat.ilk(ilk.name).rate
+            ilk = self.vat.ilk(frob.ilk)
+            current_urn = self.vat.urn(ilk, urn_addr)
+            safe = current_urn.ink * ilk.spot >= current_urn.art * self.vat.ilk(ilk.name).rate
             if not safe:
                 self.logger.info(f'Found an unsafe CDP: {current_urn}')
-                # TODO this should happen asynchronously
-                self.cat.bite(ilk, current_urn).transact()
+                self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
-        # Look for pending collateral auctions and start them when DAI balance is sufficient
-        for i in range(self.cat.nflip()):
-            flip = self.cat.flips(i)
-
-            # Check both debt and if this auction-keeper will handle the auction
-            if flip.tab > Wad(0) and (self.cat.flipper(flip.urn.ilk) == self.flipper.address):
-                self.logger.info(f'Found an outstanding collateral auction: {flip}')
-
-                lump = self.cat.lump(flip.urn.ilk)
-
-                # Check our balance and if balances available then flip() an auction
-                dai_balance = Wad(vat.dai(self.our_address))
-                min_balance = Wad(0)  # TODO: determine minimum balance ...
-
-                if dai_balance > min_balance:
-
-                    if flip.tab < lump and dai_balance > flip.tab:
-                        # TODO this should happen asynchronously
-                        self.cat.flip(flip, flip.tab).transact()
-                    elif flip.tab > lump and dai_balance > lump:
-                        # TODO this should happen asynchronously
-                        self.cat.flip(flip, lump).transact()
-                else:
-                    self.logger.warning(f'Not enought balance to flip({flip.id}): '
-                                        f'dai_balance={dai_balance} tab={flip.tab} lump={lump}')
+        # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
         # Check if Vow has a surplus of Dai compared to bad debt
-        joy = self.vow.joy()
-        awe = self.vow.awe()
-        mkr = DSToken(self.web3, self.flapper.gem())
+        joy = self.vat.dai(self.vow.address)
+        awe = self.vat.sin(self.vow.address)
 
         # Check if Vow has Dai in excess
         if joy > awe:
             bump = self.vow.bump()
             hump = self.vow.hump()
 
-            # Check our balance
-            mkr_balance = mkr.balance_of(self.our_address)
-            min_balance = Wad(0)  # TODO: determine minimum balance ...
-
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
-            if (joy - awe) >= (bump + hump) and mkr_balance > min_balance:
-                woe = self.vow.woe()
+            if (joy - awe) >= (bump + hump):
+                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
                 # Heal the system to bring Woe to 0
-                if woe > Wad(0):
+                if woe > Rad(0):
                     self.vow.heal(woe).transact()
                 self.vow.flap().transact()
 
-            if (joy - awe) >= (bump + hump) and mkr_balance <= min_balance:
-                self.logger.warning('Flap auction is possible but not enought MKR balance available to participate')
-
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
-        joy = self.vow.joy()
-        awe = self.vow.awe()
-        vat = Vat(self.web3, self.vow.vat())
+        joy = self.vat.dai(self.vow.address)
+        awe = self.vat.sin(self.vow.address)
 
         # Check if Vow has bad debt in excess
         if joy < awe:
-            woe = self.vow.woe()
+            woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
             sin = self.vow.sin()
             sump = self.vow.sump()
-
-            # Check our balance
-            dai_balance = Wad(vat.dai(self.our_address))
-            min_balance = Wad(0)  # TODO: determine minimum balance ...
+            wait = self.vow.wait()
 
             # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
-            if woe + sin >= sump and dai_balance > min_balance:
+            if woe + sin >= sump:
                 # We need to bring Joy to 0 and Woe to at least sump
 
                 # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
                 ash = self.vow.ash()
-                if ash > Wad(0):
-                    self.vow.kiss(ash).transact()
+                goodnight = min(ash, joy)
+                if goodnight > Rad(0):
+                    self.vow.kiss(goodnight).transact()
 
                 # Convert enough sin in woe to have woe >= sump + joy
-                if woe < sump and self.cat is not None:
-                    flog_amount = Wad(0)
+                if woe < (sump + joy) and self.cat is not None:
                     for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
                         era = bite_event.era(self.web3)
+                        now = self.web3.eth.getBlock('latest')['timestamp']
                         sin = self.vow.sin_of(era)
-                        if sin > Wad(0):
+                        # If the bite hasn't already been flogged and has aged past the `wait`
+                        if sin > Rad(0) and era + wait <= now:
                             self.vow.flog(era).transact()
 
                             # flog() sin until woe is above sump + joy
-                            if self.vow.woe() - self.vow.joy() >= sump:
+                            joy = self.vat.dai(self.vow.address)
+                            woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                            if woe - joy >= sump:
                                 break
 
-                # use heal() for removing the remaining joy
-                joy = self.vow.joy()
-                if joy > Wad(0):
-                    self.logger.debug(f"healing joy={self.vow.joy()} woe={self.vow.woe()}")
+                # use heal() for reconciling the remaining joy
+                joy = self.vat.dai(self.vow.address)
+                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+                if Rad(0) < joy <= woe:
+                    self.logger.info(f"healing joy={joy} woe={woe}")
                     self.vow.heal(joy).transact()
+                    # heal() changes joy and woe (the balance of surplus and debt)
+                    joy = self.vat.dai(self.vow.address)
+                    woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
-                if woe < sump and self.cat is None:
-                    self.logger.warning('Not enough woe to flop() and Cat address is not known !')
-                else:
-                    # Start a flop auction
+                if sump <= woe and joy == Rad(0):
                     self.vow.flop().transact()
-
-            if woe + sin >= sump and dai_balance <= min_balance:
-                self.logger.warning('Flop auction is possible but not enought DAI balance available to participate')
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
-            self.check_auction(id)
+            with self.auctions_lock:
+                if self.check_auction(id):
+                    self.feed_model(id)
+
+    def check_for_bids(self):
+        with self.auctions_lock:
+            for id, auction in self.auctions.auctions.items():
+                self.handle_bid(id=id, auction=auction)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
     #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
     #     for example).
-    def check_auction(self, id: int):
+    def check_auction(self, id: int) -> bool:
         assert isinstance(id, int)
 
         # Read auction information
@@ -307,64 +316,130 @@ class AuctionKeeper:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
+            return False
 
         # Check if the auction is finished.
         # If it is finished and we are the winner, `deal` the auction.
         # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
         elif auction_finished:
             if input.guy == self.our_address:
-                # TODO this should happen asynchronously
-
                 # Always using default gas price for `deal`
-                self.strategy.deal(id).transact(gas_price=DefaultGasPrice())
+                self._run_future(self.strategy.deal(id).transact_async(gas_price=DefaultGasPrice()))
+
+                # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
+                # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
+                self.rebalance_dai()
 
             else:
                 # Try to remove the auction so the model terminates and we stop tracking it.
                 # If auction has already been removed, nothing happens.
                 self.auctions.remove_auction(id)
+            return False
 
         else:
-            auction = self.auctions.get_auction(id)
+            return True
 
-            # Feed the model with current state
-            auction.feed_model(input)
+    def feed_model(self, id: int):
+        assert isinstance(id, int)
 
-            output = auction.model_output()
-            if output is not None:
-                bid_price, bid_transact = self.strategy.bid(id, output.price)
+        auction = self.auctions.get_auction(id)
+        input = self.strategy.get_input(id)
 
-                if bid_price is not None and bid_transact is not None:
-                    # if no transaction in progress, send a new one
-                    transaction_in_progress = auction.transaction_in_progress()
-                    if transaction_in_progress is None:
-                        self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+        # Feed the model with current state
+        auction.feed_model(input)
+
+    def handle_bid(self, id: int, auction: Auction):
+        assert isinstance(id, int)
+        assert isinstance(auction, Auction)
+
+        output = auction.model_output()
+
+        if output is not None:
+            bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+            # If we can't afford the bid, log a warning/error and back out.
+            # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
+            if cost is not None:
+                if not self.check_bid_cost(cost):
+                    return
+
+            if bid_price is not None and bid_transact is not None:
+                # if no transaction in progress, send a new one
+                transaction_in_progress = auction.transaction_in_progress()
+
+                if transaction_in_progress is None:
+                    self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+
+                    auction.price = bid_price
+                    auction.gas_price = UpdatableGasPrice(output.gas_price)
+                    auction.register_transaction(bid_transact)
+
+                    self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+
+                # if transaction in progress and gas price went up...
+                elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
+
+                    # ...replace the entire bid if the price has changed...
+                    if bid_price != auction.price:
+                        self.logger.info(
+                            f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
 
                         auction.price = bid_price
                         auction.gas_price = UpdatableGasPrice(output.gas_price)
                         auction.register_transaction(bid_transact)
 
-                        self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+                        self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                                     gas_price=auction.gas_price))
+                    # ...or just replace gas_price if price stays the same
+                    else:
+                        self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
 
-                    # if transaction in progress and gas price went up...
-                    elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
+                        auction.gas_price.update_gas_price(output.gas_price)
 
-                        # ...replace the entire bid if the price has changed...
-                        if bid_price != auction.price:
-                            self.logger.info(
-                                f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
+    def check_bid_cost(self, cost: Rad) -> bool:
+        assert isinstance(cost, Rad)
 
-                            auction.price = bid_price
-                            auction.gas_price = UpdatableGasPrice(output.gas_price)
-                            auction.register_transaction(bid_transact)
+        # If this is an auction where we bid with Dai...
+        if self.flipper or self.flopper:
+            vat_dai = self.vat.dai(self.our_address)
+            if cost > vat_dai:
+                self.logger.warning(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                                    "bid will not be submitted")
+                return False
+            else:
+                self.logger.debug(f"Bid cost {str(cost)} is below vat balance of {vat_dai}")
+        # If this is an auction where we bid with MKR...
+        elif self.flapper:
+            mkr_balance = self.mkr.balance_of(self.our_address)
+            if cost > Rad(mkr_balance):
+                self.logger.warning(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
+                                    "bid will not be submitted")
+                return False
+            else:
+                self.logger.debug(f"Bid cost {str(cost)} is below MKR balance of {mkr_balance}")
+        return True
 
-                            self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
-                                                                         gas_price=auction.gas_price))
+    def rebalance_dai(self):
+        if self.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
+            return
 
-                        # ...or just replace gas_price if price stays the same
-                        else:
-                            self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
-
-                            auction.gas_price.update_gas_price(output.gas_price)
+        dai = self.dai_join.dai()
+        token_balance = dai.balance_of(self.our_address)  # Wad
+        difference = Wad(self.vat.dai(self.our_address)) - self.vat_dai_target  # Wad
+        if difference < Wad(0):
+            # Join tokens to the vat
+            if token_balance > difference * -1:
+                self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
+                assert self.dai_join.join(self.our_address, difference * -1).transact()
+            else:
+                self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
+                                    "Dai to the Vat")
+                assert self.dai_join.join(self.our_address, token_balance).transact()
+        elif difference > Wad(0):
+            # Exit dai from the vat
+            self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
+            assert self.dai_join.exit(self.our_address, difference).transact()
+        self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
+                         f"Vat balance: {self.vat.dai(self.our_address)}")
 
     @staticmethod
     def _run_future(future):

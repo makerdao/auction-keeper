@@ -62,6 +62,7 @@ class Auctions:
         assert isinstance(flipper, Address) or (flipper is None)
         assert isinstance(flapper, Address) or (flapper is None)
         assert isinstance(flopper, Address) or (flopper is None)
+        assert isinstance(flipper, Address) or isinstance(flapper, Address) or isinstance(flopper, Address)
         assert isinstance(model_factory, ModelFactory)
 
         self.auctions = {}

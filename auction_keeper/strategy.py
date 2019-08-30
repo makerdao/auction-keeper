@@ -20,9 +20,10 @@ from web3 import Web3
 
 from auction_keeper.model import Status
 
-from pymaker import Transact, Wad
+from pymaker import Address, Transact
 from pymaker.approval import directly, hope_directly
 from pymaker.auctions import Flopper, Flapper, Flipper
+from pymaker.numeric import Wad, Ray, Rad
 
 
 def era(web3: Web3):
@@ -45,7 +46,7 @@ class FlipperStrategy(Strategy):
         self.beg = flipper.beg()
 
     def approve(self):
-        self.flipper.approve(hope_directly())
+        self.flipper.approve(self.flipper.vat(), hope_directly())
 
     def kicks(self) -> int:
         return self.flipper.kicks()
@@ -61,17 +62,17 @@ class FlipperStrategy(Strategy):
                       flipper=self.flipper.address,
                       flapper=None,
                       flopper=None,
-                      bid=bid.bid,
-                      lot=bid.lot,
+                      bid=bid.bid,  # Rad
+                      lot=bid.lot,  # Wad
                       tab=bid.tab,
                       beg=self.beg,
                       guy=bid.guy,
                       era=era(self.flipper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
+                      price=Wad(bid.bid / Rad(bid.lot)) if bid.lot != Wad(0) else None)
 
-    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
@@ -79,38 +80,40 @@ class FlipperStrategy(Strategy):
 
         # dent phase
         if bid.bid == bid.tab:
-            our_lot = bid.bid / price
+            our_lot = Wad(bid.bid / Rad(price))
 
             if (our_lot * self.beg <= bid.lot) and (our_lot < bid.lot):
-                return price, self.flipper.dent(id, our_lot, bid.bid)
+                return price, self.flipper.dent(id, our_lot, bid.bid), bid.bid
 
             else:
-                return None, None
+                return None, None, None
 
         # tend phase
         else:
-            our_bid = Wad.min(bid.lot * price, bid.tab)
-            our_price = price if our_bid < bid.tab else bid.bid / bid.lot
+            our_bid = Rad.min(Rad(bid.lot) * price, bid.tab)
+            our_price = price if our_bid < bid.tab else bid.bid / Rad(bid.lot)
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
-                return our_price, self.flipper.tend(id, bid.lot, our_bid)
+                return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
 
             else:
-                return None, None
+                return None, None, None
 
     def deal(self, id: int) -> Transact:
         return self.flipper.deal(id)
 
 
 class FlapperStrategy(Strategy):
-    def __init__(self, flapper: Flapper):
+    def __init__(self, flapper: Flapper, mkr: Address):
         assert isinstance(flapper, Flapper)
+        assert isinstance(mkr, Address)
 
         self.flapper = flapper
         self.beg = flapper.beg()
+        self.mkr = mkr
 
     def approve(self):
-        self.flapper.approve(directly())
+        self.flapper.approve(self.mkr, directly())
 
     def kicks(self) -> int:
         return self.flapper.kicks()
@@ -134,20 +137,19 @@ class FlapperStrategy(Strategy):
                       era=era(self.flapper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(bid.lot / bid.bid) if bid.bid != Wad(0) else None)
+                      price=Wad(bid.lot / Rad(bid.bid)) if bid.bid != Wad(0) else None)
 
-    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
         bid = self.flapper.bids(id)
-        our_bid = bid.lot / price
+        our_bid = bid.lot / Rad(price)
 
-        if our_bid >= bid.bid * self.beg and our_bid > bid.bid:
-            return price, self.flapper.tend(id, bid.lot, our_bid)
-
+        if our_bid >= Rad(bid.bid) * Rad(self.beg) and our_bid > Rad(bid.bid):
+            return price, self.flapper.tend(id, bid.lot, Wad(our_bid)), Rad(our_bid)
         else:
-            return None, None
+            return None, None, None
 
     def deal(self, id: int) -> Transact:
         return self.flapper.deal(id)
@@ -161,7 +163,7 @@ class FlopperStrategy(Strategy):
         self.beg = flopper.beg()
 
     def approve(self):
-        self.flopper.approve(hope_directly())
+        self.flopper.approve(self.flopper.vat(), hope_directly())
 
     def kicks(self) -> int:
         return self.flopper.kicks()
@@ -185,20 +187,20 @@ class FlopperStrategy(Strategy):
                       era=era(self.flopper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=(bid.bid / bid.lot) if bid.lot != Wad(0) else None)
+                      price=Wad(bid.bid / Rad(bid.lot)) if bid.lot != Wad(0) else None)
 
-    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact]]:
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
         bid = self.flopper.bids(id)
-        our_lot = bid.bid / price
+        our_lot = bid.bid / Rad(price)
 
-        if our_lot * self.beg <= bid.lot and our_lot < bid.lot:
-            return price, self.flopper.dent(id, our_lot, bid.bid)
+        if Ray(our_lot) * self.beg <= Ray(bid.lot) and our_lot < Rad(bid.lot):
+            return price, self.flopper.dent(id, Wad(our_lot), bid.bid), bid.bid
 
         else:
-            return None, None
+            return None, None, None
 
     def deal(self, id: int) -> Transact:
         return self.flopper.deal(id)
