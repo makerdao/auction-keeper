@@ -99,7 +99,7 @@ def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
 
 
 cwd = os.path.dirname(os.path.realpath(__file__))
-addresses = os.path.join(cwd, "../lib/pymaker/tests/config/addresses.json")
+addresses = os.path.join(cwd, "../lib/pymaker/tests/config/testnet-addresses.json")
 
 
 @pytest.fixture(scope="session")

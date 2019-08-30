@@ -171,7 +171,10 @@ For some known Ubuntu and macOS issues see the [pymaker](https://github.com/make
 ```
 usage: auction-keeper [-h] [--rpc-host RPC_HOST] [--rpc-port RPC_PORT]
                       [--rpc-timeout RPC_TIMEOUT] --eth-from ETH_FROM
-                      (--flipper FLIPPER | --flapper FLAPPER | --flopper FLOPPER)
+                      [--eth-key [ETH_KEY [ETH_KEY ...]]] --addresses
+                      ADDRESSES [--type {flip,flap,flop}] [--ilk ILK]
+                      [--bid-only] [--vat-dai-target VAT_DAI_TARGET]
+                      [--keep-dai-in-vat-on-exit] [--keep-gem-in-vat-on-exit]
                       --model MODEL [--debug]
 
 optional arguments:
@@ -188,23 +191,24 @@ optional arguments:
                         path to addresses.json from the MCD deployment
   --type {flip,flap,flop}
                         Auction type in which to participate
-  --ilk ILK             Name of the collateral type for a flip keeper
+  --ilk ILK             Name of the collateral type for a flip keeper (e.g.
+                        'ETH-B', 'ZRX-A')
   --bid-only            Do not take opportunities to create new auctions
-  
   --vat-dai-target VAT_DAI_TARGET
-                        Amount of Dai to keep in the Vat contract
+                        Amount of Dai to keep in the Vat contract (e.g. 2000)
   --keep-dai-in-vat-on-exit
                         Retain Dai in the Vat on exit, saving gas when
                         restarting the keeper
   --keep-gem-in-vat-on-exit
                         Retain collateral in the Vat on exit
-
   --model MODEL         Commandline to use in order to start the bidding model
   --debug               Enable debug output
 ```
 
 To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
-one for `flap` and another for `flop`.
+one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter corresponding to a set 
+of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the same underlying token 
+(WETH).  A complete list of `ilk`s for a deployment may be gleaned from the `addresses.json`.
 
 ### Accounting
 

@@ -54,7 +54,6 @@ class AuctionKeeper:
 
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
-
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
@@ -62,12 +61,13 @@ class AuctionKeeper:
                             help="path to addresses.json from the MCD deployment")
         parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
                             help="Auction type in which to participate")
-        parser.add_argument('--ilk', type=str, help="Name of the collateral type for a flip keeper")
-
+        parser.add_argument('--ilk', type=str,
+                            help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A')")
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
 
-        parser.add_argument('--vat-dai-target', type=float, help="Amount of Dai to keep in the Vat contract")
+        parser.add_argument('--vat-dai-target', type=float,
+                            help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
         parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
         parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
