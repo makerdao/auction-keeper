@@ -33,7 +33,7 @@ web3().eth.defaultAccount = seller.address
 collateral.approve(seller)
 mcd.approve_dai(seller)
 # FIXME: Something is missing in mcd.approve_dai
-mcd.dai_adapter.approve(approval_function=hope_directly(), source=mcd.vat.address, from_address=seller)
+mcd.dai_adapter.approve(approval_function=hope_directly(from_address=seller), source=mcd.vat.address)
 
 reserve_dai(mcd, mcd.collaterals['ETH-C'], seller, amount, Wad.from_number(2))
 assert mcd.dai_adapter.exit(seller, amount).transact(from_address=seller)

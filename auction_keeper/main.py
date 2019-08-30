@@ -297,7 +297,6 @@ class AuctionKeeper:
 
     def check_for_bids(self):
         with self.auctions_lock:
-            # self.logger.debug(f"Checking for bids in {len(self.auctions.auctions)} auctions")
             for id, auction in self.auctions.auctions.items():
                 self.handle_bid(id=id, auction=auction)
 
@@ -354,7 +353,6 @@ class AuctionKeeper:
         assert isinstance(auction, Auction)
 
         output = auction.model_output()
-        # self.logger.debug(f'model output for auction {id} is {output}')
 
         if output is not None:
             bid_price, bid_transact, cost = self.strategy.bid(id, output.price)

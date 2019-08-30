@@ -156,7 +156,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert (isinstance(id, int))
         assert (isinstance(bid, Rad))
 
-        flipper.approve(flipper.vat(), approval_function=hope_directly(), from_address=address)
+        flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=address))
         previous_bid = flipper.bids(id)
         c.approve(address)
         reserve_dai(mcd, c, address, Wad(bid), extra_collateral=Wad.from_number(2))
@@ -253,7 +253,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert model.send_status.call_count == 1
 
         # when
-        flipper.approve(flipper.vat(), approval_function=hope_directly(), from_address=other_address)
+        flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=other_address))
         previous_bid = flipper.bids(kick)
         new_bid_amount = Rad.from_number(80)
         self.tend_with_dai(mcd, c, flipper, model.id, other_address, new_bid_amount)
@@ -317,7 +317,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        flipper.approve(flipper.vat(), approval_function=hope_directly(), from_address=other_address)
+        flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=other_address))
         new_bid_amount = Rad.from_number(85)
         self.tend_with_dai(mcd, c, flipper, kick, other_address, new_bid_amount)
         # and

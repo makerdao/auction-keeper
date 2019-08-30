@@ -46,7 +46,7 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
 
         # Generate some Dai, bid on and win the flip auction without covering all the debt
         reserve_dai(mcd, c, gal_address, Wad.from_number(100), extra_collateral=Wad.from_number(1.1))
-        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=gal_address)
+        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=gal_address))
         current_bid = c.flipper.bids(flip_kick)
         bid = Rad.from_number(1.9)
         assert mcd.vat.dai(gal_address) > bid
@@ -74,8 +74,8 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.gal_address = gal_address(self.web3)
         self.mcd = mcd(self.web3)
         self.flopper = self.mcd.flopper
-        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.keeper_address)
-        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(), from_address=self.other_address)
+        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(from_address=self.keeper_address))
+        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(from_address=self.other_address))
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "

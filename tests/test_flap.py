@@ -564,7 +564,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         auction = c.flipper.bids(kick)
         bid = Wad(auction.tab) + Wad(1)
         reserve_dai(mcd, c, our_address, bid)
-        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(), from_address=our_address)
+        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=our_address))
         assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=our_address)
         time_travel_by(web3, c.flipper.ttl() + 1)
         assert c.flipper.deal(kick).transact()

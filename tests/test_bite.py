@@ -64,7 +64,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         # when a bid covers the CDP debt
         auction = c.flipper.bids(kick)
         reserve_dai(mcd, c, keeper_address, Wad(auction.tab) + Wad(1))
-        c.flipper.approve(c.flipper.vat(), approval_function=hope_directly(), from_address=keeper_address)
+        c.flipper.approve(c.flipper.vat(), approval_function=hope_directly(from_address=keeper_address))
         c.approve(keeper_address)
         assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=keeper_address)
         time_travel_by(web3, c.flipper.ttl() + 1)
