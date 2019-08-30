@@ -17,7 +17,7 @@ ID=$2
     --eth-from ${ACCOUNT_ADDRESS?:} \
     --eth-key ${ACCOUNT_KEY?:} \
     --type flap \
-    --addresses ../../lib/pymaker/tests/config/addresses.json \
+    --network testnet \
     --vat-dai-target 300 \
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \

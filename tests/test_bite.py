@@ -21,7 +21,7 @@ from auction_keeper.main import AuctionKeeper
 from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
 
-from tests.conftest import addresses, create_unsafe_cdp, keeper_address, mcd, reserve_dai, web3
+from tests.conftest import create_unsafe_cdp, keeper_address, mcd, reserve_dai, web3
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -32,7 +32,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         c = mcd.collaterals['ETH-A']
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
-                                         f"--addresses {addresses} "
+                                         f"--network testnet "
                                          f"--ilk {c.ilk.name} "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
         keeper.approve()

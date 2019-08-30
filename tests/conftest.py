@@ -98,13 +98,9 @@ def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
     assert mkr.transfer(recipient_address, amount).transact(from_address=deployment_address)
 
 
-cwd = os.path.dirname(os.path.realpath(__file__))
-addresses = os.path.join(cwd, "../lib/pymaker/tests/config/testnet-addresses.json")
-
-
 @pytest.fixture(scope="session")
 def mcd(web3):
-    return DssDeployment.from_json(web3=web3, conf=open(addresses, "r").read())
+    return DssDeployment.from_network(web3=web3, network="testnet")
 
 
 @pytest.fixture(scope="session")
