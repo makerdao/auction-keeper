@@ -206,9 +206,16 @@ optional arguments:
 ```
 
 To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
-one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter corresponding to a set 
-of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the same underlying token 
-(WETH).  A complete list of `ilk`s for a deployment may be gleaned from the `addresses.json`.
+one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter 
+corresponding to a set of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the 
+same underlying token (WETH).  
+
+![example list of keepers](README-keeper-config-example.png)
+
+Please note **collateral types in the table above are provided for illustrative purposes, and should not be interpreted 
+as an endorsement of which collaterals should be deployed to mainnet**, which will be determined by an appropriate 
+governance process.  A complete list of `ilk`s for a deployment may be gleaned from the `addresses.json`.
+
 
 ### Accounting
 
