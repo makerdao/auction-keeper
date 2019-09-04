@@ -23,7 +23,7 @@ from auction_keeper.model import Parameters
 from pymaker.approval import directly, hope_directly
 from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import addresses, c, mcd, mint_mkr, reserve_dai, set_collateral_price, web3, \
+from tests.conftest import c, mcd, mint_mkr, reserve_dai, set_collateral_price, web3, \
     our_address, keeper_address, other_address, gal_address, \
     max_dart, is_cdp_safe, bite, create_cdp_with_surplus, simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
@@ -57,7 +57,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flap "
-                                              f"--addresses {addresses} "
+                                              f"--network testnet "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 

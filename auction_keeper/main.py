@@ -57,8 +57,8 @@ class AuctionKeeper:
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
-        parser.add_argument('--addresses', type=str, required=True,
-                            help="path to addresses.json from the MCD deployment")
+        parser.add_argument('--network', type=str, required=True,
+                            help="Ethereum network to connect (e.g. 'kovan' or 'testnet')")
         parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
@@ -97,7 +97,7 @@ class AuctionKeeper:
         # Configure core and token contracts
         if self.arguments.type == 'flip' and not self.arguments.ilk:
             raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
-        mcd = DssDeployment.from_json(web3=self.web3, conf=open(self.arguments.addresses, "r").read())
+        mcd = DssDeployment.from_network(web3=self.web3, network=self.arguments.network)
         self.vat = mcd.vat
         self.cat = mcd.cat
         self.vow = mcd.vow

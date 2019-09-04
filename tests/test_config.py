@@ -22,7 +22,6 @@ from pymaker import Address
 from pymaker.auctions import Flipper, Flapper, Flopper
 from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
 from pymaker.token import DSToken
-from tests.conftest import addresses
 from tests.helper import args
 
 
@@ -30,7 +29,7 @@ class TestConfig:
     def test_flip_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
-                                         f"--addresses {addresses} "
+                                         f"--network testnet "
                                          f"--ilk ZRX-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
@@ -47,14 +46,14 @@ class TestConfig:
         with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flip "
-                                    f"--addresses {addresses} "
+                                    f"--network testnet "
                                     f"--model ./bogus-model.sh"), web3=web3)
             assert "ilk" in str(e)
 
     def test_flap_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flap "
-                                         f"--addresses {addresses} "
+                                         f"--network testnet "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.flapper, Flapper)
@@ -73,7 +72,7 @@ class TestConfig:
     def test_flop_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flop "
-                                         f"--addresses {addresses} "
+                                         f"--network testnet "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.flopper, Flopper)

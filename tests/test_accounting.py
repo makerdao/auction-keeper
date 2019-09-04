@@ -19,7 +19,7 @@ import pytest
 
 from auction_keeper.main import AuctionKeeper
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import addresses, keeper_address, mcd, our_address, reserve_dai, web3, wrap_eth
+from tests.conftest import keeper_address, mcd, our_address, reserve_dai, web3, wrap_eth
 from tests.helper import args
 
 
@@ -58,7 +58,7 @@ class TestVatDaiTarget(TestVatDai):
         assert isinstance(dai, float)
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flop "
-                                         f"--addresses {addresses} "
+                                         f"--network testnet "
                                          f"--vat-dai-target {dai} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
@@ -139,7 +139,7 @@ class TestEmptyVatOnExit(TestVatDai):
 
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flop "
-                                         f"--addresses {addresses} "
+                                         f"--network testnet "
                                          f"{vat_dai_behavior} "
                                          f"{vat_gem_behavior} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)

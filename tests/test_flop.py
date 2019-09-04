@@ -23,7 +23,7 @@ from auction_keeper.model import Parameters
 from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import addresses, bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
+from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
     models, our_address, other_address, reserve_dai, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
@@ -79,7 +79,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
-                                              f"--addresses {addresses} "
+                                              f"--network testnet "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 

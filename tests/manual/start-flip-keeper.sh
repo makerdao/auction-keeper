@@ -18,7 +18,7 @@ ID=$2
     --eth-key ${ACCOUNT_KEY?:} \
     --type flip \
     --ilk ETH-C \
-    --addresses ../../lib/pymaker/tests/config/addresses.json \
+    --network testnet \
     --vat-dai-target 500000 \
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \
