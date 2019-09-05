@@ -142,10 +142,10 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.flipper is None
         assert status.flapper is None
         assert status.flopper == self.flopper.address
-        assert status.bid == Rad.from_number(0.00001)
+        assert status.bid > Rad.from_number(0)
         assert status.lot == wad_maxvalue
         assert status.tab is None
-        assert status.beg == Ray.from_number(1.05)
+        assert status.beg > Ray.from_number(1)
         assert status.guy == self.mcd.vow.address
         assert status.era > 0
         assert status.end < status.era + self.flopper.tau() + 1
@@ -185,7 +185,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.bid == last_bid.bid
         assert status.lot == Wad(last_bid.bid / Rad(price))
         assert status.tab is None
-        assert status.beg == Ray.from_number(1.05)
+        assert status.beg > Ray.from_number(1)
         assert status.guy == self.keeper_address
         assert status.era > 0
         assert status.end > status.era
@@ -223,7 +223,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.bid == self.sump
         assert status.lot == lot
         assert status.tab is None
-        assert status.beg == Ray.from_number(1.05)
+        assert status.beg > Ray.from_number(1)
         assert status.guy == self.other_address
         assert status.era > 0
         assert status.end > status.era
@@ -359,7 +359,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         (model, model_factory) = models(self.keeper, kick)
         mkr_before = self.mcd.mkr.balance_of(self.keeper_address)
         # and
-        lot = Wad.from_number(0.000000016)
+        lot = Wad.from_number(0.000016)
         assert self.flopper.dent(kick, lot, self.sump).transact(from_address=self.other_address)
         assert self.flopper.bids(kick).lot == lot
 
@@ -371,6 +371,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = self.flopper.bids(kick)
+        assert auction.lot != lot
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(825.0), 2)
         mkr_after = self.mcd.mkr.balance_of(self.keeper_address)
         assert mkr_before == mkr_after
@@ -415,6 +416,8 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
+        # and
+        time.sleep(2)
         # and
         self.end_ignoring_transactions()
         # and

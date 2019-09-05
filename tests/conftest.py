@@ -286,12 +286,14 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     # Ensure there is no debt which a previous test failed to clean up
     assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
-    collateral_amount = Wad.from_number(1)
-    wrap_eth(mcd, gal_address, collateral_amount)
+    ink = Wad.from_number(10)
+    art = Wad.from_number(500)
+    wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)
-    assert c.adapter.join(gal_address, collateral_amount).transact(
+    assert c.adapter.join(gal_address, ink).transact(
         from_address=gal_address)
-    assert mcd.vat.frob(c.ilk, gal_address, dink=collateral_amount, dart=Wad.from_number(100)).transact(
+    simulate_frob(mcd, c, gal_address, ink, art)
+    assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(
         from_address=gal_address)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer

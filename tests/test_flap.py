@@ -187,9 +187,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == Wad(auction.lot / Rad(auction.bid))
 
-    def test_should_terminate_model_if_auction_expired_due_to_tau(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_terminate_model_if_auction_expired_due_to_tau(self, kick):
         # given
-        kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -553,7 +556,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         urn = mcd.vat.urn(c.ilk, gal_address)
         dart = max_dart(mcd, c, gal_address) - Wad.from_number(1)
         assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
-        set_collateral_price(mcd, c, Wad.from_number(115))
+        set_collateral_price(mcd, c, Wad.from_number(66))
         assert not is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
 
         # Bite and kick off the auction
@@ -569,7 +572,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(web3, c.flipper.ttl() + 1)
         assert c.flipper.deal(kick).transact()
 
-        set_collateral_price(mcd, c, Wad.from_number(230))
+        set_collateral_price(mcd, c, Wad.from_number(200))
         urn = mcd.vat.urn(c.ilk, gal_address)
         assert urn.ink == Wad(0)
         assert urn.art == Wad(0)
