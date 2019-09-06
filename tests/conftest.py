@@ -333,7 +333,7 @@ def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True, requ
 
     # Cancel out surplus and debt
     joy = mcd.vat.dai(mcd.vow.address)
-    woe = (mcd.vat.sin(mcd.vow.address) - mcd.vow.sin()) - mcd.vow.ash()
+    woe = mcd.vow.woe()
     if require_heal:
         assert joy <= woe
     if joy <= woe:

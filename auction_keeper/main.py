@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus, bargst
+# Copyright (C) 2018-2019 reverendus, bargst, EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -212,9 +212,11 @@ class AuctionKeeper:
         for urn_addr in last_note_event:
             ilk = self.vat.ilk(frob.ilk)
             current_urn = self.vat.urn(ilk, urn_addr)
-            safe = current_urn.ink * ilk.spot >= current_urn.art * self.vat.ilk(ilk.name).rate
+            rate = self.vat.ilk(ilk.name).rate
+            safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
-                self.logger.info(f'Found an unsafe CDP: {current_urn}')
+                self.logger.info(f'Biting unsafe CDP {current_urn} with ink={current_urn.ink} * spot={ilk.spot} '
+                                 f'< art={current_urn.art} * rate={rate}')
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
@@ -231,11 +233,11 @@ class AuctionKeeper:
 
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
             if (joy - awe) >= (bump + hump):
-                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
-
+                woe = self.vow.woe()
                 # Heal the system to bring Woe to 0
                 if woe > Rad(0):
                     self.vow.heal(woe).transact()
+                self.logger.info(f'Flapping with joy={self.vat.dai(self.vow.address)}')
                 self.vow.flap().transact()
 
     def check_flop(self):
@@ -245,7 +247,7 @@ class AuctionKeeper:
 
         # Check if Vow has bad debt in excess
         if joy < awe:
-            woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
+            woe = self.vow.woe()
             sin = self.vow.sin()
             sump = self.vow.sump()
             wait = self.vow.wait()
@@ -272,21 +274,20 @@ class AuctionKeeper:
 
                             # flog() sin until woe is above sump + joy
                             joy = self.vat.dai(self.vow.address)
-                            woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
-                            if woe - joy >= sump:
+                            if self.vow.woe() - joy >= sump:
                                 break
 
                 # use heal() for reconciling the remaining joy
                 joy = self.vat.dai(self.vow.address)
-                woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
-                if Rad(0) < joy <= woe:
-                    self.logger.info(f"healing joy={joy} woe={woe}")
+                if Rad(0) < joy <= self.vow.woe():
+                    self.logger.info(f"Healing joy={joy} woe={woe}")
                     self.vow.heal(joy).transact()
                     # heal() changes joy and woe (the balance of surplus and debt)
                     joy = self.vat.dai(self.vow.address)
-                    woe = (self.vat.sin(self.vow.address) - self.vow.sin()) - self.vow.ash()
 
+                woe = self.vow.woe()
                 if sump <= woe and joy == Rad(0):
+                    self.logger.info(f'Flopping with woe={woe}')
                     self.vow.flop().transact()
 
     def check_all_auctions(self):
@@ -430,10 +431,12 @@ class AuctionKeeper:
             if token_balance > difference * -1:
                 self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
                 assert self.dai_join.join(self.our_address, difference * -1).transact()
-            else:
+            elif token_balance > Wad(0):
                 self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
                                     "Dai to the Vat")
                 assert self.dai_join.join(self.our_address, token_balance).transact()
+            else:
+                self.logger.warning("No Dai is available to join to Vat; cannot maintain Dai target")
         elif difference > Wad(0):
             # Exit dai from the vat
             self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
