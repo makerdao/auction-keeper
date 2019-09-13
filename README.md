@@ -21,11 +21,7 @@ be automatically terminated by the keeper the moment the auction expires.  The k
 automatically `deal`s expired auctions if it's us who won them.
 
 This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to 
-develop your own auction trading bot.  Status as of 2019.08.23:
- * Supports DSS 0.2.10
- * Unit testing completed
- * Testchain integration testing completed
- * Kovan integration testing not performed
+develop your own auction trading bot.
 
 <https://chat.makerdao.com/channel/keeper>
 
