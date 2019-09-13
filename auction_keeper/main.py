@@ -215,8 +215,6 @@ class AuctionKeeper:
             rate = self.vat.ilk(ilk.name).rate
             safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
-                self.logger.info(f'Biting unsafe CDP {current_urn} with ink={current_urn.ink} * spot={ilk.spot} '
-                                 f'< art={current_urn.art} * rate={rate}')
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
@@ -237,7 +235,6 @@ class AuctionKeeper:
                 # Heal the system to bring Woe to 0
                 if woe > Rad(0):
                     self.vow.heal(woe).transact()
-                self.logger.info(f'Flapping with joy={self.vat.dai(self.vow.address)}')
                 self.vow.flap().transact()
 
     def check_flop(self):
@@ -280,14 +277,12 @@ class AuctionKeeper:
                 # use heal() for reconciling the remaining joy
                 joy = self.vat.dai(self.vow.address)
                 if Rad(0) < joy <= self.vow.woe():
-                    self.logger.info(f"Healing joy={joy} woe={woe}")
                     self.vow.heal(joy).transact()
                     # heal() changes joy and woe (the balance of surplus and debt)
                     joy = self.vat.dai(self.vow.address)
 
                 woe = self.vow.woe()
                 if sump <= woe and joy == Rad(0):
-                    self.logger.info(f'Flopping with woe={woe}')
                     self.vow.flop().transact()
 
     def check_all_auctions(self):
