@@ -24,7 +24,7 @@ mcd = mcd(web3())
 address = gal_address(web3())
 
 collateral_amount = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else 1.0
-collateral = mcd.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else 'ETH-C'
+collateral = mcd.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else mcd.collaterals['ETH-C']
 urn = mcd.vat.urn(collateral.ilk, address)
 
 if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
