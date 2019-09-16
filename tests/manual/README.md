@@ -46,7 +46,7 @@ chain.
 `create-cdp.sh` and `create-cdps.sh` make use of `mcd-cli` to create CDPs using the CDP Manager.  This allows our tests 
 to create a large number of CDPs despite only having a handful of accounts on the testchain.  One way to configure 
 `mcd-cli` with the testchain:
-* Copy the approprate `addresses.json` from `lib/pymaker/config` to `~/.dapp/testnet/8545/config/addresses.json`
+* Copy the appropriate `addresses.json` from `lib/pymaker/config` to `~/.dapp/testnet/8545/config/addresses.json`
 * Copy key files to `~/.dapp/testnet/8545/keystore`
 * Modify the _testnet_ section of `libexec/mcd/mcd` to point to the correct IP
 * Redeploy `mcd-cli` using _automake_: `sudo make uninstall; sudo make install`
