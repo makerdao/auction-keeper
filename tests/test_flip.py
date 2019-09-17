@@ -605,9 +605,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         keeper.check_all_auctions()
         keeper.check_for_bids()
         # and
-        self.end_ignoring_transactions()
-        # and
         simulate_model_output(model=model, price=bid_price, gas_price=15)
+        # and
+        self.end_ignoring_transactions()
         # and
         keeper.check_for_bids()
         wait_for_other_threads()
