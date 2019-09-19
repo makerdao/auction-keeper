@@ -2,13 +2,14 @@
 dir="$(dirname "$0")"
 
 source testnet.sh
-
 source ../../_virtualenv/bin/activate
 
 # Allows keepers to bid different prices
 MODEL=$1
 # Outputs keeper logs to separate files
 ID=$2
+# Chooses collateral type to flip
+ILK=${3:-ETH-C}
 
 ../../bin/auction-keeper \
     --rpc-host ${SERVER_ETH_RPC_HOST:?} \
@@ -17,7 +18,7 @@ ID=$2
     --eth-from ${ACCOUNT_ADDRESS?:} \
     --eth-key ${ACCOUNT_KEY?:} \
     --type flip \
-    --ilk ETH-C \
+    --ilk ${ILK} \
     --network testnet \
     --vat-dai-target 500000 \
     --keep-dai-in-vat-on-exit \

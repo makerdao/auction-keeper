@@ -48,7 +48,7 @@ class TestConfig:
                                     f"--type flip "
                                     f"--network testnet "
                                     f"--model ./bogus-model.sh"), web3=web3)
-            assert "ilk" in str(e)
+        assert "ilk" in str(e)
 
     def test_flap_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -67,7 +67,6 @@ class TestConfig:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flap "
                                     f"--model ./bogus-model.sh"), web3=web3)
-            assert "addresses" in str(e)
 
     def test_flop_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -86,4 +85,3 @@ class TestConfig:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flap "
                                     f"--model ./bogus-model.sh"), web3=web3)
-            assert "addresses" in str(e)

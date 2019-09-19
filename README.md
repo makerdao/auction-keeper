@@ -221,14 +221,26 @@ More explicitly:
  * Collateral and surplus Dai won at auction is placed in the `Vat`.
  
 By default, all Dai and collateral in your `eth-from` account is `exit`ed from the Vat and added to your token balance 
-when the keeper is shut down.  This feature may be disabled using the `keep-dai-in-vat-on-exit` and 
-`keep-gem-in-vat-on-exit` switches respectively.  Using an `eth-from` account with an open CDP is discouraged, 
+when the keeper is shut down.  This feature may be disabled using the `--keep-dai-in-vat-on-exit` and 
+`--keep-gem-in-vat-on-exit` switches respectively.  **Using an `eth-from` account with an open CDP is discouraged**, 
 as debt will hinder the auction contracts' ability to access your Dai, and `auction-keeper`'s ability to `exit` Dai 
 from the `Vat`.
 
-When running multiple keepers using the same account, the balance of Dai in 
-the `Vat` will be shared across keepers.  If using the feature, set `--vat-dai-target` to the same value on each 
-keeper, and sufficiently high to cover total desired exposure.
+**Using the `eth-from` account on multiple keepers is also discouraged** as it complicates `Vat` inventory management.
+When running multiple keepers using the same account, the balance of Dai in the `Vat` will be shared across keepers.  
+If using the feature, set `--vat-dai-target` to the same value on each keeper, and sufficiently high to cover total 
+desired exposure.
+
+To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit` 
+switches, and do not pass the `--vat-dai-target` switch.  You may use [mcd-cli](https://github.com/makerdao/mcd-cli) 
+to manually `join`/`exit` Dai to/from each of your keeper accounts.  Here is an example to join 6000 Dai on a testnet, 
+and exit 300 Dai on Kovan, respectively:
+```bash
+mcd -C testnet dai join 6000
+mcd -C kovan dai exit 300
+```
+`mcd-cli` requires installation and configuration; view the 
+[mcd-cli README](https://github.com/makerdao/mcd-cli#mcd-command-line-interface) for more information.
 
 MKR used to bid on `flap` auctions is directly withdrawn from your token balance.  MKR won at `flop` auctions is 
 directly deposited to your token balance.
