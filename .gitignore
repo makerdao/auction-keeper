@@ -2,7 +2,10 @@
 *.iml
 
 __pycache__
+.pytest_cache*
 .cache
 .coverage
 
 .DS_Store
+
+_virtualenv
