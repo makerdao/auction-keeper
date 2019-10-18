@@ -16,14 +16,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import os
 import pytest
+import time
 
+from mock import MagicMock
+from typing import Optional
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
-from mock import MagicMock
 from pymaker import Address
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
@@ -31,7 +32,6 @@ from pymaker.feed import DSValue
 from pymaker.keys import register_keys
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken, DSToken
-from typing import Optional
 
 
 @pytest.fixture(scope="session")
@@ -286,8 +286,8 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     # Ensure there is no debt which a previous test failed to clean up
     assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
-    ink = Wad.from_number(10)
-    art = Wad.from_number(500)
+    ink = Wad.from_number(1)
+    art = Wad.from_number(50)
     wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)
     assert c.adapter.join(gal_address, ink).transact(
@@ -295,6 +295,7 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     simulate_frob(mcd, c, gal_address, ink, art)
     assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(
         from_address=gal_address)
+    time.sleep(2)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
     print(f"dai(vow)={str(mcd.vat.dai(mcd.vow.address))} >? sin(vow)={str(mcd.vat.sin(mcd.vow.address))} " 

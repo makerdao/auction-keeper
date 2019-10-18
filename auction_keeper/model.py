@@ -62,7 +62,7 @@ class Status:
                  bid: Wad,
                  lot: Wad,
                  tab: Optional[Wad],
-                 beg: Ray,
+                 beg: Wad,
                  guy: Address,
                  era: int,
                  tic: int,
@@ -76,7 +76,7 @@ class Status:
         assert isinstance(bid, Wad) or isinstance(bid, Rad)
         assert isinstance(lot, Wad) or isinstance(lot, Rad)
         assert isinstance(tab, Rad) or (tab is None)
-        assert isinstance(beg, Ray)
+        assert isinstance(beg, Wad)
         assert isinstance(guy, Address)
         assert isinstance(era, int)
         assert isinstance(tic, int)

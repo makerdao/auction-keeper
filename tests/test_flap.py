@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import math
 import pytest
 import time
 
@@ -101,7 +102,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.bid == Wad(0)
         assert status.lot == self.mcd.vow.bump()
         assert status.tab is None
-        assert status.beg == Ray.from_number(1.05)
+        assert status.beg == Wad.from_number(1.05)
         assert status.guy == self.mcd.vow.address
         assert status.era > 0
         assert status.end < status.era + self.flapper.tau() + 1
@@ -139,7 +140,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.bid == Wad(self.flapper.bids(kick).lot / Rad.from_number(9))
         assert status.lot == self.mcd.vow.bump()
         assert status.tab is None
-        assert status.beg == Ray.from_number(1.05)
+        assert status.beg == Wad.from_number(1.05)
         assert status.guy == self.keeper_address
         assert status.era > 0
         assert status.end > status.era
@@ -180,7 +181,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.bid == Wad.from_number(40)
         assert status.lot == auction.lot
         assert status.tab is None
-        assert status.beg == Ray.from_number(1.05)
+        assert status.beg == Wad.from_number(1.05)
         assert status.guy == self.other_address
         assert status.era > 0
         assert status.end > status.era
@@ -537,8 +538,11 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
-               self.web3.eth.gasPrice
+        auction = self.flapper.bids(kick)
+        assert auction.guy == self.keeper_address
+        assert auction.bid > Wad(0)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[
+                   0].gasPrice == self.web3.eth.gasPrice
 
         # cleanup
         time_travel_by(self.web3, self.flapper.ttl() + 1)
@@ -558,21 +562,29 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         set_collateral_price(mcd, c, Wad.from_number(66))
         assert not is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
 
-        # Bite and kick off the auction
-        kick = bite(mcd, c, urn)
-        assert kick > 0
-
-        # Bid on and win the auction
-        auction = c.flipper.bids(kick)
-        bid = Wad(auction.tab) + Wad(1)
-        reserve_dai(mcd, c, our_address, bid)
+        # Determine how many bites will be required
+        lump = mcd.cat.lump(c.ilk)
+        urn = mcd.vat.urn(c.ilk, gal_address)
+        bites_required = math.ceil(urn.ink / lump)
+        print(f"ink={urn.ink} so {bites_required} bites are required")
         c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=our_address))
-        assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=our_address)
-        time_travel_by(web3, c.flipper.ttl() + 1)
-        assert c.flipper.deal(kick).transact()
+        first_kick = c.flipper.kicks() + 1
+
+        # Bite and bid on each auction
+        for i in range(bites_required):
+            kick = bite(mcd, c, urn)
+            assert kick > 0
+            auction = c.flipper.bids(kick)
+            print(f"biting {i} of {bites_required} and bidding tab of {auction.tab}")
+            bid = Wad(auction.tab) + Wad(1)
+            reserve_dai(mcd, c, our_address, bid)
+            assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=our_address)
+
+        time_travel_by(web3, c.flipper.ttl())
+        for kick in range(first_kick, c.flipper.kicks()):
+            assert c.flipper.deal(kick).transact()
 
         set_collateral_price(mcd, c, Wad.from_number(200))
         urn = mcd.vat.urn(c.ilk, gal_address)
         assert urn.ink == Wad(0)
         assert urn.art == Wad(0)
-
