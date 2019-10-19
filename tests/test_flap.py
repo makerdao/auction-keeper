@@ -415,7 +415,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flapper.ttl() + 1)
         assert self.flapper.deal(kick).transact()
 
-    @pytest.mark.skip("complexities replacing the transaction need to be sorted")
     def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
@@ -430,6 +429,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         # and
         self.end_ignoring_transactions()
+        wait_for_other_threads()
         # and
         simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
         # and
@@ -526,9 +526,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    def test_should_use_default_gas_price_if_not_provided_by_the_model(self):
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, kick):
         # given
-        kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -541,8 +544,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         auction = self.flapper.bids(kick)
         assert auction.guy == self.keeper_address
         assert auction.bid > Wad(0)
-        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[
-                   0].gasPrice == self.web3.eth.gasPrice
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.web3.eth.gasPrice
 
         # cleanup
         time_travel_by(self.web3, self.flapper.ttl() + 1)

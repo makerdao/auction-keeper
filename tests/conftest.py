@@ -17,7 +17,6 @@
 
 import logging
 import pytest
-import time
 
 from mock import MagicMock
 from typing import Optional
@@ -295,7 +294,6 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     simulate_frob(mcd, c, gal_address, ink, art)
     assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(
         from_address=gal_address)
-    time.sleep(2)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
     print(f"dai(vow)={str(mcd.vat.dai(mcd.vow.address))} >? sin(vow)={str(mcd.vat.sin(mcd.vow.address))} " 
