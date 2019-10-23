@@ -180,8 +180,10 @@ class AuctionKeeper:
             self.dai_join.dai().approve(self.dai_join.address).transact()
 
     def shutdown(self):
-        self.exit_dai_on_shutdown()
-        self.exit_collateral_on_shutdown()
+        with self.auctions_lock:
+            del self.auctions
+            self.exit_dai_on_shutdown()
+            self.exit_collateral_on_shutdown()
 
     def exit_dai_on_shutdown(self):
         if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
@@ -423,7 +425,7 @@ class AuctionKeeper:
         difference = Wad(self.vat.dai(self.our_address)) - self.vat_dai_target  # Wad
         if difference < Wad(0):
             # Join tokens to the vat
-            if token_balance > difference * -1:
+            if token_balance >= difference * -1:
                 self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
                 assert self.dai_join.join(self.our_address, difference * -1).transact()
             elif token_balance > Wad(0):

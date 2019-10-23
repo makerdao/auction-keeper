@@ -51,6 +51,7 @@ class Process:
 
         while process.poll() is None:
             if self._terminate:
+                self.logger.debug(f"Killing pid #{process.pid}")
                 process.kill()
                 break
 
