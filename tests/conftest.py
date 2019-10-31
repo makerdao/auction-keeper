@@ -308,14 +308,14 @@ def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     assert isinstance(unsafe_cdp, Urn)
 
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
-    bites = mcd.cat.past_bite(1)
+    bites = mcd.cat.past_bites(1)
     assert len(bites) == 1
     return c.flipper.kicks()
 
 
 def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True, require_heal=True):
     # Raise debt from the queue (note that vow.wait is 0 on our testchain)
-    bites = mcd.cat.past_bite(past_blocks)
+    bites = mcd.cat.past_bites(past_blocks)
     for bite in bites:
         era_bite = bite.era(web3)
         sin = mcd.vow.sin_of(era_bite)

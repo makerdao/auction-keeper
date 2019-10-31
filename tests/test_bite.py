@@ -59,7 +59,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         assert mcd.vat.sin(mcd.vow.address) > Rad(0)
         c = mcd.collaterals['ETH-A']
         kick = c.flipper.kicks()
-        last_bite = mcd.cat.past_bite(1)[0]
+        last_bite = mcd.cat.past_bites(1)[0]
 
         # when a bid covers the CDP debt
         auction = c.flipper.bids(kick)

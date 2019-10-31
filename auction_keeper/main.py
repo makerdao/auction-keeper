@@ -207,14 +207,14 @@ class AuctionKeeper:
         last_note_event = {}
 
         # Look for unsafe CDPs and bite them
-        past_frob = self.vat.past_frob(self.web3.eth.blockNumber, self.ilk)
-        for frob in past_frob:
+        frobs = self.vat.past_frobs(self.web3.eth.blockNumber, self.ilk)
+        for frob in frobs:
             last_note_event[frob.urn] = frob
 
         for urn_addr in last_note_event:
-            ilk = self.vat.ilk(frob.ilk)
+            ilk = self.vat.ilk(self.ilk.name)
             current_urn = self.vat.urn(ilk, urn_addr)
-            rate = self.vat.ilk(ilk.name).rate
+            rate = ilk.rate
             safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
@@ -263,7 +263,7 @@ class AuctionKeeper:
 
                 # Convert enough sin in woe to have woe >= sump + joy
                 if woe < (sump + joy) and self.cat is not None:
-                    for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
+                    for bite_event in self.cat.past_bites(self.web3.eth.blockNumber):  # TODO: cache ?
                         era = bite_event.era(self.web3)
                         now = self.web3.eth.getBlock('latest')['timestamp']
                         sin = self.vow.sin_of(era)
