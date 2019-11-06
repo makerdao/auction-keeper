@@ -173,6 +173,9 @@ class AuctionKeeper:
         if self.flapper:
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
+        if not self.arguments.create_auctions:
+            logging.info("Keeper will not create new auctions")
+
     def approve(self):
         self.strategy.approve()
         if self.dai_join:
