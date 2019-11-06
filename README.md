@@ -109,6 +109,9 @@ and `flop` auctions) or the collateral price expressed in DAI e.g. DGX/DAI (for 
 Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
 This is the most convenient way of implementing logging from _bidding models_.
 
+**No facility is provided to prevent you from bidding an unprofitable price.**  Please ensure you understand how your 
+model produces prices and how prices are consumed by the keeper for each of the auction types in which you participate.
+
 
 ### Simplest possible _bidding model_
 
@@ -131,9 +134,7 @@ Consider this your price update interval.
 
 * If an auction started before the keeper was started, this keeper will not participate in it until the next block 
 is mined.
-* This keeper does not explicitly handle global settlement. If global settlement occurs while a winning bid is 
-outstanding, the keeper will not request a `yank` to refund the bid.  Workaround is to call `yank` directly using 
-`seth`.
+* This keeper does not explicitly handle global settlement, and may submit transactions which fail during shutdown.
 * Some keeper functions incur gas fees regardless of whether a bid is submitted.  This includes, but is not limited to, 
 the following actions:
   * submitting approvals
@@ -143,7 +144,8 @@ the following actions:
 * The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in 
 response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too 
 imposes a gas fee.
-* After procuring more Dai, the keeper must be restarted to add it to the Vat.
+* When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add 
+Dai to the Vat.
 
 
 
