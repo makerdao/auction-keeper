@@ -16,14 +16,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import os
 import pytest
 
+from mock import MagicMock
+from typing import Optional
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
-from mock import MagicMock
 from pymaker import Address
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
@@ -31,7 +31,6 @@ from pymaker.feed import DSValue
 from pymaker.keys import register_keys
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken, DSToken
-from typing import Optional
 
 
 @pytest.fixture(scope="session")
@@ -286,8 +285,8 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     # Ensure there is no debt which a previous test failed to clean up
     assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
-    ink = Wad.from_number(10)
-    art = Wad.from_number(500)
+    ink = Wad.from_number(1)
+    art = Wad.from_number(50)
     wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)
     assert c.adapter.join(gal_address, ink).transact(
@@ -309,14 +308,14 @@ def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     assert isinstance(unsafe_cdp, Urn)
 
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
-    bites = mcd.cat.past_bite(1)
+    bites = mcd.cat.past_bites(1)
     assert len(bites) == 1
     return c.flipper.kicks()
 
 
 def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True, require_heal=True):
     # Raise debt from the queue (note that vow.wait is 0 on our testchain)
-    bites = mcd.cat.past_bite(past_blocks)
+    bites = mcd.cat.past_bites(past_blocks)
     for bite in bites:
         era_bite = bite.era(web3)
         sin = mcd.vow.sin_of(era_bite)

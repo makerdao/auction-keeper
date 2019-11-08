@@ -17,6 +17,7 @@
 
 import argparse
 import asyncio
+import functools
 import logging
 import sys
 import threading
@@ -62,7 +63,8 @@ class AuctionKeeper:
         parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
-                            help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A')")
+                            help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
+                            "available collateral types can be found at the left side of the CDP Portal")
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
 
@@ -122,6 +124,8 @@ class AuctionKeeper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
             self.strategy = FlopperStrategy(self.flopper)
+        else:
+            raise RuntimeError("Please specify auction type")
 
         # Create the collection used to manage auctions relevant to this keeper
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
@@ -139,32 +143,24 @@ class AuctionKeeper:
         logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(logging.INFO)
 
     def main(self):
+        def seq_func(check_func: callable):
+            assert callable(check_func)
+            if self.arguments.create_auctions:
+                check_func()
+            self.check_all_auctions()
+
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
-                def seq_func():
-                    if self.arguments.create_auctions:
-                        self.check_cdps()
-                    self.check_all_auctions()
-
-                lifecycle.on_block(seq_func)
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_cdps))
             elif self.flapper and self.vow:
-                def seq_func():
-                    if self.arguments.create_auctions:
-                        self.check_flap()
-                    self.check_all_auctions()
-
-                lifecycle.on_block(seq_func)
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
             elif self.flopper and self.vow:
-                def seq_func():
-                    if self.arguments.create_auctions:
-                        self.check_flop()
-                    self.check_all_auctions()
-
-                lifecycle.on_block(seq_func)
-            else:
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flop))
+            else:  # unusual corner case
                 lifecycle.on_block(self.check_all_auctions)
+
             lifecycle.every(2, self.check_for_bids)
 
     def startup(self):
@@ -173,6 +169,9 @@ class AuctionKeeper:
         if self.flapper:
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
+        if not self.arguments.create_auctions:
+            logging.info("Keeper will not create new auctions")
+
     def approve(self):
         self.strategy.approve()
         if self.dai_join:
@@ -180,8 +179,10 @@ class AuctionKeeper:
             self.dai_join.dai().approve(self.dai_join.address).transact()
 
     def shutdown(self):
-        self.exit_dai_on_shutdown()
-        self.exit_collateral_on_shutdown()
+        with self.auctions_lock:
+            del self.auctions
+            self.exit_dai_on_shutdown()
+            self.exit_collateral_on_shutdown()
 
     def exit_dai_on_shutdown(self):
         if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
@@ -205,14 +206,14 @@ class AuctionKeeper:
         last_note_event = {}
 
         # Look for unsafe CDPs and bite them
-        past_frob = self.vat.past_frob(self.web3.eth.blockNumber, self.ilk)
-        for frob in past_frob:
+        frobs = self.vat.past_frobs(self.web3.eth.blockNumber, self.ilk)
+        for frob in frobs:
             last_note_event[frob.urn] = frob
 
         for urn_addr in last_note_event:
-            ilk = self.vat.ilk(frob.ilk)
+            ilk = self.vat.ilk(self.ilk.name)
             current_urn = self.vat.urn(ilk, urn_addr)
-            rate = self.vat.ilk(ilk.name).rate
+            rate = ilk.rate
             safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
@@ -243,47 +244,50 @@ class AuctionKeeper:
         awe = self.vat.sin(self.vow.address)
 
         # Check if Vow has bad debt in excess
-        if joy < awe:
-            woe = self.vow.woe()
-            sin = self.vow.sin()
-            sump = self.vow.sump()
-            wait = self.vow.wait()
+        excess_debt = joy < awe
+        if not excess_debt:
+            return
 
-            # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
-            if woe + sin >= sump:
-                # We need to bring Joy to 0 and Woe to at least sump
+        woe = self.vow.woe()
+        sin = self.vow.sin()
+        sump = self.vow.sump()
+        wait = self.vow.wait()
 
-                # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
-                ash = self.vow.ash()
-                goodnight = min(ash, joy)
-                if goodnight > Rad(0):
-                    self.vow.kiss(goodnight).transact()
+        # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
+        if woe + sin >= sump:
+            # We need to bring Joy to 0 and Woe to at least sump
 
-                # Convert enough sin in woe to have woe >= sump + joy
-                if woe < (sump + joy) and self.cat is not None:
-                    for bite_event in self.cat.past_bite(self.web3.eth.blockNumber):  # TODO: cache ?
-                        era = bite_event.era(self.web3)
-                        now = self.web3.eth.getBlock('latest')['timestamp']
-                        sin = self.vow.sin_of(era)
-                        # If the bite hasn't already been flogged and has aged past the `wait`
-                        if sin > Rad(0) and era + wait <= now:
-                            self.vow.flog(era).transact()
+            # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
+            ash = self.vow.ash()
+            goodnight = min(ash, joy)
+            if goodnight > Rad(0):
+                self.vow.kiss(goodnight).transact()
 
-                            # flog() sin until woe is above sump + joy
-                            joy = self.vat.dai(self.vow.address)
-                            if self.vow.woe() - joy >= sump:
-                                break
+            # Convert enough sin in woe to have woe >= sump + joy
+            if woe < (sump + joy) and self.cat is not None:
+                for bite_event in self.cat.past_bites(self.web3.eth.blockNumber):  # TODO: cache ?
+                    era = bite_event.era(self.web3)
+                    now = self.web3.eth.getBlock('latest')['timestamp']
+                    sin = self.vow.sin_of(era)
+                    # If the bite hasn't already been flogged and has aged past the `wait`
+                    if sin > Rad(0) and era + wait <= now:
+                        self.vow.flog(era).transact()
 
-                # use heal() for reconciling the remaining joy
+                        # flog() sin until woe is above sump + joy
+                        joy = self.vat.dai(self.vow.address)
+                        if self.vow.woe() - joy >= sump:
+                            break
+
+            # use heal() for reconciling the remaining joy
+            joy = self.vat.dai(self.vow.address)
+            if Rad(0) < joy <= self.vow.woe():
+                self.vow.heal(joy).transact()
+                # heal() changes joy and woe (the balance of surplus and debt)
                 joy = self.vat.dai(self.vow.address)
-                if Rad(0) < joy <= self.vow.woe():
-                    self.vow.heal(joy).transact()
-                    # heal() changes joy and woe (the balance of surplus and debt)
-                    joy = self.vat.dai(self.vow.address)
 
-                woe = self.vow.woe()
-                if sump <= woe and joy == Rad(0):
-                    self.vow.flop().transact()
+            woe = self.vow.woe()
+            if sump <= woe and joy == Rad(0):
+                self.vow.flop().transact()
 
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
@@ -423,7 +427,7 @@ class AuctionKeeper:
         difference = Wad(self.vat.dai(self.our_address)) - self.vat_dai_target  # Wad
         if difference < Wad(0):
             # Join tokens to the vat
-            if token_balance > difference * -1:
+            if token_balance >= difference * -1:
                 self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
                 assert self.dai_join.join(self.our_address, difference * -1).transact()
             elif token_balance > Wad(0):

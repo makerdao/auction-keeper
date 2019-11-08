@@ -20,6 +20,8 @@ import time
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
+from datetime import datetime
+from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
@@ -27,9 +29,6 @@ from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, 
     models, our_address, other_address, reserve_dai, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
-
-
-wad_maxvalue = Wad(115792089237316195423570985008687907853269984665640564039457584007913129639935)
 
 
 @pytest.fixture()
@@ -88,6 +87,24 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
 
         self.sump = self.mcd.vow.sump()  # Rad
 
+    def dent(self, id: int, address: Address, lot: Wad, bid: Rad):
+        assert (isinstance(id, int))
+        assert (isinstance(lot, Wad))
+        assert (isinstance(bid, Rad))
+
+        assert self.flopper.live() == 1
+
+        current_bid = self.flopper.bids(id)
+        assert current_bid.guy != Address("0x0000000000000000000000000000000000000000")
+        assert current_bid.tic > datetime.now().timestamp() or current_bid.tic == 0
+        assert current_bid.end > datetime.now().timestamp()
+
+        assert bid == current_bid.bid
+        assert Wad(0) < lot < current_bid.lot
+        assert self.flopper.beg() * lot <= current_bid.lot
+
+        assert self.flopper.dent(id, lot, bid).transact(from_address=address)
+
     def lot_implies_price(self, kick: int, price: Wad) -> bool:
         return round(Rad(self.flopper.bids(kick).lot), 2) == round(self.sump / Rad(price), 2)
 
@@ -143,14 +160,14 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.flapper is None
         assert status.flopper == self.flopper.address
         assert status.bid > Rad.from_number(0)
-        assert status.lot == wad_maxvalue
+        assert status.lot == self.mcd.vow.dump()
         assert status.tab is None
-        assert status.beg > Ray.from_number(1)
+        assert status.beg > Wad.from_number(1)
         assert status.guy == self.mcd.vow.address
         assert status.era > 0
         assert status.end < status.era + self.flopper.tau() + 1
         assert status.tic == 0
-        assert status.price == Wad(0)
+        assert status.price == Wad(status.bid / Rad(status.lot))
 
     def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
@@ -185,7 +202,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.bid == last_bid.bid
         assert status.lot == Wad(last_bid.bid / Rad(price))
         assert status.tab is None
-        assert status.beg > Ray.from_number(1)
+        assert status.beg > Wad.from_number(1)
         assert status.guy == self.keeper_address
         assert status.era > 0
         assert status.end > status.era
@@ -223,7 +240,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert status.bid == self.sump
         assert status.lot == lot
         assert status.tab is None
-        assert status.beg > Ray.from_number(1)
+        assert status.beg > Wad.from_number(1)
         assert status.guy == self.other_address
         assert status.era > 0
         assert status.end > status.era
@@ -266,7 +283,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.flopper.dent(kick, Wad.from_number(0.00015), self.sump).transact(from_address=self.other_address)
+        self.dent(kick, self.other_address, Wad.from_number(0.000015), self.sump)
         # and
         time_travel_by(self.web3, self.flopper.ttl() + 1)
         # and
@@ -291,7 +308,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.flopper.dent(kick, Wad.from_number(0.00016), self.sump).transact(from_address=self.other_address)
+        self.dent(kick, self.other_address, Wad.from_number(0.000016), self.sump)
         # and
         time_travel_by(self.web3, self.flopper.ttl() + 1)
         # and
@@ -307,7 +324,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # given
         (model, model_factory) = models(self.keeper, kick)
         # and
-        assert self.flopper.dent(kick, Wad.from_number(0.00017), self.sump).transact(from_address=self.other_address)
+        self.dent(kick, self.other_address, Wad.from_number(0.000017), self.sump)
         # and
         time_travel_by(self.web3, self.flopper.ttl() + 1)
         # and
@@ -537,8 +554,8 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # given
         mkr_before = self.mcd.mkr.balance_of(self.keeper_address)
         # and
-        assert self.flopper.dent(kick, Wad.from_number(1.5), self.sump).transact(from_address=self.other_address)
-        assert self.flopper.bids(kick).lot == Wad.from_number(1.5)
+        self.dent(kick, self.other_address, Wad.from_number(0.000015), self.sump)
+        assert self.flopper.bids(kick).lot == Wad.from_number(0.000015)
 
         # when
         time_travel_by(self.web3, self.flopper.ttl() + 1)
@@ -560,11 +577,15 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
+        assert self.flopper.bids(kick).guy == self.keeper_address
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    def test_should_use_default_gas_price_if_not_provided_by_the_model(self):
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, kick):
         # given
-        kick = self.flopper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -574,6 +595,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
+        assert self.flopper.bids(kick).guy == self.keeper_address
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.web3.eth.gasPrice
 

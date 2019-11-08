@@ -144,7 +144,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert bid == current_bid.bid
         assert bid == current_bid.tab
         assert lot < current_bid.lot
-        assert (flipper.beg() * Ray(lot)) <= Ray(current_bid.lot)
+        assert flipper.beg() * lot <= current_bid.lot
 
         assert flipper.dent(id, lot, bid).transact(from_address=address)
 
@@ -188,7 +188,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.bid == Rad.from_number(0)
         assert status.lot == initial_bid.lot
         assert status.tab == initial_bid.tab
-        assert status.beg > Ray.from_number(1)
+        assert status.beg > Wad.from_number(1)
         assert status.guy == mcd.cat.address
         assert status.era > 0
         assert status.end < status.era + c.flipper.tau() + 1
@@ -233,7 +233,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.bid == Rad(our_price * status.lot)
         assert status.lot == previous_bid.lot
         assert status.tab == previous_bid.tab
-        assert status.beg > Ray.from_number(1)
+        assert status.beg > Wad.from_number(1)
         assert status.guy == self.keeper_address
         assert status.era > 0
         assert status.end > status.era
@@ -271,7 +271,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.bid == new_bid_amount
         assert status.lot == previous_bid.lot
         assert status.tab == previous_bid.tab
-        assert status.beg > Ray.from_number(1)
+        assert status.beg > Wad.from_number(1)
         assert status.guy == other_address
         assert status.era > 0
         assert status.end > status.era
@@ -589,7 +589,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
-    @pytest.mark.skip(reason="test fails on some machines, likely due to timing complexities")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, mcd, c, kick, keeper):
         # given
         (model, model_factory) = models(keeper, kick)

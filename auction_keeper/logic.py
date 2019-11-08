@@ -107,3 +107,14 @@ class Auctions:
 
             # Log the fact that auction has been discarded
             self.logger.info(f"Stopped monitoring auction #{id} as it's not active anymore")
+
+    def __del__(self):
+        count = len(self.auctions)
+        for id, auction in self.auctions.items():
+            try:
+                auction.model.terminate()
+                del auction.model
+            except AssertionError:
+                pass
+        del self.auctions
+        self.logger.debug(f"Removed {count} auctions on shutdown")

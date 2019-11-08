@@ -10,8 +10,12 @@ sleep 2
 popd
 
 PYTHONPATH=$PYTHONPATH:./lib/pymaker py.test --cov=auction_keeper --cov-report=term --cov-append tests/ $@
+TEST_RESULT=$?
 
 echo Stopping container
 pushd ./lib/pymaker
 docker-compose down
 popd
+
+exit $TEST_RESULT
+
