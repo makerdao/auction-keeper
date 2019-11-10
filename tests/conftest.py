@@ -181,6 +181,19 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, ex
     assert mcd.vat.urn(c.ilk, usr).art >= Wad(amount)
 
 
+def purchase_dai(amount: Wad, recipient: Address):
+    assert isinstance(amount, Wad)
+    assert isinstance(recipient, Address)
+
+    m = mcd(web3())
+    seller = gal_address(web3())
+    reserve_dai(m, m.collaterals['ETH-C'], seller, amount)
+    m.approve_dai(seller)
+    m.approve_dai(recipient)
+    assert m.dai_adapter.exit(seller, amount).transact(from_address=seller)
+    assert m.dai.transfer_from(seller, recipient, amount).transact(from_address=seller)
+
+
 def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, dink: Wad, dart: Wad):
     assert isinstance(mcd, DssDeployment)
     assert isinstance(collateral, Collateral)

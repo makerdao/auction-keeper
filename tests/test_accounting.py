@@ -19,7 +19,7 @@ import pytest
 
 from auction_keeper.main import AuctionKeeper
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import keeper_address, mcd, our_address, reserve_dai, web3, wrap_eth
+from tests.conftest import keeper_address, mcd, our_address, web3, wrap_eth, purchase_dai
 from tests.helper import args
 
 
@@ -44,13 +44,6 @@ class TestVatDai:
 
     def get_gem_vat_balance(self) -> Wad:
         return self.mcd.vat.gem(self.collateral.ilk, self.keeper_address)
-
-    def purchase_dai(self, amount: Wad):
-        assert isinstance(amount, Wad)
-        seller = self.our_address
-        reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], seller, amount)
-        assert self.mcd.dai_adapter.exit(seller, amount).transact(from_address=seller)
-        assert self.mcd.dai.transfer_from(seller, self.keeper_address, amount).transact(from_address=seller)
 
 
 class TestVatDaiTarget(TestVatDai):
@@ -78,9 +71,9 @@ class TestVatDaiTarget(TestVatDai):
         assert token_balance_before == self.get_dai_token_balance()
         assert vat_balance_before == self.get_dai_vat_balance()
 
-    def test_join_enough(self):
+    def test_join_enough(self, keeper_address):
         # given purchasing some dai
-        self.purchase_dai(Wad.from_number(237))
+        purchase_dai(Wad.from_number(237), keeper_address)
         token_balance_before = self.get_dai_token_balance()
         assert token_balance_before == Wad.from_number(237)
         vat_balance_before = self.get_dai_vat_balance()
@@ -151,7 +144,7 @@ class TestEmptyVatOnExit(TestVatDai):
     def test_do_not_empty(self):
         # given dai and gem in the vat
         keeper = self.create_keeper(False, False)
-        self.purchase_dai(Wad.from_number(153))
+        purchase_dai(Wad.from_number(153), self.keeper_address)
         assert self.get_dai_token_balance() >= Wad.from_number(153)
         assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(153)).transact(
             from_address=self.keeper_address)
@@ -195,7 +188,7 @@ class TestEmptyVatOnExit(TestVatDai):
         gem_vat_balance_before = self.get_gem_vat_balance()
 
         # when adding dai
-        self.purchase_dai(Wad.from_number(79))
+        purchase_dai(Wad.from_number(79), self.keeper_address)
         assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(79)).transact(
             from_address=self.keeper_address)
         dai_token_balance_before = self.get_dai_token_balance()
