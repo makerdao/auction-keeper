@@ -71,6 +71,8 @@ class AuctionKeeper:
         parser.add_argument('--max-auctions', type=int, default=100,
                             help="Maximum number of auctions to simultaneously interact with, "
                                  "used to manage OS and hardware limitations")
+        parser.add_argument('--min-flip-lot', type=float, default=1.0,
+                            help="Minimum lot size to create or bid upon a flip auction")
 
         parser.add_argument('--vat-dai-target', type=float,
                             help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
@@ -123,7 +125,8 @@ class AuctionKeeper:
         self.flapper = mcd.flapper if self.arguments.type == 'flap' else None
         self.flopper = mcd.flopper if self.arguments.type == 'flop' else None
         if self.flipper:
-            self.strategy = FlipperStrategy(self.flipper)
+            self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
+            self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
@@ -222,6 +225,10 @@ class AuctionKeeper:
             if not safe:
                 if self.vat.dai(self.our_address) == Rad(0):
                     self.logger.warning("Skipping opportunity to bite because there is no Dai to bid")
+                    return
+
+                if current_urn.ink < self.min_flip_lot:
+                    self.logger.warning("Ignoring urn with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
                     return
 
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())

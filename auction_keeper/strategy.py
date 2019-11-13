@@ -14,6 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 from typing import Optional, Tuple
 
 from web3 import Web3
@@ -39,11 +40,13 @@ class Strategy:
 
 
 class FlipperStrategy(Strategy):
-    def __init__(self, flipper: Flipper):
+    def __init__(self, flipper: Flipper, min_lot: Wad):
         assert isinstance(flipper, Flipper)
+        assert isinstance(min_lot, Wad)
 
         self.flipper = flipper
         self.beg = flipper.beg()
+        self.min_lot = min_lot
 
     def approve(self):
         self.flipper.approve(self.flipper.vat(), hope_directly())
@@ -81,21 +84,24 @@ class FlipperStrategy(Strategy):
         # dent phase
         if bid.bid == bid.tab:
             our_lot = Wad(bid.bid / Rad(price))
+            if our_lot < self.min_lot:
+                return None, None, None
 
             if (our_lot * self.beg <= bid.lot) and (our_lot < bid.lot):
                 return price, self.flipper.dent(id, our_lot, bid.bid), bid.bid
-
             else:
                 return None, None, None
 
         # tend phase
         else:
+            if bid.lot < self.min_lot:
+                return None, None, None
+
             our_bid = Rad.min(Rad(bid.lot) * price, bid.tab)
             our_price = price if our_bid < bid.tab else bid.bid / Rad(bid.lot)
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
                 return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
-
             else:
                 return None, None, None
 
@@ -198,7 +204,6 @@ class FlopperStrategy(Strategy):
 
         if Ray(our_lot) * self.beg <= Ray(bid.lot) and our_lot < Rad(bid.lot):
             return price, self.flopper.dent(id, Wad(our_lot), bid.bid), bid.bid
-
         else:
             return None, None, None
 

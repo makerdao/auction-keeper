@@ -66,6 +66,7 @@ def create_keeper(mcd: DssDeployment, c: Collateral, address=None):
                                      f"--type flip "
                                      f"--network testnet "
                                      f"--ilk {c.ilk.name} "
+                                     f"--min-flip-lot 0.0 "
                                      f"--model ./bogus-model.sh"), web3=mcd.web3)
     keeper.approve()
     return keeper
