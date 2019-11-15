@@ -319,6 +319,7 @@ class AuctionKeeper:
                 if not self.check_auction(id):
                     continue
 
+                # Prevent growing the auctions collection beyond the configured size
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
                 else:
@@ -433,20 +434,16 @@ class AuctionKeeper:
         if self.flipper or self.flopper:
             vat_dai = self.vat.dai(self.our_address)
             if cost > vat_dai:
-                self.logger.warning(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
-                                    "bid will not be submitted")
+                self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                                  "bid will not be submitted")
                 return False
-            else:
-                self.logger.debug(f"Bid cost {str(cost)} is below vat balance of {vat_dai}")
         # If this is an auction where we bid with MKR...
         elif self.flapper:
             mkr_balance = self.mkr.balance_of(self.our_address)
             if cost > Rad(mkr_balance):
-                self.logger.warning(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
-                                    "bid will not be submitted")
+                self.logger.debug(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
+                                  "bid will not be submitted")
                 return False
-            else:
-                self.logger.debug(f"Bid cost {str(cost)} is below MKR balance of {mkr_balance}")
         return True
 
     def rebalance_dai(self):

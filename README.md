@@ -192,6 +192,11 @@ optional arguments:
   --ilk ILK             Name of the collateral type for a flip keeper (e.g.
                         'ETH-B', 'ZRX-A')
   --bid-only            Do not take opportunities to create new auctions
+  --max-auctions MAX_AUCTIONS
+                        Maximum number of auctions to simultaneously interact
+                        with, used to manage OS and hardware limitations
+  --min-flip-lot MIN_FLIP_LOT
+                        Minimum lot size to create or bid upon a flip auction
   --vat-dai-target VAT_DAI_TARGET
                         Amount of Dai to keep in the Vat contract (e.g. 2000)
   --keep-dai-in-vat-on-exit
