@@ -71,7 +71,7 @@ class AuctionKeeper:
         parser.add_argument('--max-auctions', type=int, default=100,
                             help="Maximum number of auctions to simultaneously interact with, "
                                  "used to manage OS and hardware limitations")
-        parser.add_argument('--min-flip-lot', type=float, default=1.0,
+        parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
 
         parser.add_argument('--vat-dai-target', type=float,
