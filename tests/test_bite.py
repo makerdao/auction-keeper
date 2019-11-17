@@ -21,7 +21,7 @@ from auction_keeper.main import AuctionKeeper
 from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
 
-from tests.conftest import create_unsafe_cdp, keeper_address, mcd, reserve_dai, web3
+from tests.conftest import web3, mcd, create_unsafe_cdp, keeper_address, reserve_dai, purchase_dai
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -38,12 +38,17 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         keeper.approve()
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1.2), gal_address)
         assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
+        # Keeper won't bid with a 0 Dai balance
+        purchase_dai(Wad(20), keeper_address)
+        assert mcd.dai_adapter.join(keeper_address, Wad(20)).transact(from_address=keeper_address)
 
         # when
         keeper.check_cdps()
         wait_for_other_threads()
 
         # then
+        print(mcd.cat.past_bites(10))
+        assert len(mcd.cat.past_bites(10)) > 0
         urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
         assert urn.art == Wad(0)  # unsafe cdp has been bitten
         assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
@@ -51,7 +56,8 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
 
     @classmethod
     def teardown_class(cls):
-        cls.eliminate_queued_debt(web3(), mcd(web3()), keeper_address(web3()))
+        w3 = web3()
+        cls.eliminate_queued_debt(w3, mcd(w3), keeper_address(w3))
 
     @classmethod
     def eliminate_queued_debt(cls, web3, mcd, keeper_address):
@@ -59,7 +65,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         assert mcd.vat.sin(mcd.vow.address) > Rad(0)
         c = mcd.collaterals['ETH-A']
         kick = c.flipper.kicks()
-        last_bite = mcd.cat.past_bites(1)[0]
+        last_bite = mcd.cat.past_bites(10)[0]
 
         # when a bid covers the CDP debt
         auction = c.flipper.bids(kick)

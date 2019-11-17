@@ -64,9 +64,15 @@ class AuctionKeeper:
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
                             help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
-                            "available collateral types can be found at the left side of the CDP Portal")
+                                 "available collateral types can be found at the left side of the CDP Portal")
+
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
+        parser.add_argument('--max-auctions', type=int, default=100,
+                            help="Maximum number of auctions to simultaneously interact with, "
+                                 "used to manage OS and hardware limitations")
+        parser.add_argument('--min-flip-lot', type=float, default=0,
+                            help="Minimum lot size to create or bid upon a flip auction")
 
         parser.add_argument('--vat-dai-target', type=float,
                             help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
@@ -75,7 +81,7 @@ class AuctionKeeper:
         parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
                             help="Retain collateral in the Vat on exit")
 
-        parser.add_argument("--model", type=str, required=True,
+        parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
@@ -119,7 +125,8 @@ class AuctionKeeper:
         self.flapper = mcd.flapper if self.arguments.type == 'flap' else None
         self.flopper = mcd.flopper if self.arguments.type == 'flop' else None
         if self.flipper:
-            self.strategy = FlipperStrategy(self.flipper)
+            self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
+            self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
@@ -131,7 +138,7 @@ class AuctionKeeper:
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
-                                 model_factory=ModelFactory(self.arguments.model))
+                                 model_factory=ModelFactory(' '.join(self.arguments.model)))
         self.auctions_lock = threading.Lock()
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
@@ -216,6 +223,14 @@ class AuctionKeeper:
             rate = ilk.rate
             safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
+                if self.vat.dai(self.our_address) == Rad(0):
+                    self.logger.warning("Skipping opportunity to bite because there is no Dai to bid")
+                    return
+
+                if current_urn.ink < self.min_flip_lot:
+                    self.logger.warning("Ignoring urn with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
+                    return
+
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
@@ -232,6 +247,11 @@ class AuctionKeeper:
 
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
             if (joy - awe) >= (bump + hump):
+
+                if self.mkr.balance_of(self.our_address) == Wad(0):
+                    self.logger.warning("Skipping opportunity to heal/flap because there is no MKR to bid")
+                    return
+
                 woe = self.vow.woe()
                 # Heal the system to bring Woe to 0
                 if woe > Rad(0):
@@ -256,6 +276,10 @@ class AuctionKeeper:
         # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
         if woe + sin >= sump:
             # We need to bring Joy to 0 and Woe to at least sump
+
+            if self.vat.dai(self.our_address) == Rad(0):
+                self.logger.warning("Skipping opportunity to kiss/flog/heal/flop because there is no Dai to bid")
+                return
 
             # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
             ash = self.vow.ash()
@@ -292,8 +316,16 @@ class AuctionKeeper:
     def check_all_auctions(self):
         for id in range(1, self.strategy.kicks() + 1):
             with self.auctions_lock:
-                if self.check_auction(id):
+                if not self.check_auction(id):
+                    continue
+
+                # Prevent growing the auctions collection beyond the configured size
+                if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
+                else:
+                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; " 
+                                    f"ignoring auction {id} and beyond")
+                    return
 
     def check_for_bids(self):
         with self.auctions_lock:
@@ -402,20 +434,16 @@ class AuctionKeeper:
         if self.flipper or self.flopper:
             vat_dai = self.vat.dai(self.our_address)
             if cost > vat_dai:
-                self.logger.warning(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
-                                    "bid will not be submitted")
+                self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                                  "bid will not be submitted")
                 return False
-            else:
-                self.logger.debug(f"Bid cost {str(cost)} is below vat balance of {vat_dai}")
         # If this is an auction where we bid with MKR...
         elif self.flapper:
             mkr_balance = self.mkr.balance_of(self.our_address)
             if cost > Rad(mkr_balance):
-                self.logger.warning(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
-                                    "bid will not be submitted")
+                self.logger.debug(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
+                                  "bid will not be submitted")
                 return False
-            else:
-                self.logger.debug(f"Bid cost {str(cost)} is below MKR balance of {mkr_balance}")
         return True
 
     def rebalance_dai(self):

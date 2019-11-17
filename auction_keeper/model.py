@@ -19,8 +19,6 @@ import logging
 from pprint import pformat
 from typing import Optional
 
-from pymaker.numeric import Ray
-
 from auction_keeper.process import Process
 from pymaker import Address
 from pymaker.numeric import Wad, Ray, Rad
