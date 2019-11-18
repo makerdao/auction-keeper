@@ -73,7 +73,7 @@ class AuctionKeeper:
                                  "used to manage OS and hardware limitations")
         parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
-        parser.add_argument('--from-block', type=int,
+        parser.add_argument('--from-block', type=int, required=True,
                             help="Starting block from which to look at history (set to block where MCD was deployed)")
 
         parser.add_argument('--vat-dai-target', type=float,
@@ -231,7 +231,7 @@ class AuctionKeeper:
                     return
 
                 if current_urn.ink < self.min_flip_lot:
-                    self.logger.warning("Ignoring urn with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
+                    self.logger.warning(f"Ignoring urn {urn_addr} with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
                     return
 
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
