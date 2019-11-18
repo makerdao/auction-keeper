@@ -73,6 +73,8 @@ class AuctionKeeper:
                                  "used to manage OS and hardware limitations")
         parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
+        parser.add_argument('--from-block', type=int,
+                            help="Starting block from which to look at history (set to block where MCD was deployed)")
 
         parser.add_argument('--vat-dai-target', type=float,
                             help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
@@ -213,7 +215,8 @@ class AuctionKeeper:
         last_note_event = {}
 
         # Look for unsafe CDPs and bite them
-        frobs = self.vat.past_frobs(self.web3.eth.blockNumber, self.ilk)
+        past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
+        frobs = self.vat.past_frobs(past_blocks, self.ilk)
         for frob in frobs:
             last_note_event[frob.urn] = frob
 
@@ -289,7 +292,8 @@ class AuctionKeeper:
 
             # Convert enough sin in woe to have woe >= sump + joy
             if woe < (sump + joy) and self.cat is not None:
-                for bite_event in self.cat.past_bites(self.web3.eth.blockNumber):  # TODO: cache ?
+                past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
+                for bite_event in self.cat.past_bites(past_blocks):  # TODO: cache ?
                     era = bite_event.era(self.web3)
                     now = self.web3.eth.getBlock('latest')['timestamp']
                     sin = self.vow.sin_of(era)

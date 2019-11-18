@@ -197,6 +197,9 @@ optional arguments:
                         with, used to manage OS and hardware limitations
   --min-flip-lot MIN_FLIP_LOT
                         Minimum lot size to create or bid upon a flip auction
+  --from-block FROM_BLOCK
+                        Starting block from which to look at history (set to 
+                        block where MCD was deployed)
   --vat-dai-target VAT_DAI_TARGET
                         Amount of Dai to keep in the Vat contract (e.g. 2000)
   --keep-dai-in-vat-on-exit
@@ -211,7 +214,10 @@ optional arguments:
 To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
 one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter 
 corresponding to a set of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the 
-same underlying token (WETH).  
+same underlying token (WETH).
+
+Configure `--from-block` to the block where MCD was deployed.  One way to find this is to look at the `MCD_DAI` 
+contract of the deployment you are using and determine the block in which it was deployed.
 
 ![example list of keepers](README-keeper-config-example.png)
 
