@@ -30,6 +30,7 @@ class TestConfig:
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
                                          f"--network testnet "
+                                         f"--from-block 0 "
                                          f"--ilk ZRX-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
@@ -47,6 +48,7 @@ class TestConfig:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flip "
                                     f"--network testnet "
+                                    f"--from-block 0 "
                                     f"--model ./bogus-model.sh"), web3=web3)
         assert "ilk" in str(e)
 
@@ -54,6 +56,7 @@ class TestConfig:
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flap "
                                          f"--network testnet "
+                                         f"--from-block 0 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.flapper, Flapper)
@@ -72,6 +75,7 @@ class TestConfig:
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flop "
                                          f"--network testnet "
+                                         f"--from-block 0 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.flopper, Flopper)

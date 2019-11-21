@@ -65,6 +65,7 @@ def create_keeper(mcd: DssDeployment, c: Collateral, address=None):
     keeper = AuctionKeeper(args=args(f"--eth-from {address} "
                                      f"--type flip "
                                      f"--network testnet "
+                                     f"--from-block 0 "
                                      f"--ilk {c.ilk.name} "
                                      f"--min-flip-lot 0.0 "
                                      f"--model ./bogus-model.sh"), web3=mcd.web3)
@@ -590,6 +591,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
+    @pytest.mark.skip("Timing issue causes this to fail on Travis and under CPU pressure")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, mcd, c, kick, keeper):
         # given
         (model, model_factory) = models(keeper, kick)
