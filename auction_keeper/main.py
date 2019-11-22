@@ -148,8 +148,11 @@ class AuctionKeeper:
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
-        logging.getLogger('urllib3.connectionpool').setLevel(logging.INFO)
-        logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(logging.INFO)
+        # reduce logspew
+        logging.getLogger('urllib3').setLevel(logging.INFO)
+        logging.getLogger("web3").setLevel(logging.INFO)
+        logging.getLogger("asyncio").setLevel(logging.INFO)
+        logging.getLogger("requests").setLevel(logging.INFO)
 
     def main(self):
         def seq_func(check_func: callable):
