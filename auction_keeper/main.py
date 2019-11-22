@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import functools
 import logging
+import time
 import sys
 import threading
 
@@ -186,8 +187,10 @@ class AuctionKeeper:
 
     def approve(self):
         self.strategy.approve()
+        time.sleep(2)
         if self.dai_join:
             self.dai_join.approve(hope_directly(), self.vat.address)
+            time.sleep(2)
             self.dai_join.dai().approve(self.dai_join.address).transact()
 
     def shutdown(self):
