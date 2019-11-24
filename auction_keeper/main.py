@@ -23,6 +23,7 @@ import time
 import sys
 import threading
 
+from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
@@ -159,8 +160,15 @@ class AuctionKeeper:
         def seq_func(check_func: callable):
             assert callable(check_func)
             if self.arguments.create_auctions:
-                check_func()
-            self.check_all_auctions()
+                try:
+                    check_func()
+                except (RequestException, ConnectionError):
+                    logging.exception("Error checking for opportunities to start an auction")
+
+            try:
+                self.check_all_auctions()
+            except (RequestException, ConnectionError):
+                logging.exception("Error checking auction states")
 
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
