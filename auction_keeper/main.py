@@ -245,7 +245,7 @@ class AuctionKeeper:
                     return
 
                 if current_urn.ink < self.min_flip_lot:
-                    self.logger.warning(f"Ignoring urn {urn_addr} with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
+                    self.logger.info(f"Ignoring urn {urn_addr} with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
                     continue
 
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
