@@ -226,21 +226,23 @@ class AuctionKeeper:
             assert self.gem_join.exit(self.our_address, vat_balance).transact()
 
     def check_cdps(self):
-        last_note_event = {}
+        last_note_event = set()
+        ilk = self.vat.ilk(self.ilk.name)
+        rate = ilk.rate
+        dai_to_bid = self.vat.dai(self.our_address)
 
-        # Look for unsafe CDPs and bite them
+        # Index urns by their address
         past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
         frobs = self.vat.past_frobs(past_blocks, self.ilk)
         for frob in frobs:
-            last_note_event[frob.urn] = frob
+            last_note_event.add(frob.urn)
 
+        # Look for unsafe CDPs and bite them
         for urn_addr in last_note_event:
-            ilk = self.vat.ilk(self.ilk.name)
             current_urn = self.vat.urn(ilk, urn_addr)
-            rate = ilk.rate
             safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
-                if self.vat.dai(self.our_address) == Rad(0):
+                if dai_to_bid == Rad(0):
                     self.logger.warning("Skipping opportunity to bite because there is no Dai to bid")
                     return
 
