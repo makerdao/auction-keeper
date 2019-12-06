@@ -19,9 +19,11 @@ import argparse
 import asyncio
 import functools
 import logging
+import time
 import sys
 import threading
 
+from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
@@ -148,15 +150,25 @@ class AuctionKeeper:
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
-        logging.getLogger('urllib3.connectionpool').setLevel(logging.INFO)
-        logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(logging.INFO)
+        # reduce logspew
+        logging.getLogger('urllib3').setLevel(logging.INFO)
+        logging.getLogger("web3").setLevel(logging.INFO)
+        logging.getLogger("asyncio").setLevel(logging.INFO)
+        logging.getLogger("requests").setLevel(logging.INFO)
 
     def main(self):
         def seq_func(check_func: callable):
             assert callable(check_func)
             if self.arguments.create_auctions:
-                check_func()
-            self.check_all_auctions()
+                try:
+                    check_func()
+                except (RequestException, ConnectionError):
+                    logging.exception("Error checking for opportunities to start an auction")
+
+            try:
+                self.check_all_auctions()
+            except (RequestException, ConnectionError):
+                logging.exception("Error checking auction states")
 
         with Lifecycle(self.web3) as lifecycle:
             lifecycle.on_startup(self.startup)
@@ -183,8 +195,10 @@ class AuctionKeeper:
 
     def approve(self):
         self.strategy.approve()
+        time.sleep(2)
         if self.dai_join:
             self.dai_join.approve(hope_directly(), self.vat.address)
+            time.sleep(2)
             self.dai_join.dai().approve(self.dai_join.address).transact()
 
     def shutdown(self):
@@ -212,26 +226,28 @@ class AuctionKeeper:
             assert self.gem_join.exit(self.our_address, vat_balance).transact()
 
     def check_cdps(self):
-        last_note_event = {}
+        last_note_event = set()
+        ilk = self.vat.ilk(self.ilk.name)
+        rate = ilk.rate
+        dai_to_bid = self.vat.dai(self.our_address)
 
-        # Look for unsafe CDPs and bite them
+        # Index urns by their address
         past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
         frobs = self.vat.past_frobs(past_blocks, self.ilk)
         for frob in frobs:
-            last_note_event[frob.urn] = frob
+            last_note_event.add(frob.urn)
 
+        # Look for unsafe CDPs and bite them
         for urn_addr in last_note_event:
-            ilk = self.vat.ilk(self.ilk.name)
             current_urn = self.vat.urn(ilk, urn_addr)
-            rate = ilk.rate
             safe = current_urn.ink * ilk.spot >= current_urn.art * rate
             if not safe:
-                if self.vat.dai(self.our_address) == Rad(0):
+                if dai_to_bid == Rad(0):
                     self.logger.warning("Skipping opportunity to bite because there is no Dai to bid")
                     return
 
                 if current_urn.ink < self.min_flip_lot:
-                    self.logger.warning(f"Ignoring urn {urn_addr} with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
+                    self.logger.info(f"Ignoring urn {urn_addr} with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
                     continue
 
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())

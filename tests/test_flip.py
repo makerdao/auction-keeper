@@ -242,10 +242,13 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == our_price
 
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, mcd, c, other_address, keeper):
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, mcd, c, kick, other_address, keeper):
         # given
         flipper = c.flipper
-        kick = flipper.kicks()
         (model, model_factory) = models(keeper, kick)
 
         # when
