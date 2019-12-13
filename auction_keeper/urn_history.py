@@ -15,11 +15,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import json
 import logging
-from typing import List, Optional
+import requests
+from datetime import datetime, timedelta
+from typing import Dict, Optional
 from web3 import Web3
 
-from pymaker import Address
+from pymaker import Address, Wad
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Ilk, Urn
 
@@ -42,24 +45,88 @@ class UrnHistory:
         self.from_block = from_block
         self.vulcanize_endpoint = vulcanize_endpoint
 
-    def get_urns(self) -> List[Urn]:
-        if not self.vulcanize_endpoint:
-            return self.get_urns_from_past_frobs()
-        else:
+    def get_urns(self) -> Dict[str, Urn]:
+        """Returns a list of urns indexed by address"""
+        if self.vulcanize_endpoint:
             return self.get_urns_from_vulcanize()
+        else:
+            return self.get_urns_from_past_frobs()
 
-    def get_urns_from_past_frobs(self) -> List[Urn]:
+    def get_urns_from_past_frobs(self) -> Dict[str, Urn]:
+        start = datetime.now()
         urn_addresses = set()
         past_blocks = self.web3.eth.blockNumber - self.from_block
         frobs = self.mcd.vat.past_frobs(past_blocks, self.ilk)
         for frob in frobs:
             urn_addresses.add(frob.urn)
+        self.logger.debug(f"Retrieved {len(frobs)} frobs and detected {len(urn_addresses)} urn addresses in "
+                          f"{(datetime.now()-start).seconds} seconds")
 
-        urns = []
+        start = datetime.now()
+        urns = {}
         for address in urn_addresses:
-            urns.append(self.mcd.vat.urn(self.ilk, address))
-        self.logger.debug(f"Found {len(urns)} urns among {len(frobs)} frobs in the past {past_blocks} blocks")
+            urns[address] = (self.mcd.vat.urn(self.ilk, address))
+        self.logger.debug(f"Found {len(urns)} urns among {len(frobs)} frobs in the past {past_blocks} blocks in "
+                          f"{(datetime.now()-start).seconds} seconds")
         return urns
 
-    def get_urns_from_vulcanize(self) -> List[Urn]:
-        raise NotImplementedError("Work in progress")
+    def get_urns_from_vulcanize(self) -> Dict[str, Urn]:
+        response = requests.post(self.vulcanize_endpoint, json={'query': self.get_query()})
+        if not response.ok:
+            error_msg = f"{response.status_code} {response.reason} ({response.text})"
+            raise RuntimeError(f"Vulcanize query failed: {error_msg}")
+
+        urns = {}
+        raw = json.loads(response.text)['data']['allRawUrns']['edges']
+        for item in raw:
+            urn = self.urn_from_node(item['node'])
+            urns[urn.address] = urn
+        self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB")
+        return urns
+
+    def get_query(self):
+        ilk_id = self.ilk_ids[self.ilk.name]
+        return self.query.replace("ILK_ID", str(ilk_id))
+
+    def urn_from_node(self, node: dict) -> Urn:
+        assert isinstance(node, dict)
+
+        address = Address(node['identifier'])
+        ink = Wad(0)
+        art = Wad(0)
+        for frob in node['vatFrobsByUrnId']['nodes']:
+            ink += Wad(int(frob['dink']))
+            art += Wad(int(frob['dart']))
+        for bite in node['bitesByUrnId']['nodes']:
+            ink -= Wad(int(bite['ink']))
+            art -= Wad(int(bite['art']))
+        # FIXME: Need to adjust for `flux`es which occur on the urn.
+
+        return Urn(address, self.ilk, ink, art)
+
+    ilk_ids = {
+        "ETH-A": 1,
+        "BAT-A": 2
+    }
+
+    query = """query {
+      allRawUrns(condition: {ilkId: ILK_ID}) {
+        edges {
+          node {
+            vatFrobsByUrnId {
+              nodes {
+                dink
+                dart
+              }
+            }
+            identifier
+            bitesByUrnId {
+              nodes {
+                art
+                ink
+              }
+            }
+          }
+        }
+      }
+    }"""

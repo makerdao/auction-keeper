@@ -244,7 +244,7 @@ class AuctionKeeper:
         dai_to_bid = self.vat.dai(self.our_address)
 
         # Look for unsafe CDPs and bite them
-        for urn in self.urn_history.get_urns():
+        for urn in self.urn_history.get_urns().values():
             safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
                 if dai_to_bid == Rad(0):

@@ -16,7 +16,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import logging
 import sys
+from datetime import datetime, timedelta
 from pprint import pprint
 from web3 import Web3, HTTPProvider
 
@@ -25,18 +27,34 @@ from pymaker import Address
 from pymaker.deployment import DssDeployment
 
 
+logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s', level=logging.DEBUG)
+logging.getLogger('urllib3').setLevel(logging.INFO)
+logging.getLogger("web3").setLevel(logging.INFO)
+logging.getLogger("asyncio").setLevel(logging.INFO)
+logging.getLogger("requests").setLevel(logging.INFO)
+
 print(f"Connecting to {sys.argv[1]}...")
 web3 = Web3(HTTPProvider(endpoint_uri=sys.argv[1], request_kwargs={"timeout": 120}))
 vulcanize_endpoint = sys.argv[2] if len(sys.argv) > 2 else None
-mcd = DssDeployment.from_network(web3, "kovan")
+mcd = DssDeployment.from_network(web3, "mainnet")
 ilk = mcd.collaterals["ETH-A"].ilk
-from_block = sys.argv[3] if len(sys.argv) > 3 else 14764597  # default for Kovan only!
+from_block = int(sys.argv[3]) if len(sys.argv) > 3 else 8950398  # example for mainnet
 
-# past_blocks = web3.eth.blockNumber - from_block
-# log_frobs = mcd.vat.past_frobs(past_blocks, ilk)
-# print(f"Found {len(log_frobs)} frobs in the past {past_blocks} blocks")
+started = datetime.now()
+uh = UrnHistory(web3, mcd, ilk, from_block, None)
+urns_logs = uh.get_urns()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
 
-uh = UrnHistory(web3, mcd, ilk, from_block, vulcanize_endpoint)
-urns = uh.get_urns_from_past_frobs()
-print(f"Found {len(urns)} urns from block {from_block}")
-pprint(urns[:3])
+started = datetime.now()
+uh = UrnHistory(web3, mcd, ilk, None, vulcanize_endpoint)
+urns_vdb = uh.get_urns()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+
+for key, value in urns_logs.items():
+    if key in urns_vdb:
+        if value.ink != urns_vdb[key].ink or value.art != urns_vdb[key].art:
+            print(f'{value} != {urns_vdb[key]}')
+    else:
+        print(f"vdb is missing urn {key}")
