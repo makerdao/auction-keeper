@@ -36,9 +36,15 @@ logging.getLogger("requests").setLevel(logging.INFO)
 print(f"Connecting to {sys.argv[1]}...")
 web3 = Web3(HTTPProvider(endpoint_uri=sys.argv[1], request_kwargs={"timeout": 120}))
 vulcanize_endpoint = sys.argv[2] if len(sys.argv) > 2 else None
-mcd = DssDeployment.from_network(web3, "mainnet")
+mcd = DssDeployment.from_node(web3)
 ilk = mcd.collaterals["ETH-A"].ilk
 from_block = int(sys.argv[3]) if len(sys.argv) > 3 else 8950398  # example for mainnet
+
+# frobs = mcd.vat.past_frobs(116000, mcd.collaterals['ETH-A'].ilk)
+# for frob in frobs:
+#     if frob.urn.address == "0xf1E567aeeb777E602a705Df74Ab0dE7Dc591d860":
+#         print(f"{frob.urn.address}: dink={frob.dink} dart={frob.dart} at block {frob.lognote.block}")
+# exit(0)
 
 started = datetime.now()
 uh = UrnHistory(web3, mcd, ilk, from_block, None)
@@ -52,9 +58,22 @@ urns_vdb = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
 
+mismatches = 0
+missing = 0
+csv = "Urn,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt\n"
 for key, value in urns_logs.items():
     if key in urns_vdb:
         if value.ink != urns_vdb[key].ink or value.art != urns_vdb[key].art:
-            print(f'{value} != {urns_vdb[key]}')
+            csv += f"{key.address},{value.ink},{value.art},{urns_vdb[key].ink},{urns_vdb[key].art}\n"
+            mismatches += 1
     else:
         print(f"vdb is missing urn {key}")
+        missing += 1
+
+for key, value in urns_vdb.items():
+    if key not in urns_logs:
+        print(f"logs is missing urn {key}")
+        missing += 1
+with open("urn-reconciliation.csv", "w") as file:
+    file.write(csv)
+print(f'Observed {mismatches} mismatched urns and {missing} missing urns')

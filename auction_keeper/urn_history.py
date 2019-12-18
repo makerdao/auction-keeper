@@ -45,14 +45,14 @@ class UrnHistory:
         self.from_block = from_block
         self.vulcanize_endpoint = vulcanize_endpoint
 
-    def get_urns(self) -> Dict[str, Urn]:
+    def get_urns(self) -> Dict[Address, Urn]:
         """Returns a list of urns indexed by address"""
         if self.vulcanize_endpoint:
             return self.get_urns_from_vulcanize()
         else:
             return self.get_urns_from_past_frobs()
 
-    def get_urns_from_past_frobs(self) -> Dict[str, Urn]:
+    def get_urns_from_past_frobs(self) -> Dict[Address, Urn]:
         start = datetime.now()
         urn_addresses = set()
         past_blocks = self.web3.eth.blockNumber - self.from_block
@@ -70,11 +70,8 @@ class UrnHistory:
                           f"{(datetime.now()-start).seconds} seconds")
         return urns
 
-    def get_urns_from_vulcanize(self) -> Dict[str, Urn]:
-        response = requests.post(self.vulcanize_endpoint, json={'query': self.get_query()})
-        if not response.ok:
-            error_msg = f"{response.status_code} {response.reason} ({response.text})"
-            raise RuntimeError(f"Vulcanize query failed: {error_msg}")
+    def get_urns_from_vulcanize(self) -> Dict[Address, Urn]:
+        response = self.run_query(self.query)
 
         urns = {}
         raw = json.loads(response.text)['data']['allRawUrns']['edges']
@@ -82,11 +79,37 @@ class UrnHistory:
             urn = self.urn_from_node(item['node'])
             urns[urn.address] = urn
         self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB")
+
+        self.adjust_urns_for_forks(urns)
         return urns
 
-    def get_query(self):
+    def adjust_urns_for_forks(self, urns: Dict[Address, Urn]):
+        assert isinstance(urns, dict)
+        response = self.run_query(self.query_vat_forks)
+
+        raw = json.loads(response.text)['data']['allVatForks']['edges']
+        self.logger.debug(f"Found {len(raw)} vat forks")
+        for item in raw:
+            fork = item['node']
+            src = Address(fork['src'])
+            dst = Address(fork['dst'])
+            if src in urns:
+                urns[src].ink -= Wad(int(fork['dink']))
+                urns[src].art -= Wad(int(fork['dart']))
+            if dst in urns:
+                urns[dst].ink += Wad(int(fork['dink']))
+                urns[dst].ink += Wad(int(fork['dart']))
+
+    def run_query(self, query: str):
+        assert isinstance(query, str)
         ilk_id = self.ilk_ids[self.ilk.name]
-        return self.query.replace("ILK_ID", str(ilk_id))
+        query = query.replace("ILK_ID", str(ilk_id))
+
+        response = requests.post(self.vulcanize_endpoint, json={'query': query})
+        if not response.ok:
+            error_msg = f"{response.status_code} {response.reason} ({response.text})"
+            raise RuntimeError(f"Vulcanize query failed: {error_msg}")
+        return response
 
     def urn_from_node(self, node: dict) -> Urn:
         assert isinstance(node, dict)
@@ -100,7 +123,6 @@ class UrnHistory:
         for bite in node['bitesByUrnId']['nodes']:
             ink -= Wad(int(bite['ink']))
             art -= Wad(int(bite['art']))
-        # FIXME: Need to adjust for `flux`es which occur on the urn.
 
         return Urn(address, self.ilk, ink, art)
 
@@ -126,6 +148,19 @@ class UrnHistory:
                 ink
               }
             }
+          }
+        }
+      }
+    }"""
+
+    query_vat_forks = """query {
+      allVatForks(condition: {ilkId: ILK_ID}) {
+        edges {
+          node {
+            dart
+            dink
+            src
+            dst
           }
         }
       }
