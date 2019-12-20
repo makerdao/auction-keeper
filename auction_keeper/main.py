@@ -175,12 +175,12 @@ class AuctionKeeper:
             if self.arguments.create_auctions:
                 try:
                     check_func()
-                except (RequestException, ConnectionError):
+                except (RequestException, ConnectionError, ValueError):
                     logging.exception("Error checking for opportunities to start an auction")
 
             try:
                 self.check_all_auctions()
-            except (RequestException, ConnectionError):
+            except (RequestException, ConnectionError, ValueError):
                 logging.exception("Error checking auction states")
 
         with Lifecycle(self.web3) as lifecycle:

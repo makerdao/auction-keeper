@@ -52,7 +52,7 @@ class TestVatDaiTarget(TestVatDai):
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flop "
                                          f"--network testnet "
-                                         f"--from-block 0 "
+                                         f"--from-block 1 "
                                          f"--vat-dai-target {dai} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
@@ -134,7 +134,7 @@ class TestEmptyVatOnExit(TestVatDai):
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flop "
                                          f"--network testnet "
-                                         f"--from-block 0 "
+                                         f"--from-block 1 "
                                          f"{vat_dai_behavior} "
                                          f"{vat_gem_behavior} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
