@@ -29,7 +29,6 @@ class TestConfig:
     def test_flip_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
-                                         f"--network testnet "
                                          f"--from-block 1 "
                                          f"--ilk ZRX-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
@@ -47,7 +46,6 @@ class TestConfig:
         with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flip "
-                                    f"--network testnet "
                                     f"--from-block 1 "
                                     f"--model ./bogus-model.sh"), web3=web3)
         assert "ilk" in str(e)
@@ -55,7 +53,6 @@ class TestConfig:
     def test_flap_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flap "
-                                         f"--network testnet "
                                          f"--from-block 1 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
@@ -68,13 +65,11 @@ class TestConfig:
     def test_flap_keeper_negative(self, web3, keeper_address: Address):
         with pytest.raises(SystemExit) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                    f"--type flap "
-                                    f"--model ./bogus-model.sh"), web3=web3)
+                                    f"--type flap"), web3=web3)
 
     def test_flop_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flop "
-                                         f"--network testnet "
                                          f"--from-block 1 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
@@ -85,7 +80,7 @@ class TestConfig:
         assert isinstance(keeper.vow, Vow)
 
     def test_flop_keeper_negative(self, web3, keeper_address: Address):
-        with pytest.raises(SystemExit) as e:
+        with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                    f"--type flap "
+                                    f"--type flop "
                                     f"--model ./bogus-model.sh"), web3=web3)

@@ -78,7 +78,6 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
-                                              f"--network testnet "
                                               f"--from-block 1 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()

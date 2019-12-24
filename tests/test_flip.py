@@ -64,7 +64,6 @@ def create_keeper(mcd: DssDeployment, c: Collateral, address=None):
 
     keeper = AuctionKeeper(args=args(f"--eth-from {address} "
                                      f"--type flip "
-                                     f"--network testnet "
                                      f"--from-block 1 "
                                      f"--ilk {c.ilk.name} "
                                      f"--min-flip-lot 0.0 "

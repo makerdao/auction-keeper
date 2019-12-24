@@ -185,8 +185,6 @@ optional arguments:
   --eth-key [ETH_KEY [ETH_KEY ...]]
                         Ethereum private key(s) to use (e.g.
                         'key_file=aaa.json,pass_file=aaa.pass')
-  --network NETWORK     Ethereum network to connect (e.g. 'kovan' or
-                        'testnet')
   --type {flip,flap,flop}
                         Auction type in which to participate
   --ilk ILK             Name of the collateral type for a flip keeper (e.g.

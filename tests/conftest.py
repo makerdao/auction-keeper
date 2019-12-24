@@ -99,7 +99,7 @@ def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
 
 @pytest.fixture(scope="session")
 def mcd(web3):
-    return DssDeployment.from_network(web3=web3, network="testnet")
+    return DssDeployment.from_node(web3=web3)
 
 
 @pytest.fixture(scope="session")

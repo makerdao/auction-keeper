@@ -23,6 +23,7 @@ import time
 import sys
 import threading
 
+from datetime import datetime
 from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
@@ -59,8 +60,6 @@ class AuctionKeeper:
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
-        parser.add_argument('--network', type=str, required=True,
-                            help="Ethereum network to connect (e.g. 'kovan' or 'testnet')")
         parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
@@ -76,8 +75,8 @@ class AuctionKeeper:
                             help="Minimum lot size to create or bid upon a flip auction")
 
         parser.add_argument("--vulcanize-endpoint", type=str,
-                            help="When specified, frob and bite history will be queried from VulcanizeDB, "
-                                 "reducing load on the Ethereum node for flip and flop auctions")
+                            help="When specified, frob history will be queried from a VulcanizeDB lite node, "
+                                 "reducing load on the Ethereum node for flip auctions")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to look at history (set to block where MCD was deployed)")
 
@@ -118,7 +117,7 @@ class AuctionKeeper:
         # Configure core and token contracts
         if self.arguments.type == 'flip' and not self.arguments.ilk:
             raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
-        mcd = DssDeployment.from_network(web3=self.web3, network=self.arguments.network)
+        mcd = DssDeployment.from_node(web3=self.web3)
         self.vat = mcd.vat
         self.cat = mcd.cat
         self.vow = mcd.vow
@@ -147,7 +146,6 @@ class AuctionKeeper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
             self.strategy = FlopperStrategy(self.flopper)
-            # TODO: Create bite_history instance
         else:
             raise RuntimeError("Please specify auction type")
 
@@ -239,17 +237,19 @@ class AuctionKeeper:
             assert self.gem_join.exit(self.our_address, vat_balance).transact()
 
     def check_cdps(self):
+        started = datetime.now()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
         dai_to_bid = self.vat.dai(self.our_address)
 
         # Look for unsafe CDPs and bite them
-        for urn in self.urn_history.get_urns().values():
+        urns = self.urn_history.get_urns()
+        for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
                 if dai_to_bid == Rad(0):
                     self.logger.warning("Skipping opportunity to bite because there is no Dai to bid")
-                    return
+                    break
 
                 if urn.ink < self.min_flip_lot:
                     self.logger.info(f"Ignoring urn {urn.address.address} with ink={urn.ink} < "
@@ -258,6 +258,7 @@ class AuctionKeeper:
 
                 self._run_future(self.cat.bite(ilk, urn).transact_async())
 
+        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
@@ -340,6 +341,7 @@ class AuctionKeeper:
                 self.vow.flop().transact()
 
     def check_all_auctions(self):
+        started = datetime.now()
         for id in range(1, self.strategy.kicks() + 1):
             with self.auctions_lock:
                 if not self.check_auction(id):
@@ -351,7 +353,9 @@ class AuctionKeeper:
                 else:
                     logging.warning(f"Processing {len(self.auctions.auctions)} auctions; " 
                                     f"ignoring auction {id} and beyond")
-                    return
+                    break
+
+        self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
         with self.auctions_lock:
