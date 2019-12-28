@@ -23,6 +23,7 @@ import time
 import sys
 import threading
 
+from datetime import datetime
 from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
@@ -144,6 +145,7 @@ class AuctionKeeper:
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(' '.join(self.arguments.model)))
         self.auctions_lock = threading.Lock()
+        self.dead_auctions = set()
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
@@ -162,12 +164,12 @@ class AuctionKeeper:
             if self.arguments.create_auctions:
                 try:
                     check_func()
-                except (RequestException, ConnectionError):
+                except (RequestException, ConnectionError, ValueError, AttributeError):
                     logging.exception("Error checking for opportunities to start an auction")
 
             try:
                 self.check_all_auctions()
-            except (RequestException, ConnectionError):
+            except (RequestException, ConnectionError, ValueError, AttributeError):
                 logging.exception("Error checking auction states")
 
         with Lifecycle(self.web3) as lifecycle:
@@ -226,6 +228,7 @@ class AuctionKeeper:
             assert self.gem_join.exit(self.our_address, vat_balance).transact()
 
     def check_cdps(self):
+        started = datetime.now()
         last_note_event = set()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
@@ -252,6 +255,7 @@ class AuctionKeeper:
 
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
+        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
@@ -334,6 +338,7 @@ class AuctionKeeper:
                 self.vow.flop().transact()
 
     def check_all_auctions(self):
+        started = datetime.now()
         for id in range(1, self.strategy.kicks() + 1):
             with self.auctions_lock:
                 if not self.check_auction(id):
@@ -345,7 +350,9 @@ class AuctionKeeper:
                 else:
                     logging.warning(f"Processing {len(self.auctions.auctions)} auctions; " 
                                     f"ignoring auction {id} and beyond")
-                    return
+                    break
+
+        self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
         with self.auctions_lock:
@@ -359,6 +366,9 @@ class AuctionKeeper:
     def check_auction(self, id: int) -> bool:
         assert isinstance(id, int)
 
+        if id in self.dead_auctions:
+            return False
+
         # Read auction information
         input = self.strategy.get_input(id)
         auction_missing = (input.end == 0)
@@ -368,6 +378,7 @@ class AuctionKeeper:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
+            self.dead_auctions.add(id)
             return False
 
         # Check if the auction is finished.
