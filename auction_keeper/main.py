@@ -255,7 +255,7 @@ class AuctionKeeper:
 
                 self._run_future(self.cat.bite(ilk, current_urn).transact_async())
 
-        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
+        self.logger.debug(f"Checked {len(last_note_event)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
