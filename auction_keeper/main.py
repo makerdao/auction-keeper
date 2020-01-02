@@ -239,33 +239,28 @@ class AuctionKeeper:
 
     def check_cdps(self):
         started = datetime.now()
-        last_note_event = set()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
         dai_to_bid = self.vat.dai(self.our_address)
 
-        # Index urns by their address
-        past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
-        frobs = self.vat.past_frobs(past_blocks, self.ilk)
-        for frob in frobs:
-            last_note_event.add(frob.urn)
-
         # Look for unsafe CDPs and bite them
-        for urn_addr in last_note_event:
-            current_urn = self.vat.urn(ilk, urn_addr)
-            safe = current_urn.ink * ilk.spot >= current_urn.art * rate
+        urns = self.urn_history.get_urns()
+        for urn in urns.values():
+            safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
                 if dai_to_bid == Rad(0):
-                    self.logger.warning("Skipping opportunity to bite because there is no Dai to bid")
-                    return
+                    self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
+                                        "because there is no Dai to bid")
+                    break
 
-                if current_urn.ink < self.min_flip_lot:
-                    self.logger.info(f"Ignoring urn {urn_addr} with ink={current_urn.ink} < min_lot={self.min_flip_lot}")
+                if urn.ink < self.min_flip_lot:
+                    self.logger.info(f"Ignoring urn {urn.address.address} with ink={urn.ink} < "
+                                     f"min_lot={self.min_flip_lot}")
                     continue
 
-                self._run_future(self.cat.bite(ilk, current_urn).transact_async())
+                self._run_future(self.cat.bite(ilk, urn).transact_async())
 
-        self.logger.debug(f"Checked {len(last_note_event)} urns in {(datetime.now()-started).seconds} seconds")
+        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
