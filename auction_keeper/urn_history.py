@@ -98,7 +98,7 @@ class UrnHistory:
                 urns[src].art -= Wad(int(fork['dart']))
             if dst in urns:
                 urns[dst].ink += Wad(int(fork['dink']))
-                urns[dst].ink += Wad(int(fork['dart']))
+                urns[dst].art += Wad(int(fork['dart']))
 
     def run_query(self, query: str):
         assert isinstance(query, str)
