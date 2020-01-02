@@ -195,6 +195,10 @@ optional arguments:
                         with, used to manage OS and hardware limitations
   --min-flip-lot MIN_FLIP_LOT
                         Minimum lot size to create or bid upon a flip auction
+  --vulcanize-endpoint VULCANIZE_ENDPOINT
+                        When specified, frob history will be queried from a
+                        VulcanizeDB lite node, reducing load on the Ethereum
+                        node for flip auctions
   --from-block FROM_BLOCK
                         Starting block from which to look at history (set to 
                         block where MCD was deployed)
