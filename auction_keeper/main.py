@@ -39,7 +39,6 @@ from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
-from auction_keeper.urn_history import UrnHistory
 
 
 class AuctionKeeper:
@@ -109,10 +108,13 @@ class AuctionKeeper:
         self.our_address = Address(self.arguments.eth_from)
 
         # Check configuration for retrieving urns/bites
-        if self.arguments.type != 'flap' and self.arguments.create_auctions \
+        if self.arguments.type == 'flip' and self.arguments.create_auctions \
                 and self.arguments.from_block is None and self.arguments.vulcanize_endpoint is None:
             raise RuntimeError("Either --from-block or --vulcanize-endpoint must be specified to kick off "
-                               "flip and flop auctions")
+                               "flip auctions")
+	if self.arguments.type == 'flop' and self.arguments.create_auctions \
+		and self.arguments.from_block is None:
+	    raise RuntimeError("--from-block must be specified to kick off flop auctions"
 
         # Configure core and token contracts
         if self.arguments.type == 'flip' and not self.arguments.ilk:
