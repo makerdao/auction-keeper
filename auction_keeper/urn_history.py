@@ -59,10 +59,7 @@ class UrnHistory:
         frobs = self.mcd.vat.past_frobs(past_blocks, self.ilk)
         for frob in frobs:
             urn_addresses.add(frob.urn)
-        self.logger.debug(f"Retrieved {len(frobs)} frobs and detected {len(urn_addresses)} urn addresses in "
-                          f"{(datetime.now()-start).seconds} seconds")
 
-        start = datetime.now()
         urns = {}
         for address in urn_addresses:
             urns[address] = (self.mcd.vat.urn(self.ilk, address))
@@ -71,6 +68,7 @@ class UrnHistory:
         return urns
 
     def get_urns_from_vulcanize(self) -> Dict[Address, Urn]:
+        start = datetime.now()
         response = self.run_query(self.query)
 
         urns = {}
@@ -78,9 +76,10 @@ class UrnHistory:
         for item in raw:
             urn = self.urn_from_node(item['node'])
             urns[urn.address] = urn
-        self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB")
+        self.logger.debug(f"Found {len(urns)} urns unadjusted for forks from VulcanizeDB in {(datetime.now() - start).seconds} seconds")
 
         self.adjust_urns_for_forks(urns)
+        self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB in {(datetime.now()-start).seconds} seconds")
         return urns
 
     def adjust_urns_for_forks(self, urns: Dict[Address, Urn]):

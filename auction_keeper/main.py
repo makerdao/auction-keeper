@@ -39,6 +39,7 @@ from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
+from auction_keeper.urn_history import UrnHistory
 
 
 class AuctionKeeper:
@@ -112,13 +113,13 @@ class AuctionKeeper:
                 and self.arguments.from_block is None and self.arguments.vulcanize_endpoint is None:
             raise RuntimeError("Either --from-block or --vulcanize-endpoint must be specified to kick off "
                                "flip auctions")
-	if self.arguments.type == 'flop' and self.arguments.create_auctions \
-		and self.arguments.from_block is None:
-	    raise RuntimeError("--from-block must be specified to kick off flop auctions"
-
-        # Configure core and token contracts
         if self.arguments.type == 'flip' and not self.arguments.ilk:
             raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
+        if self.arguments.type == 'flop' and self.arguments.create_auctions \
+                and self.arguments.from_block is None:
+            raise RuntimeError("--from-block must be specified to kick off flop auctions")
+
+        # Configure core and token contracts
         mcd = DssDeployment.from_node(web3=self.web3)
         self.vat = mcd.vat
         self.cat = mcd.cat
