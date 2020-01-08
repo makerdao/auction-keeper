@@ -40,12 +40,6 @@ mcd = DssDeployment.from_node(web3)
 ilk = mcd.collaterals["ETH-A"].ilk
 from_block = int(sys.argv[3]) if len(sys.argv) > 3 else 8928674  # example for mainnet
 
-# frobs = mcd.vat.past_frobs(116000, mcd.collaterals['ETH-A'].ilk)
-# for frob in frobs:
-#     if frob.urn.address == "0xf1E567aeeb777E602a705Df74Ab0dE7Dc591d860":
-#         print(f"{frob.urn.address}: dink={frob.dink} dart={frob.dart} at block {frob.lognote.block}")
-# exit(0)
-
 started = datetime.now()
 uh = UrnHistory(web3, mcd, ilk, from_block, None)
 urns_logs = uh.get_urns()
