@@ -18,7 +18,7 @@
 import sys
 
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import mcd, gal_address, simulate_frob, web3, wrap_eth
+from tests.conftest import mcd, gal_address, web3, wrap_eth
 
 
 mcd = mcd(web3())
@@ -35,7 +35,6 @@ def create_cdp_with_surplus():
     assert c.adapter.join(address, dink).transact(from_address=address)
 
     dart = (dink * Wad(ilk.spot)) * Wad.from_number(0.99)
-    simulate_frob(mcd, c, address, dink, dart)
     assert mcd.vat.frob(c.ilk, address, dink=dink, dart=dart).transact(from_address=address)
 
     assert mcd.jug.drip(c.ilk).transact(from_address=address)

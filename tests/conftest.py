@@ -99,7 +99,7 @@ def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
 
 @pytest.fixture(scope="session")
 def mcd(web3):
-    return DssDeployment.from_network(web3=web3, network="testnet")
+    return DssDeployment.from_node(web3=web3)
 
 
 @pytest.fixture(scope="session")
@@ -176,7 +176,6 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, ex
     wrap_eth(mcd, usr, collateral_required)
     c.approve(usr)
     assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
-    simulate_frob(mcd, c, usr, collateral_required, amount)
     assert mcd.vat.frob(c.ilk, usr, collateral_required, amount).transact(from_address=usr)
     assert mcd.vat.urn(c.ilk, usr).art >= Wad(amount)
 
@@ -192,49 +191,6 @@ def purchase_dai(amount: Wad, recipient: Address):
     m.approve_dai(recipient)
     assert m.dai_adapter.exit(seller, amount).transact(from_address=seller)
     assert m.dai.transfer_from(seller, recipient, amount).transact(from_address=seller)
-
-
-def simulate_frob(mcd: DssDeployment, collateral: Collateral, address: Address, dink: Wad, dart: Wad):
-    assert isinstance(mcd, DssDeployment)
-    assert isinstance(collateral, Collateral)
-    assert isinstance(address, Address)
-    assert isinstance(dink, Wad)
-    assert isinstance(dart, Wad)
-
-    urn = mcd.vat.urn(collateral.ilk, address)
-    ilk = mcd.vat.ilk(collateral.ilk.name)
-
-    # print(f"[urn.ink={urn.ink}, urn.art={urn.art}] [ilk.rate={ilk.rate} ilk.art={ilk.art}, ilk.line={ilk.line}]")
-    # print(f"[dink={dink}, dart={dart}] [debt={str(mcd.vat.debt())} line={str(mcd.vat.line())}]")
-    ink = urn.ink + dink
-    art = urn.art + dart
-    ilk_art = ilk.art + dart
-    rate = ilk.rate
-
-    debt = mcd.vat.debt() + Rad(rate * dart)
-
-    # stablecoin debt does not increase
-    cool = dart <= Wad(0)
-    # collateral balance does not decrease
-    firm = dink >= Wad(0)
-
-    # CDP remains under both collateral and total debt ceilings
-    under_collateral_debt_ceiling = Rad(ilk_art * rate) <= ilk.line
-    if not under_collateral_debt_ceiling:
-        print(f"CDP would exceed collateral debt ceiling of {ilk.line}")
-    under_total_debt_ceiling = debt < mcd.vat.line()
-    if not under_total_debt_ceiling:
-        print(f"CDP would exceed total debt ceiling of {mcd.vat.line()}")
-    calm = under_collateral_debt_ceiling and under_total_debt_ceiling
-
-    safe = (urn.art * rate) <= ink * ilk.spot
-
-    assert calm or cool
-    assert (cool and firm) or safe
-
-    assert Rad(ilk_art * rate) >= ilk.dust or (art == Wad(0))
-    assert rate != Ray(0)
-    assert mcd.vat.live()
 
 
 def is_cdp_safe(ilk: Ilk, urn: Urn) -> bool:
@@ -266,12 +222,10 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
         if balance < dink:
             wrap_eth(mcd, gal_address, dink - balance)
             assert c.adapter.join(gal_address, dink - balance).transact(from_address=gal_address)
-        simulate_frob(mcd, c, gal_address, dink, Wad(0))
         assert mcd.vat.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
 
     # Put gal CDP at max possible debt
     dart = max_dart(mcd, c, gal_address) - Wad(1)
-    simulate_frob(mcd, c, gal_address, Wad(0), dart)
     assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
     # Draw our Dai, simulating the usual behavior
@@ -304,7 +258,6 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     c.approve(gal_address)
     assert c.adapter.join(gal_address, ink).transact(
         from_address=gal_address)
-    simulate_frob(mcd, c, gal_address, ink, art)
     assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(
         from_address=gal_address)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)

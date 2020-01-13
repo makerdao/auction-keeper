@@ -32,8 +32,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         c = mcd.collaterals['ETH-A']
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
-                                         f"--network testnet "
-                                         f"--from-block 0 "
+                                         f"--from-block 1 "
                                          f"--ilk {c.ilk.name} "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
         keeper.approve()

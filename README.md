@@ -148,7 +148,6 @@ imposes a gas fee.
 Dai to the Vat.
 
 
-
 ## Installation
 
 This project uses *Python 3.6.6*.
@@ -185,8 +184,6 @@ optional arguments:
   --eth-key [ETH_KEY [ETH_KEY ...]]
                         Ethereum private key(s) to use (e.g.
                         'key_file=aaa.json,pass_file=aaa.pass')
-  --network NETWORK     Ethereum network to connect (e.g. 'kovan' or
-                        'testnet')
   --type {flip,flap,flop}
                         Auction type in which to participate
   --ilk ILK             Name of the collateral type for a flip keeper (e.g.
@@ -197,6 +194,10 @@ optional arguments:
                         with, used to manage OS and hardware limitations
   --min-flip-lot MIN_FLIP_LOT
                         Minimum lot size to create or bid upon a flip auction
+  --vulcanize-endpoint VULCANIZE_ENDPOINT
+                        When specified, frob history will be queried from a
+                        VulcanizeDB lite node, reducing load on the Ethereum
+                        node for flip auctions
   --from-block FROM_BLOCK
                         Starting block from which to look at history (set to 
                         block where MCD was deployed)
@@ -257,6 +258,21 @@ mcd -C kovan dai exit 300
 
 MKR used to bid on `flap` auctions is directly withdrawn from your token balance.  MKR won at `flop` auctions is 
 directly deposited to your token balance.
+
+
+### Managing node resources
+
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are two 
+ways it can build this:
+ * **Set `--from-block` to the block where the first urn was created** to instruct the keeper to use logs published by 
+    the `vat` contract to bulid a list of urns, and then check the status of each urn.  Setting this too low will 
+    overburden your node.
+ * **Deploy a [VulcanizeDB lite instance](https://github.com/makerdao/vdb-lite-mcd-transformers) to maintain your own 
+    copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve 
+    resources on your node and keeper.
+    
+To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically adjust 
+    `--from-block` to the block where the first bite which has not been `flog`ged.
 
  
 ## Testing
