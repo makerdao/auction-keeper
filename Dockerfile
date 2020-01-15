@@ -1,14 +1,11 @@
-FROM python:3.6.6
+FROM python:3.6.8
 
-RUN groupadd -r keeper && useradd --no-log-init -r -g keeper keeper
+RUN mkdir /keeper&&groupadd keeper&&useradd -d /keeper -g keeper keeper&&cd /keeper&&git clone https://github.com/makerdao/auction-keeper.git &&cd auction-keeper&&git submodule update --init --recursive&&pip install --no-cache-dir $(cat requirements.txt $(find lib -name requirements.txt | sort) | sort | uniq | sed 's/ *== */==/g') virtualenv&&chown -R keeper.keeper /keeper
 
-COPY bin /opt/keeper/auction-keeper/bin
-COPY auction_keeper /opt/keeper/auction-keeper/auction_keeper
-COPY lib /opt/keeper/auction-keeper/lib
-COPY requirements.txt /opt/keeper/auction-keeper/requirements.txt
-
-WORKDIR /opt/keeper/auction-keeper
-RUN pip3 install -r requirements.txt
-WORKDIR /opt/keeper/auction-keeper/bin
 
 USER keeper
+WORKDIR /keeper/auction-keeper
+
+RUN rm -rf _virtualenv&&virtualenv --system-site-packages _virtualenv&&sh _virtualenv/bin/activate
+
+ENTRYPOINT ["bin/auction-keeper"]
