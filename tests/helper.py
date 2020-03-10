@@ -44,7 +44,7 @@ def time_travel_by(web3: Web3, seconds: int):
     assert(isinstance(web3, Web3))
     assert(isinstance(seconds, int))
 
-    if "parity" in web3.version.node.lower():
+    if "parity" in web3.clientVersion.lower():
         print(f"time travel unsupported by parity; waiting {seconds} seconds")
         time.sleep(seconds)
         # force a block mining to have a correct timestamp in latest block
