@@ -349,6 +349,7 @@ class AuctionKeeper:
         started = datetime.now()
         for id in range(1, self.strategy.kicks() + 1):
             with self.auctions_lock:
+                # Check whether auction needs to be handled; deal the auction if appropriate
                 if not self.check_auction(id):
                     continue
 
@@ -356,9 +357,7 @@ class AuctionKeeper:
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
                 else:
-                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; " 
-                                    f"ignoring auction {id} and beyond")
-                    break
+                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
         self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
@@ -401,10 +400,9 @@ class AuctionKeeper:
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
                 self.rebalance_dai()
 
-            else:
-                # Try to remove the auction so the model terminates and we stop tracking it.
-                # If auction has already been removed, nothing happens.
-                self.auctions.remove_auction(id)
+            # Remove the auction so the model terminates and we stop tracking it.
+            # If auction has already been removed, nothing happens.
+            self.auctions.remove_auction(id)
             return False
 
         else:
