@@ -787,6 +787,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert c.flipper.bids(kick).bid == Rad(Wad.from_number(15.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
+    @pytest.mark.skip("The tend transaction doesn't produce a log on Travis")
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, mcd, c, keeper):
         # given
         flipper = c.flipper
