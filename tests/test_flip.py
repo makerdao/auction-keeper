@@ -82,7 +82,7 @@ def other_keeper(web3, c: Collateral, other_address: Address, mcd):
     return create_keeper(mcd, c, other_address)
 
 
-@pytest.mark.timeout(400)
+@pytest.mark.timeout(500)
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
     def setup_method(self):
         """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
@@ -798,7 +798,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         keeper.check_all_auctions()
         keeper.check_for_bids()
-        wait_for_other_threads()
         # then
         assert flipper.bids(kick).bid == Rad(Wad.from_number(16.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[
