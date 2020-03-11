@@ -82,7 +82,7 @@ def other_keeper(web3, c: Collateral, other_address: Address, mcd):
     return create_keeper(mcd, c, other_address)
 
 
-@pytest.mark.timeout(350)
+@pytest.mark.timeout(400)
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
     def setup_method(self):
         """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
