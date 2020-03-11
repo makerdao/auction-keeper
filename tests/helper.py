@@ -59,9 +59,7 @@ def time_travel_by(web3: Web3, seconds: int):
 def wait_for_other_threads():
     while threading.active_count() > 1:
         asyncio.sleep(0.1)
-        time.sleep(0.1)
-    asyncio.sleep(1)
-    time.sleep(1)
+        # time.sleep(0.1)
 
 class TransactionIgnoringTest:
     def start_ignoring_transactions(self):
