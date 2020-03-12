@@ -84,7 +84,7 @@ def other_keeper(web3, c: Collateral, other_address: Address, mcd):
 
 @pytest.mark.timeout(500)
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
-    def setup_method(self):
+    def setup_class(self):
         """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
         to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
         self.web3 = web3()
