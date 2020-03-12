@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
 import sys
 import threading
 import time
@@ -57,7 +58,7 @@ def time_travel_by(web3: Web3, seconds: int):
 
 def wait_for_other_threads():
     while threading.active_count() > 1:
-        time.sleep(0.1)
+        asyncio.sleep(0.3)
 
 
 class TransactionIgnoringTest:
