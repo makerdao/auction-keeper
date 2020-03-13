@@ -274,6 +274,15 @@ ways it can build this:
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically adjust 
     `--from-block` to the block where the first bite which has not been `flog`ged.
 
+The `--min-auction` argument arbitrarily ignores older completed auctions, such that the keeper needn't check their 
+status.  The `--max-auctions` argument allows you to limit the number of bidding models created to handle active 
+auctions.  Both switches help reduce the number of requests made to the node.
+
+Auctions can be sharded across multiple keepers by auction id.  To do this, configure `--shards` with the number of 
+keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to configure three 
+keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three keepers. 
+
+
  
 ## Testing
 
