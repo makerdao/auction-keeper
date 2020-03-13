@@ -45,15 +45,15 @@ class DynamicGasPrice(GasPrice):
 
     def get_gas_price(self, time_elapsed: int) -> Optional[int]:
         # start with standard price plus backup in case EthGasStation is down, then do fast
-        if 0 <= time_elapsed <= 240:
+        if 0 <= time_elapsed <= 60:
             standard_price = self.gas_station.standard_price()
             if standard_price is not None:
                 return int(standard_price*1.1)
             else:
                 return self.default_gas_pricing(time_elapsed)
 
-        # move to fast after 240 seconds
-        if time_elapsed > 240:
+        # move to fast after a minute
+        else:
             fast_price = self.gas_station.fast_price()
             if fast_price is not None:
                 return int(fast_price*1.1)
