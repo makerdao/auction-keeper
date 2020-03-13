@@ -17,7 +17,8 @@
 
 from typing import Optional
 
-from pymaker.gas import GasPrice
+from ethgasstation_client import EthGasStation
+from pymaker.gas import GasPrice, IncreasingGasPrice
 
 
 class UpdatableGasPrice(GasPrice):
@@ -33,3 +34,35 @@ class UpdatableGasPrice(GasPrice):
 
     def get_gas_price(self, time_elapsed: int) -> Optional[int]:
         return self.gas_price
+
+
+class DynamicGasPrice(GasPrice):
+
+    GWEI = 1000000000
+
+    def __init__(self, api_key):
+        self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=api_key)
+
+    def get_gas_price(self, time_elapsed: int) -> Optional[int]:
+        # start with standard price plus backup in case EthGasStation is down, then do fast
+        if 0 <= time_elapsed <= 60:
+            standard_price = self.gas_station.standard_price()
+            if standard_price is not None:
+                return int(standard_price*1.1)
+            else:
+                return self.default_gas_pricing(time_elapsed)
+
+        # move to fast after a minute
+        else:
+            fast_price = self.gas_station.fast_price()
+            if fast_price is not None:
+                return int(fast_price*1.1)
+            else:
+                return self.default_gas_pricing(time_elapsed)
+
+    # default gas pricing when EthGasStation feed is down
+    def default_gas_pricing(self, time_elapsed: int):
+        return IncreasingGasPrice(initial_price=5*self.GWEI,
+                                  increase_by=10*self.GWEI,
+                                  every_secs=60,
+                                  max_price=100*self.GWEI).get_gas_price(time_elapsed)
