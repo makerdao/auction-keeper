@@ -1,3 +1,6 @@
 [submodule "lib/pymaker"]
 	path = lib/pymaker
 	url = https://github.com/makerdao/pymaker.git
+[submodule "lib/ethgasstation-client"]
+	path = lib/ethgasstation-client
+	url = git@github.com:makerdao/ethgasstation-client.git

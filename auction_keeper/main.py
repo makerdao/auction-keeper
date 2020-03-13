@@ -35,7 +35,7 @@ from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
 from pymaker.numeric import Wad, Ray, Rad
 
-from auction_keeper.gas import UpdatableGasPrice
+from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
@@ -68,11 +68,19 @@ class AuctionKeeper:
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
-        parser.add_argument('--max-auctions', type=int, default=100,
+        parser.add_argument('--min-auction', type=int, default=1,
+                            help="Lowest auction id to consider")
+        parser.add_argument('--max-auctions', type=int, default=1000,
                             help="Maximum number of auctions to simultaneously interact with, "
                                  "used to manage OS and hardware limitations")
         parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
+        parser.add_argument('--bid-delay', type=float, default=0.0,
+                            help="Seconds to wait between bids, used to manage OS and hardware limitations")
+        parser.add_argument('--shard-id', type=int, default=0,
+                            help="When sharding auctions across multiple keepers, this identifies the shard")
+        parser.add_argument('--shards', type=int, default=1,
+                            help="Number of shards; should be one greater than your highest --shard-id")
 
         parser.add_argument("--vulcanize-endpoint", type=str,
                             help="When specified, frob history will be queried from a VulcanizeDB lite node, "
@@ -89,6 +97,7 @@ class AuctionKeeper:
 
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
+        parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -159,6 +168,13 @@ class AuctionKeeper:
                                  model_factory=ModelFactory(' '.join(self.arguments.model)))
         self.auctions_lock = threading.Lock()
         self.dead_auctions = set()
+        self.lifecycle = None
+
+        # Create gas strategy used for non-bids
+        if self.arguments.ethgasstation_api_key:
+            self.gas_price = DynamicGasPrice(self.arguments.ethgasstation_api_key)
+        else:
+            self.gas_price = DefaultGasPrice()
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
@@ -186,6 +202,7 @@ class AuctionKeeper:
                 logging.exception("Error checking auction states")
 
         with Lifecycle(self.web3) as lifecycle:
+            self.lifecycle = lifecycle
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
@@ -214,13 +231,13 @@ class AuctionKeeper:
         if self.dai_join:
             self.dai_join.approve(hope_directly(), self.vat.address)
             time.sleep(2)
-            self.dai_join.dai().approve(self.dai_join.address).transact()
+            self.dai_join.dai().approve(self.dai_join.address).transact(gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
             del self.auctions
-            self.exit_dai_on_shutdown()
-            self.exit_collateral_on_shutdown()
+        self.exit_dai_on_shutdown()
+        self.exit_collateral_on_shutdown()
 
     def exit_dai_on_shutdown(self):
         if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
@@ -229,7 +246,7 @@ class AuctionKeeper:
         vat_balance = Wad(self.vat.dai(self.our_address))
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
-            assert self.dai_join.exit(self.our_address, vat_balance).transact()
+            assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
 
     def exit_collateral_on_shutdown(self):
         if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
@@ -238,7 +255,15 @@ class AuctionKeeper:
         vat_balance = self.vat.gem(self.ilk, self.our_address)
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat before shutdown")
-            assert self.gem_join.exit(self.our_address, vat_balance).transact()
+            assert self.gem_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
+
+    def auction_handled_by_this_shard(self, id: int) -> bool:
+        assert isinstance(id, int)
+        if id % self.arguments.shards == self.arguments.shard_id:
+            return True
+        else:
+            logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
+            return False
 
     def check_cdps(self):
         started = datetime.now()
@@ -347,8 +372,14 @@ class AuctionKeeper:
 
     def check_all_auctions(self):
         started = datetime.now()
-        for id in range(1, self.strategy.kicks() + 1):
+        for id in range(self.arguments.min_auction, self.strategy.kicks() + 1):
+            if not self.auction_handled_by_this_shard(id):
+                continue
             with self.auctions_lock:
+                # If we're exiting, release the lock which checks auctions
+                if self.lifecycle and self.lifecycle.terminated_externally:
+                    return
+
                 # Check whether auction needs to be handled; deal the auction if appropriate
                 if not self.check_auction(id):
                     continue
@@ -364,6 +395,8 @@ class AuctionKeeper:
     def check_for_bids(self):
         with self.auctions_lock:
             for id, auction in self.auctions.auctions.items():
+                if not self.auction_handled_by_this_shard(id):
+                    continue
                 self.handle_bid(id=id, auction=auction)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
@@ -394,7 +427,7 @@ class AuctionKeeper:
         elif auction_finished:
             if input.guy == self.our_address:
                 # Always using default gas price for `deal`
-                self._run_future(self.strategy.deal(id).transact_async(gas_price=DefaultGasPrice()))
+                self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
 
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
@@ -423,46 +456,51 @@ class AuctionKeeper:
 
         output = auction.model_output()
 
-        if output is not None:
-            bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
-            # If we can't afford the bid, log a warning/error and back out.
-            # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
-            if cost is not None:
-                if not self.check_bid_cost(cost):
-                    return
+        if output is None:
+            return
 
-            if bid_price is not None and bid_transact is not None:
-                # if no transaction in progress, send a new one
-                transaction_in_progress = auction.transaction_in_progress()
+        bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+        # If we can't afford the bid, log a warning/error and back out.
+        # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
+        if cost is not None:
+            if not self.check_bid_cost(cost):
+                return
 
-                if transaction_in_progress is None:
-                    self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+        if bid_price is not None and bid_transact is not None:
+            # if no transaction in progress, send a new one
+            transaction_in_progress = auction.transaction_in_progress()
+
+            if transaction_in_progress is None:
+                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+
+                auction.price = bid_price
+                auction.gas_price = UpdatableGasPrice(output.gas_price)
+                auction.register_transaction(bid_transact)
+
+                self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+                if self.arguments.bid_delay:
+                    logging.debug(f"Waiting {self.arguments.bid_delay}s")
+                    time.sleep(self.arguments.bid_delay)
+
+            # if transaction in progress and gas price went up...
+            elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
+
+                # ...replace the entire bid if the price has changed...
+                if bid_price != auction.price:
+                    self.logger.info(
+                        f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
 
                     auction.price = bid_price
                     auction.gas_price = UpdatableGasPrice(output.gas_price)
                     auction.register_transaction(bid_transact)
 
-                    self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+                    self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                                 gas_price=auction.gas_price))
+                # ...or just replace gas_price if price stays the same
+                else:
+                    self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
 
-                # if transaction in progress and gas price went up...
-                elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
-
-                    # ...replace the entire bid if the price has changed...
-                    if bid_price != auction.price:
-                        self.logger.info(
-                            f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
-
-                        auction.price = bid_price
-                        auction.gas_price = UpdatableGasPrice(output.gas_price)
-                        auction.register_transaction(bid_transact)
-
-                        self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
-                                                                     gas_price=auction.gas_price))
-                    # ...or just replace gas_price if price stays the same
-                    else:
-                        self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
-
-                        auction.gas_price.update_gas_price(output.gas_price)
+                    auction.gas_price.update_gas_price(output.gas_price)
 
     def check_bid_cost(self, cost: Rad) -> bool:
         assert isinstance(cost, Rad)
@@ -494,17 +532,17 @@ class AuctionKeeper:
             # Join tokens to the vat
             if token_balance >= difference * -1:
                 self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
-                assert self.dai_join.join(self.our_address, difference * -1).transact()
+                assert self.dai_join.join(self.our_address, difference * -1).transact(gas_price=self.gas_price)
             elif token_balance > Wad(0):
                 self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
                                     "Dai to the Vat")
-                assert self.dai_join.join(self.our_address, token_balance).transact()
+                assert self.dai_join.join(self.our_address, token_balance).transact(gas_price=self.gas_price)
             else:
                 self.logger.warning("No Dai is available to join to Vat; cannot maintain Dai target")
         elif difference > Wad(0):
             # Exit dai from the vat
             self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
-            assert self.dai_join.exit(self.our_address, difference).transact()
+            assert self.dai_join.exit(self.our_address, difference).transact(gas_price=self.gas_price)
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
 
