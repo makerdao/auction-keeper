@@ -84,3 +84,32 @@ class TestConfig:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flop "
                                     f"--model ./bogus-model.sh"), web3=web3)
+
+    def create_sharded_keeper(self, web3, keeper_address: Address, shard: int):
+        return AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                       f"--type flip "
+                                       f"--from-block 1 "
+                                       f"--ilk ETH-B "
+                                       f"--shards 3 --shard-id {shard} "
+                                       f"--model ./bogus-model.sh"), web3=web3)
+
+    def test_sharding(self, web3, keeper_address: Address):
+        keeper0 = self.create_sharded_keeper(web3, keeper_address, 0)
+        keeper1 = self.create_sharded_keeper(web3, keeper_address, 1)
+        keeper2 = self.create_sharded_keeper(web3, keeper_address, 2)
+
+        handled0 = 0
+        handled1 = 0
+        handled2 = 0
+
+        shards = 3
+        auction_count = shards * 10
+
+        for id in range(1, auction_count + 1):
+            handled0 += keeper0.auction_handled_by_this_shard(id)
+            handled1 += keeper1.auction_handled_by_this_shard(id)
+            handled2 += keeper2.auction_handled_by_this_shard(id)
+
+        assert handled0 == handled1 == handled2
+        assert handled0 + handled1 + handled2 == auction_count
+
