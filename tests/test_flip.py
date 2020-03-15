@@ -66,7 +66,7 @@ def create_keeper(mcd: DssDeployment, c: Collateral, address=None):
                                      f"--type flip "
                                      f"--from-block 1 "
                                      f"--ilk {c.ilk.name} "
-                                     f"--min-flip-lot 0.0 "
+                                     f"--bid-check-interval 0.03 "
                                      f"--model ./bogus-model.sh"), web3=mcd.web3)
     keeper.approve()
     return keeper
@@ -427,11 +427,10 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         auction = flipper.bids(kick)
         assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(23), 2)
 
-    def test_should_sequentially_tend_and_dent_if_price_takes_us_to_the_dent_phrase(self, mcd, c, keeper,
+    def test_should_sequentially_tend_and_dent_if_price_takes_us_to_the_dent_phrase(self, mcd, c, kick, keeper,
                                                                                     keeper_address):
         # given
         flipper = c.flipper
-        kick = flipper.kicks()
         (model, model_factory) = models(keeper, kick)
 
         # when
@@ -593,7 +592,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
-    @pytest.mark.skip("Timing issue causes this to fail on Travis and under CPU pressure")
+    # @pytest.mark.skip("Timing issue causes this to fail on Travis and under CPU pressure")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, mcd, c, kick, keeper):
         # given
         (model, model_factory) = models(keeper, kick)
@@ -787,7 +786,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert c.flipper.bids(kick).bid == Rad(Wad.from_number(15.0) * tend_lot)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    @pytest.mark.skip("The tend transaction doesn't produce a log on Travis")
+    # @pytest.mark.skip("The tend transaction doesn't produce a log on Travis")
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, mcd, c, keeper):
         # given
         flipper = c.flipper
