@@ -17,8 +17,8 @@ and `flop` (MKR minting) auctions. Its unique feature is the ability to plug in 
 _bidding models_, which tell the keeper when and how high to bid. This keeper can be safely
 left running in background. The moment it notices or starts a new auction it will spawn a new instance
 of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
-be automatically terminated by the keeper the moment the auction expires.  The keeper also
-automatically `deal`s expired auctions if it's us who won them.
+be automatically terminated by the keeper the moment the auction expires.  By default the keeper doesn't
+automatically `deal`s expired auctions if it's us who won them, this can be enabled by passing `--enable-deal` argument
 
 This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to 
 develop your own auction trading bot.

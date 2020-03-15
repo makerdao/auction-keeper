@@ -68,6 +68,8 @@ class AuctionKeeper:
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
+        parser.add_argument('--enable-deal', dest='enable_deal', action='store_false', default=False,
+                            help="Do not deal on auctions")
         parser.add_argument('--min-auction', type=int, default=1,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
@@ -103,6 +105,7 @@ class AuctionKeeper:
                             help="Enable debug output")
 
         self.arguments = parser.parse_args(args)
+        self.enable_deal = self.arguments.enable_deal
 
         # Configure connection to the chain
         if self.arguments.rpc_host.startswith("http"):
@@ -425,7 +428,7 @@ class AuctionKeeper:
         # If it is finished and we are the winner, `deal` the auction.
         # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
         elif auction_finished:
-            if input.guy == self.our_address:
+            if input.guy == self.our_address and self.enable_deal:
                 # Always using default gas price for `deal`
                 self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
 
