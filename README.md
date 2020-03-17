@@ -148,7 +148,6 @@ response to opportunities regardless of whether or not your Dai or MKR balance i
 imposes a gas fee.
 * When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add 
 Dai to the Vat.
-* Block reorgs are not handled by the keeper, and may interfere with its state machine.
 
 
 ## Installation
@@ -231,7 +230,7 @@ ways it can build this:
     copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve 
     resources on your node and keeper.
     
-To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, you may periodically 
+To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically 
 adjust `--from-block` to the block where the first bite which has not been `flog`ged.
 
 The `--min-auction` argument arbitrarily ignores older completed auctions, such that the keeper needn't check their 

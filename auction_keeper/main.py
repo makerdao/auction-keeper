@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018-2020 reverendus, bargst, EdNoepel
+# Copyright (C) 2018-2019 reverendus, bargst, EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -28,6 +28,7 @@ from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
+from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
@@ -433,6 +434,13 @@ class AuctionKeeper:
                     logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
         self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
+
+    def check_for_bids(self):
+        with self.auctions_lock:
+            for id, auction in self.auctions.auctions.items():
+                if not self.auction_handled_by_this_shard(id):
+                    continue
+                self.handle_bid(id=id, auction=auction)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
