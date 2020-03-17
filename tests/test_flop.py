@@ -620,39 +620,42 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
 
 class MockFlopper:
     bid = Rad.from_number(50000)
+    sump = Wad.from_number(50000)
 
     def __init__(self):
         self.tau = 259200
         self.ttl = 21600
+        self.lot = self.sump
         pass
-
-    def beg(self) -> Wad:
-        return Wad.from_number(1.03)
 
     def bids(self, id: int):
         return Flopper.Bid(id=id,
                            bid=self.bid,
-                           lot=Wad.from_number(250),
+                           lot=self.lot,
                            guy=Address("0x0000000000000000000000000000000000000000"),
                            tic=0,
                            end=int(datetime.now(tz=timezone.utc).timestamp()) + self.tau)
-
-    def dent(self, id: int, lot: Wad, bid: Rad):
-        return None
 
 
 class TestFlopStrategy:
     def setup_class(self):
         self.mcd = mcd(web3())
         self.strategy = FlopperStrategy(self.mcd.flopper)
-        self.strategy.flopper = MockFlopper()
+        self.mock_flopper = MockFlopper()
 
-    @pytest.mark.skip("Work in progress")
     def test_price(self, mocker):
-        mocker.patch("tests.test_flop.MockFlopper.dent")
-        model_price = Wad.from_number(400.0)
+        mocker.patch("pymaker.auctions.Flopper.bids", return_value=self.mock_flopper.bids(1))
+        mocker.patch("pymaker.auctions.Flopper.dent", return_value="tx goes here")
+        model_price = Wad.from_number(190.0)
         (price, tx, bid) = self.strategy.bid(1, model_price)
         assert price == model_price
-        assert tx is not None
         assert bid == MockFlopper.bid
-        assert self.strategy.flopper.dent.assert_called_once_with(1, Wad.from_number(125), MockFlopper.bid)
+        lot1 = MockFlopper.sump / model_price
+        Flopper.dent.assert_called_once_with(1, lot1, MockFlopper.bid)
+
+        # When bid price increases, lot should decrease
+        model_price = Wad.from_number(200.0)
+        (price, tx, bid) = self.strategy.bid(1, model_price)
+        lot2 = Flopper.dent.call_args[0][1]
+        assert lot2 < lot1
+        assert lot2 == MockFlopper.sump / model_price
