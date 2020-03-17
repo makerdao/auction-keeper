@@ -20,9 +20,11 @@ import time
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
-from datetime import datetime
+from auction_keeper.strategy import FlopperStrategy
+from datetime import datetime, timezone
 from pymaker import Address
 from pymaker.approval import hope_directly
+from pymaker.auctions import Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
@@ -79,6 +81,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
                                               f"--from-block 1 "
+                                              f"--bid-check-interval 0.05 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
@@ -613,3 +616,46 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         dai_vow = mcd.vat.dai(mcd.vow.address)
         assert dai_vow <= mcd.vow.woe()
         assert mcd.vow.heal(dai_vow).transact()
+
+
+class MockFlopper:
+    bid = Rad.from_number(50000)
+    sump = Wad.from_number(50000)
+
+    def __init__(self):
+        self.tau = 259200
+        self.ttl = 21600
+        self.lot = self.sump
+        pass
+
+    def bids(self, id: int):
+        return Flopper.Bid(id=id,
+                           bid=self.bid,
+                           lot=self.lot,
+                           guy=Address("0x0000000000000000000000000000000000000000"),
+                           tic=0,
+                           end=int(datetime.now(tz=timezone.utc).timestamp()) + self.tau)
+
+
+class TestFlopStrategy:
+    def setup_class(self):
+        self.mcd = mcd(web3())
+        self.strategy = FlopperStrategy(self.mcd.flopper)
+        self.mock_flopper = MockFlopper()
+
+    def test_price(self, mocker):
+        mocker.patch("pymaker.auctions.Flopper.bids", return_value=self.mock_flopper.bids(1))
+        mocker.patch("pymaker.auctions.Flopper.dent", return_value="tx goes here")
+        model_price = Wad.from_number(190.0)
+        (price, tx, bid) = self.strategy.bid(1, model_price)
+        assert price == model_price
+        assert bid == MockFlopper.bid
+        lot1 = MockFlopper.sump / model_price
+        Flopper.dent.assert_called_once_with(1, lot1, MockFlopper.bid)
+
+        # When bid price increases, lot should decrease
+        model_price = Wad.from_number(200.0)
+        (price, tx, bid) = self.strategy.bid(1, model_price)
+        lot2 = Flopper.dent.call_args[0][1]
+        assert lot2 < lot1
+        assert lot2 == MockFlopper.sump / model_price

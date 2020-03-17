@@ -17,11 +17,11 @@
 
 import asyncio
 import sys
+import logging
 import threading
 import time
 from contextlib import contextmanager
 from io import StringIO
-
 from mock import MagicMock
 from web3 import Web3
 
@@ -69,6 +69,7 @@ class TransactionIgnoringTest:
 
         self.web3.eth.sendTransaction = MagicMock(return_value='0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd')
         self.web3.eth.getTransaction = MagicMock(return_value={'nonce': self.original_nonce})
+        logging.debug("Started ignoring transactions")
 
     def end_ignoring_transactions(self):
         # def second_send_transaction(transaction):
@@ -82,3 +83,4 @@ class TransactionIgnoringTest:
         # self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
         self.web3.eth.sendTransaction = self.original_send_transaction
         self.web3.eth.getTransaction = self.original_get_transaction
+        logging.debug("Finished ignoring transactions")

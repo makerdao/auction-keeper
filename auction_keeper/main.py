@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018-2019 reverendus, bargst, EdNoepel
+# Copyright (C) 2018-2020 reverendus, bargst, EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -28,7 +28,6 @@ from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
-from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
@@ -68,6 +67,8 @@ class AuctionKeeper:
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
+        parser.add_argument('--kick-only', dest='bid_on_auctions', action='store_false',
+                            help="Do not bid on auctions")
         parser.add_argument('--min-auction', type=int, default=1,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
@@ -75,6 +76,8 @@ class AuctionKeeper:
                                  "used to manage OS and hardware limitations")
         parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
+        parser.add_argument('--bid-check-interval', type=float, default=2.0,
+                            help="Period of timer used to check bidding models for changes")
         parser.add_argument('--bid-delay', type=float, default=0.0,
                             help="Seconds to wait between bids, used to manage OS and hardware limitations")
         parser.add_argument('--shard-id', type=int, default=0,
@@ -129,14 +132,14 @@ class AuctionKeeper:
             raise RuntimeError("--from-block must be specified to kick off flop auctions")
 
         # Configure core and token contracts
-        mcd = DssDeployment.from_node(web3=self.web3)
-        self.vat = mcd.vat
-        self.cat = mcd.cat
-        self.vow = mcd.vow
-        self.mkr = mcd.mkr
-        self.dai_join = mcd.dai_adapter
+        self.mcd = DssDeployment.from_node(web3=self.web3)
+        self.vat = self.mcd.vat
+        self.cat = self.mcd.cat
+        self.vow = self.mcd.vow
+        self.mkr = self.mcd.mkr
+        self.dai_join = self.mcd.dai_adapter
         if self.arguments.type == 'flip':
-            self.collateral = mcd.collaterals[self.arguments.ilk]
+            self.collateral = self.mcd.collaterals[self.arguments.ilk]
             self.ilk = self.collateral.ilk
             self.gem_join = self.collateral.adapter
         else:
@@ -146,13 +149,13 @@ class AuctionKeeper:
 
         # Configure auction contracts
         self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
-        self.flapper = mcd.flapper if self.arguments.type == 'flap' else None
-        self.flopper = mcd.flopper if self.arguments.type == 'flop' else None
+        self.flapper = self.mcd.flapper if self.arguments.type == 'flap' else None
+        self.flopper = self.mcd.flopper if self.arguments.type == 'flop' else None
         self.urn_history = None
         if self.flipper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
-            self.urn_history = UrnHistory(self.web3, mcd, self.ilk, self.arguments.from_block,
+            self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
                                           self.arguments.vulcanize_endpoint)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
@@ -190,12 +193,15 @@ class AuctionKeeper:
     def main(self):
         def seq_func(check_func: callable):
             assert callable(check_func)
+
+            # Kick off new auctions
             if self.arguments.create_auctions:
                 try:
                     check_func()
                 except (RequestException, ConnectionError, ValueError, AttributeError):
                     logging.exception("Error checking for opportunities to start an auction")
 
+            # Bid on and deal existing auctions
             try:
                 self.check_all_auctions()
             except (RequestException, ConnectionError, ValueError, AttributeError):
@@ -214,7 +220,8 @@ class AuctionKeeper:
             else:  # unusual corner case
                 lifecycle.on_block(self.check_all_auctions)
 
-            lifecycle.every(2, self.check_for_bids)
+            if self.arguments.bid_on_auctions:
+                lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
 
     def startup(self):
         self.approve()
@@ -224,14 +231,14 @@ class AuctionKeeper:
 
         if not self.arguments.create_auctions:
             logging.info("Keeper will not create new auctions")
+        if not self.arguments.bid_on_auctions:
+            logging.info("Keeper will not bid on auctions")
 
     def approve(self):
-        self.strategy.approve()
+        self.strategy.approve(gas_price=self.gas_price)
         time.sleep(2)
         if self.dai_join:
-            self.dai_join.approve(hope_directly(), self.vat.address)
-            time.sleep(2)
-            self.dai_join.dai().approve(self.dai_join.address).transact(gas_price=self.gas_price)
+            self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
@@ -276,7 +283,7 @@ class AuctionKeeper:
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
-                if dai_to_bid == Rad(0):
+                if self.arguments.bid_on_auctions and dai_to_bid == Rad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")
                     break
@@ -286,7 +293,7 @@ class AuctionKeeper:
                                      f"min_lot={self.min_flip_lot}")
                     continue
 
-                self._run_future(self.cat.bite(ilk, urn).transact_async())
+                self._run_future(self.cat.bite(ilk, urn).transact_async(gas_price=self.gas_price))
 
         self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
@@ -304,15 +311,15 @@ class AuctionKeeper:
             # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
             if (joy - awe) >= (bump + hump):
 
-                if self.mkr.balance_of(self.our_address) == Wad(0):
+                if self.arguments.bid_on_auctions and self.mkr.balance_of(self.our_address) == Wad(0):
                     self.logger.warning("Skipping opportunity to heal/flap because there is no MKR to bid")
                     return
 
                 woe = self.vow.woe()
                 # Heal the system to bring Woe to 0
                 if woe > Rad(0):
-                    self.vow.heal(woe).transact()
-                self.vow.flap().transact()
+                    self.vow.heal(woe).transact(gas_price=self.gas_price)
+                self.vow.flap().transact(gas_price=self.gas_price)
 
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
@@ -333,7 +340,7 @@ class AuctionKeeper:
         if woe + sin >= sump:
             # We need to bring Joy to 0 and Woe to at least sump
 
-            if self.vat.dai(self.our_address) == Rad(0):
+            if self.arguments.bid_on_auctions and self.vat.dai(self.our_address) == Rad(0):
                 self.logger.warning("Skipping opportunity to kiss/flog/heal/flop because there is no Dai to bid")
                 return
 
@@ -341,7 +348,7 @@ class AuctionKeeper:
             ash = self.vow.ash()
             goodnight = min(ash, joy)
             if goodnight > Rad(0):
-                self.vow.kiss(goodnight).transact()
+                self.vow.kiss(goodnight).transact(gas_price=self.gas_price)
 
             # Convert enough sin in woe to have woe >= sump + joy
             if woe < (sump + joy) and self.cat is not None:
@@ -352,7 +359,7 @@ class AuctionKeeper:
                     sin = self.vow.sin_of(era)
                     # If the bite hasn't already been flogged and has aged past the `wait`
                     if sin > Rad(0) and era + wait <= now:
-                        self.vow.flog(era).transact()
+                        self.vow.flog(era).transact(gas_price=self.gas_price)
 
                         # flog() sin until woe is above sump + joy
                         joy = self.vat.dai(self.vow.address)
@@ -362,13 +369,13 @@ class AuctionKeeper:
             # use heal() for reconciling the remaining joy
             joy = self.vat.dai(self.vow.address)
             if Rad(0) < joy <= self.vow.woe():
-                self.vow.heal(joy).transact()
+                self.vow.heal(joy).transact(gas_price=self.gas_price)
                 # heal() changes joy and woe (the balance of surplus and debt)
                 joy = self.vat.dai(self.vow.address)
 
             woe = self.vow.woe()
             if sump <= woe and joy == Rad(0):
-                self.vow.flop().transact()
+                self.vow.flop().transact(gas_price=self.gas_price)
 
     def check_all_auctions(self):
         started = datetime.now()
@@ -384,6 +391,10 @@ class AuctionKeeper:
                 if not self.check_auction(id):
                     continue
 
+                # If we're not bidding, don't produce a price model for the auction
+                if not self.arguments.bid_on_auctions:
+                    continue
+
                 # Prevent growing the auctions collection beyond the configured size
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
@@ -391,13 +402,6 @@ class AuctionKeeper:
                     logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
         self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
-
-    def check_for_bids(self):
-        with self.auctions_lock:
-            for id, auction in self.auctions.auctions.items():
-                if not self.auction_handled_by_this_shard(id):
-                    continue
-                self.handle_bid(id=id, auction=auction)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
@@ -409,10 +413,11 @@ class AuctionKeeper:
         if id in self.dead_auctions:
             return False
 
-        # Read auction information
+        # Read auction information from the chain
         input = self.strategy.get_input(id)
         auction_missing = (input.end == 0)
         auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
+        logging.debug(f"Auction {id} missing={auction_missing}, finished={auction_finished}")
 
         if auction_missing:
             # Try to remove the auction so the model terminates and we stop tracking it.
@@ -436,6 +441,7 @@ class AuctionKeeper:
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
+            self.dead_auctions.add(id)
             return False
 
         else:
@@ -444,11 +450,21 @@ class AuctionKeeper:
     def feed_model(self, id: int):
         assert isinstance(id, int)
 
+        # Create or get the price model associated with the auction
         auction = self.auctions.get_auction(id)
+
+        # Read auction state from the chain
         input = self.strategy.get_input(id)
 
         # Feed the model with current state
         auction.feed_model(input)
+
+    def check_for_bids(self):
+        with self.auctions_lock:
+            for id, auction in self.auctions.auctions.items():
+                if not self.auction_handled_by_this_shard(id):
+                    continue
+                self.handle_bid(id=id, auction=auction)
 
     def handle_bid(self, id: int, auction: Auction):
         assert isinstance(id, int)

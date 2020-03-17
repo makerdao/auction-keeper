@@ -121,13 +121,15 @@ you can use:
 ```bash
 #!/usr/bin/env bash
 
-echo "{\"price\": \"750.0\"}"  # put your price here
-sleep 60
+while true; do
+  echo "{\"price\": \"723.0\"}" # put your desired price amount here
+  sleep 120                      # locking the price for n seconds
+done
 ```
 
 The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The 
-sleep locks the price in place for a minute, after which the keeper will restart the price model and read a new price.  
-Consider this your price update interval.
+sleep locks the price in place for the specified duration, after which the keeper will restart the price model and read a new price.  
+Consider this your price update interval.  To conserve system resources, take care not to set this too low.
 
 
 ## Limitations
@@ -278,11 +280,17 @@ The `--min-auction` argument arbitrarily ignores older completed auctions, such 
 status.  The `--max-auctions` argument allows you to limit the number of bidding models created to handle active 
 auctions.  Both switches help reduce the number of requests made to the node.
 
-Auctions can be sharded across multiple keepers by auction id.  To do this, configure `--shards` with the number of 
-keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to configure three 
-keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three keepers. 
+Bid management can be sharded across multiple keepers by auction id.  To do this, configure `--shards` with the number 
+of keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to configure three 
+keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three keepers.  **Kicks are 
+not sharded**; for an auction contract, only one keeper should be configured to `kick`. 
 
-
+Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  
+By waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still 
+allowing some time for older transactions to complete, freeing up the queue.  Many parameters determine the appropriate 
+amount of time to wait.  For illustration purposes, assume the queue can hold 12 transactions, and gas prices are 
+reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of 
+the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue. 
  
 ## Testing
 
