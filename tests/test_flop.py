@@ -20,9 +20,11 @@ import time
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
-from datetime import datetime
+from auction_keeper.strategy import FlopperStrategy
+from datetime import datetime, timezone
 from pymaker import Address
 from pymaker.approval import hope_directly
+from pymaker.auctions import Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
@@ -614,3 +616,43 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         dai_vow = mcd.vat.dai(mcd.vow.address)
         assert dai_vow <= mcd.vow.woe()
         assert mcd.vow.heal(dai_vow).transact()
+
+
+class MockFlopper:
+    bid = Rad.from_number(50000)
+
+    def __init__(self):
+        self.tau = 259200
+        self.ttl = 21600
+        pass
+
+    def beg(self) -> Wad:
+        return Wad.from_number(1.03)
+
+    def bids(self, id: int):
+        return Flopper.Bid(id=id,
+                           bid=self.bid,
+                           lot=Wad.from_number(250),
+                           guy=Address("0x0000000000000000000000000000000000000000"),
+                           tic=0,
+                           end=int(datetime.now(tz=timezone.utc).timestamp()) + self.tau)
+
+    def dent(self, id: int, lot: Wad, bid: Rad):
+        return None
+
+
+class TestFlopStrategy:
+    def setup_class(self):
+        self.mcd = mcd(web3())
+        self.strategy = FlopperStrategy(self.mcd.flopper)
+        self.strategy.flopper = MockFlopper()
+
+    @pytest.mark.skip("Work in progress")
+    def test_price(self, mocker):
+        mocker.patch("tests.test_flop.MockFlopper.dent")
+        model_price = Wad.from_number(400.0)
+        (price, tx, bid) = self.strategy.bid(1, model_price)
+        assert price == model_price
+        assert tx is not None
+        assert bid == MockFlopper.bid
+        assert self.strategy.flopper.dent.assert_called_once_with(1, Wad.from_number(125), MockFlopper.bid)

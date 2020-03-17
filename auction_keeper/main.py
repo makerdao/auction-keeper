@@ -28,7 +28,6 @@ from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
-from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
@@ -133,14 +132,14 @@ class AuctionKeeper:
             raise RuntimeError("--from-block must be specified to kick off flop auctions")
 
         # Configure core and token contracts
-        mcd = DssDeployment.from_node(web3=self.web3)
-        self.vat = mcd.vat
-        self.cat = mcd.cat
-        self.vow = mcd.vow
-        self.mkr = mcd.mkr
-        self.dai_join = mcd.dai_adapter
+        self.mcd = DssDeployment.from_node(web3=self.web3)
+        self.vat = self.mcd.vat
+        self.cat = self.mcd.cat
+        self.vow = self.mcd.vow
+        self.mkr = self.mcd.mkr
+        self.dai_join = self.mcd.dai_adapter
         if self.arguments.type == 'flip':
-            self.collateral = mcd.collaterals[self.arguments.ilk]
+            self.collateral = self.mcd.collaterals[self.arguments.ilk]
             self.ilk = self.collateral.ilk
             self.gem_join = self.collateral.adapter
         else:
@@ -150,13 +149,13 @@ class AuctionKeeper:
 
         # Configure auction contracts
         self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
-        self.flapper = mcd.flapper if self.arguments.type == 'flap' else None
-        self.flopper = mcd.flopper if self.arguments.type == 'flop' else None
+        self.flapper = self.mcd.flapper if self.arguments.type == 'flap' else None
+        self.flopper = self.mcd.flopper if self.arguments.type == 'flop' else None
         self.urn_history = None
         if self.flipper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
-            self.urn_history = UrnHistory(self.web3, mcd, self.ilk, self.arguments.from_block,
+            self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
                                           self.arguments.vulcanize_endpoint)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
@@ -236,12 +235,10 @@ class AuctionKeeper:
             logging.info("Keeper will not bid on auctions")
 
     def approve(self):
-        self.strategy.approve()
+        self.strategy.approve(gas_price=self.gas_price)
         time.sleep(2)
         if self.dai_join:
-            self.dai_join.approve(hope_directly(), self.vat.address)
-            time.sleep(2)
-            self.dai_join.dai().approve(self.dai_join.address).transact(gas_price=self.gas_price)
+            self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
@@ -444,6 +441,7 @@ class AuctionKeeper:
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
+            self.dead_auctions.add(id)
             return False
 
         else:

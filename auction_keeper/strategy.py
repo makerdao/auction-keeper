@@ -23,6 +23,7 @@ from auction_keeper.model import Status
 from pymaker import Address, Transact
 from pymaker.approval import directly, hope_directly
 from pymaker.auctions import Flopper, Flapper, Flipper
+from pymaker.gas import GasPrice
 from pymaker.numeric import Wad, Ray, Rad
 
 
@@ -49,8 +50,9 @@ class FlipperStrategy(Strategy):
         self.beg = flipper.beg()
         self.min_lot = min_lot
 
-    def approve(self):
-        self.flipper.approve(self.flipper.vat(), hope_directly())
+    def approve(self, gas_price: GasPrice):
+        assert isinstance(gas_price, GasPrice)
+        self.flipper.approve(self.flipper.vat(), hope_directly(gas_price=gas_price))
 
     def kicks(self) -> int:
         return self.flipper.kicks()
@@ -123,8 +125,8 @@ class FlapperStrategy(Strategy):
         self.beg = flapper.beg()
         self.mkr = mkr
 
-    def approve(self):
-        self.flapper.approve(self.mkr, directly())
+    def approve(self, gas_price: GasPrice):
+        self.flapper.approve(self.mkr, directly(gas_price=gas_price))
 
     def kicks(self) -> int:
         return self.flapper.kicks()
@@ -174,8 +176,8 @@ class FlopperStrategy(Strategy):
         self.flopper = flopper
         self.beg = flopper.beg()
 
-    def approve(self):
-        self.flopper.approve(self.flopper.vat(), hope_directly())
+    def approve(self, gas_price: GasPrice):
+        self.flopper.approve(self.flopper.vat(), hope_directly(gas_price=gas_price))
 
     def kicks(self) -> int:
         return self.flopper.kicks()

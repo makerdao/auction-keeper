@@ -121,13 +121,15 @@ you can use:
 ```bash
 #!/usr/bin/env bash
 
-echo "{\"price\": \"750.0\"}"  # put your price here
-sleep 3600
+while true; do
+  echo "{\"price\": \"723.0\"}" # put your desired price amount here
+  sleep 120                      # locking the price for n seconds
+done
 ```
 
 The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The 
-sleep locks the price in place for a minute, after which the keeper will restart the price model and read a new price.  
-Consider this your price update interval.
+sleep locks the price in place for the specified duration, after which the keeper will restart the price model and read a new price.  
+Consider this your price update interval.  To conserve system resources, take care not to set this too low.
 
 
 ## Limitations
