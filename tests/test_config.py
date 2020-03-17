@@ -113,3 +113,37 @@ class TestConfig:
         assert handled0 == handled1 == handled2
         assert handled0 + handled1 + handled2 == auction_count
 
+    def test_deal_list(self, web3, keeper_address: Address):
+        accounts = ["0x40418beb7f24c87ab2d5ffb8404665414e91d858",
+                    "0x4A8638b3788c554563Ef2444f86F943ab0Cd9761",
+                    "0xdb33dfd3d61308c33c63209845dad3e6bfb2c674"]
+
+        default_behavior = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flip --from-block 1 "
+                                                   f"--ilk ETH-B "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
+        assert 1 == len(default_behavior.deal_for)
+        assert keeper_address == list(default_behavior.deal_for)[0]
+        assert not default_behavior.deal_all
+
+        deal_for_3_accounts = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                      f"--type flap --from-block 1 "
+                                                      f"--deal-for {accounts[0]} {accounts[1]} {accounts[2]} "
+                                                      f"--model ./bogus-model.sh"), web3=web3)
+        assert 3 == len(deal_for_3_accounts.deal_for)
+        for account in accounts:
+            assert Address(account) in deal_for_3_accounts.deal_for
+        assert not deal_for_3_accounts.deal_all
+
+        disable_deal = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                               f"--type flop --from-block 1 "
+                                               f"--deal-for NONE "
+                                               f"--model ./bogus-model.sh"), web3=web3)
+        assert 0 == len(disable_deal.deal_for)
+        assert not disable_deal.deal_all
+
+        deal_all = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                           f"--type flop --from-block 1 "
+                                           f"--deal-for ALL "
+                                           f"--model ./bogus-model.sh"), web3=web3)
+        assert deal_all.deal_all

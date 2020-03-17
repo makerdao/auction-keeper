@@ -69,6 +69,9 @@ class AuctionKeeper:
                             help="Do not take opportunities to create new auctions")
         parser.add_argument('--kick-only', dest='bid_on_auctions', action='store_false',
                             help="Do not bid on auctions")
+        parser.add_argument('--deal-for', type=str, nargs="+",
+                            help="List of addresses for which auctions will be dealt")
+
         parser.add_argument('--min-auction', type=int, default=1,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
@@ -89,7 +92,8 @@ class AuctionKeeper:
                             help="When specified, frob history will be queried from a VulcanizeDB lite node, "
                                  "reducing load on the Ethereum node for flip auctions")
         parser.add_argument('--from-block', type=int,
-                            help="Starting block from which to look at history (set to block where MCD was deployed)")
+                            help="Starting block from which to find vaults to bite or debt to queue "
+                                 "(set to block where MCD was deployed)")
 
         parser.add_argument('--vat-dai-target', type=float,
                             help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
@@ -184,6 +188,21 @@ class AuctionKeeper:
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
+
+        # Configure account(s) for which we'll deal auctions
+        print(self.arguments.deal_for)
+        self.deal_all = False
+        self.deal_for = set()
+        if self.arguments.deal_for is None:
+            self.deal_for.add(self.our_address)
+        elif len(self.arguments.deal_for) == 1 and self.arguments.deal_for[0].upper() in ["ALL", "NONE"]:
+            if self.arguments.deal_for[0].upper() == "ALL":
+                self.deal_all = True
+            # else no auctions will be dealt
+        elif len(self.arguments.deal_for) > 0:
+            for account in self.arguments.deal_for:
+                self.deal_for.add(Address(account))
+
         # reduce logspew
         logging.getLogger('urllib3').setLevel(logging.INFO)
         logging.getLogger("web3").setLevel(logging.INFO)
@@ -234,6 +253,15 @@ class AuctionKeeper:
         if not self.arguments.bid_on_auctions:
             logging.info("Keeper will not bid on auctions")
 
+        if self.deal_all:
+            logging.info("Keeper will deal auctions for any address")
+        elif len(self.deal_for) == 1:
+            logging.info(f"Keeper will deal auctions for {list(self.deal_for)[0].address}")
+        elif len(self.deal_for) > 0:
+            logging.info(f"Keeper will deal auctions for {self.deal_for} addresses")
+        else:
+            logging.info("Keeper will not deal auctions")
+
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(2)
@@ -245,6 +273,9 @@ class AuctionKeeper:
             del self.auctions
         self.exit_dai_on_shutdown()
         self.exit_collateral_on_shutdown()
+
+    def is_shutting_down(self) -> bool:
+        return self.lifecycle and self.lifecycle.terminated_externally
 
     def exit_dai_on_shutdown(self):
         if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
@@ -383,8 +414,8 @@ class AuctionKeeper:
             if not self.auction_handled_by_this_shard(id):
                 continue
             with self.auctions_lock:
-                # If we're exiting, release the lock which checks auctions
-                if self.lifecycle and self.lifecycle.terminated_externally:
+                # If we're exiting, release the lock around checking auctions
+                if self.is_shutting_down():
                     return
 
                 # Check whether auction needs to be handled; deal the auction if appropriate
@@ -410,6 +441,7 @@ class AuctionKeeper:
     def check_auction(self, id: int) -> bool:
         assert isinstance(id, int)
 
+        # Improves performance by avoiding an onchain call to check auctions we know have completed.
         if id in self.dead_auctions:
             return False
 
@@ -426,11 +458,9 @@ class AuctionKeeper:
             self.dead_auctions.add(id)
             return False
 
-        # Check if the auction is finished.
-        # If it is finished and we are the winner, `deal` the auction.
-        # If it is finished and we aren't the winner, there is no point in carrying on with this auction.
+        # Check if the auction is finished.  If so configured, `deal` the auction.
         elif auction_finished:
-            if input.guy == self.our_address:
+            if self.deal_all or input.guy in self.deal_for:
                 # Always using default gas price for `deal`
                 self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
 
@@ -462,6 +492,10 @@ class AuctionKeeper:
     def check_for_bids(self):
         with self.auctions_lock:
             for id, auction in self.auctions.auctions.items():
+                # If we're exiting, release the lock around checking price models
+                if self.is_shutting_down():
+                    return
+
                 if not self.auction_handled_by_this_shard(id):
                     continue
                 self.handle_bid(id=id, auction=auction)
