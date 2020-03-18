@@ -191,7 +191,6 @@ class AuctionKeeper:
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Configure account(s) for which we'll deal auctions
-        print(self.arguments.deal_for)
         self.deal_all = False
         self.deal_for = set()
         if self.arguments.deal_for is None:
@@ -438,6 +437,10 @@ class AuctionKeeper:
     def check_for_bids(self):
         with self.auctions_lock:
             for id, auction in self.auctions.auctions.items():
+                # If we're exiting, release the lock around checking price models
+                if self.is_shutting_down():
+                    return
+
                 if not self.auction_handled_by_this_shard(id):
                     continue
                 self.handle_bid(id=id, auction=auction)
@@ -496,17 +499,6 @@ class AuctionKeeper:
 
         # Feed the model with current state
         auction.feed_model(input)
-
-    def check_for_bids(self):
-        with self.auctions_lock:
-            for id, auction in self.auctions.auctions.items():
-                # If we're exiting, release the lock around checking price models
-                if self.is_shutting_down():
-                    return
-
-                if not self.auction_handled_by_this_shard(id):
-                    continue
-                self.handle_bid(id=id, auction=auction)
 
     def handle_bid(self, id: int, auction: Auction):
         assert isinstance(id, int)
