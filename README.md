@@ -167,7 +167,7 @@ For some known Ubuntu and macOS issues see the [pymaker](https://github.com/make
 
 ## Usage
 
-Run `bin/auction-keeper` without arguments to see an up-to-date list of arguments and usage information.
+Run `bin/auction-keeper -h` without arguments to see an up-to-date list of arguments and usage information.
 
 To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
 one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter 
