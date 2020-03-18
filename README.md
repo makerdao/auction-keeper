@@ -167,52 +167,7 @@ For some known Ubuntu and macOS issues see the [pymaker](https://github.com/make
 
 ## Usage
 
-```
-usage: auction-keeper [-h] [--rpc-host RPC_HOST] [--rpc-port RPC_PORT]
-                      [--rpc-timeout RPC_TIMEOUT] --eth-from ETH_FROM
-                      [--eth-key [ETH_KEY [ETH_KEY ...]]] --addresses
-                      ADDRESSES [--type {flip,flap,flop}] [--ilk ILK]
-                      [--bid-only] [--vat-dai-target VAT_DAI_TARGET]
-                      [--keep-dai-in-vat-on-exit] [--keep-gem-in-vat-on-exit]
-                      --model MODEL [--debug]
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --rpc-host RPC_HOST   JSON-RPC host (default: `localhost')
-  --rpc-port RPC_PORT   JSON-RPC port (default: `8545')
-  --rpc-timeout RPC_TIMEOUT
-                        JSON-RPC timeout (in seconds, default: 10)
-  --eth-from ETH_FROM   Ethereum account from which to send transactions
-  --eth-key [ETH_KEY [ETH_KEY ...]]
-                        Ethereum private key(s) to use (e.g.
-                        'key_file=aaa.json,pass_file=aaa.pass')
-  --type {flip,flap,flop}
-                        Auction type in which to participate
-  --ilk ILK             Name of the collateral type for a flip keeper (e.g.
-                        'ETH-B', 'ZRX-A')
-  --bid-only            Do not take opportunities to create new auctions
-  --max-auctions MAX_AUCTIONS
-                        Maximum number of auctions to simultaneously interact
-                        with, used to manage OS and hardware limitations
-  --min-flip-lot MIN_FLIP_LOT
-                        Minimum lot size to create or bid upon a flip auction
-  --vulcanize-endpoint VULCANIZE_ENDPOINT
-                        When specified, frob history will be queried from a
-                        VulcanizeDB lite node, reducing load on the Ethereum
-                        node for flip auctions
-  --from-block FROM_BLOCK
-                        Starting block from which to look at history (set to 
-                        block where MCD was deployed)
-  --vat-dai-target VAT_DAI_TARGET
-                        Amount of Dai to keep in the Vat contract (e.g. 2000)
-  --keep-dai-in-vat-on-exit
-                        Retain Dai in the Vat on exit, saving gas when
-                        restarting the keeper
-  --keep-gem-in-vat-on-exit
-                        Retain collateral in the Vat on exit
-  --model MODEL         Commandline to use in order to start the bidding model
-  --debug               Enable debug output
-```
+Run `bin/auction-keeper -h` without arguments to see an up-to-date list of arguments and usage information.
 
 To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
 one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter 
@@ -262,7 +217,9 @@ MKR used to bid on `flap` auctions is directly withdrawn from your token balance
 directly deposited to your token balance.
 
 
-### Managing node resources
+### Managing resources
+
+#### Minimize load on your node
 
 To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are two 
 ways it can build this:
@@ -273,24 +230,37 @@ ways it can build this:
     copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve 
     resources on your node and keeper.
     
-To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically adjust 
-    `--from-block` to the block where the first bite which has not been `flog`ged.
+To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically 
+adjust `--from-block` to the block where the first bite which has not been `flog`ged.
 
 The `--min-auction` argument arbitrarily ignores older completed auctions, such that the keeper needn't check their 
 status.  The `--max-auctions` argument allows you to limit the number of bidding models created to handle active 
-auctions.  Both switches help reduce the number of requests made to the node.
+auctions.  Both switches help reduce the number of _requests_ (not just transactions) made to the node.
 
-Bid management can be sharded across multiple keepers by auction id.  To do this, configure `--shards` with the number 
-of keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to configure three 
-keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three keepers.  **Kicks are 
-not sharded**; for an auction contract, only one keeper should be configured to `kick`. 
+#### Transaction management
 
-Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  
-By waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still 
+Bid management can be sharded across multiple keepers by **auction id**.  To do this, configure `--shards` with the 
+number of keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to 
+configure three keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three 
+keepers.  **Kicks are not sharded**; for an auction contract, only one keeper should be configured to `kick`. 
+
+If you are sharding across multiple accounts, you may wish to have another account handle all your `deal`s.  The 
+`--deal-for` argument allows you to specify a space-delimited list of accounts for which you'll deal auctions.  You 
+may disable dealing auctions by specifying `--deal-for NONE` in each of your shards.  If you'd like to donate your gas 
+to deal auctions for all participants, `--deal-for ALL` is also supported.  Unlike kicks, **deals are sharded**, so 
+remove sharding configuration if running a dedicated deal keeper. 
+
+Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  By 
+waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still 
 allowing some time for older transactions to complete, freeing up the queue.  Many parameters determine the appropriate 
 amount of time to wait.  For illustration purposes, assume the queue can hold 12 transactions, and gas prices are 
 reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of 
 the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue. 
+ 
+#### Hardware and operating system resources
+
+ * The most expensive keepers are `flip` and `flop` keepers configured to `kick` new auctions.
+ * To prevent process churn, ensure your pricing model stays running for a reasonable amount of time.
  
 ## Testing
 
