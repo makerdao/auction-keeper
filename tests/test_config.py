@@ -17,10 +17,12 @@
 
 import pytest
 
+from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address
 from pymaker.auctions import Flipper, Flapper, Flopper
 from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
+from pymaker.gas import DefaultGasPrice, IncreasingGasPrice
 from pymaker.token import DSToken
 from tests.helper import args
 
@@ -147,3 +149,34 @@ class TestConfig:
                                            f"--deal-for ALL "
                                            f"--model ./bogus-model.sh"), web3=web3)
         assert deal_all.deal_all
+
+    def test_gas_config(self, web3, keeper_address: Address):
+        default_behavior = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flop --from-block 1 "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(default_behavior.gas_price, DefaultGasPrice)
+
+        eth_gas_station = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flap --from-block 1 "
+                                                   f"--ethgasstation-api-key 000000000 "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(eth_gas_station.gas_price, DynamicGasPrice)
+
+        increasing_no_max = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flop --from-block 1 "
+                                                   f"--increasing-gas 1000 20 3 "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(increasing_no_max.gas_price, IncreasingGasPrice)
+        assert increasing_no_max.gas_price.initial_price == 1000
+        assert increasing_no_max.gas_price.increase_by == 20
+        assert increasing_no_max.gas_price.every_secs == 3
+
+        increasing_max = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                    f"--type flop --from-block 1 "
+                                                    f"--increasing-gas 2000 30 4 50000 "
+                                                    f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(increasing_max.gas_price, IncreasingGasPrice)
+        assert increasing_max.gas_price.initial_price == 2000
+        assert increasing_max.gas_price.increase_by == 30
+        assert increasing_max.gas_price.every_secs == 4
+        assert increasing_max.gas_price.max_price == 50000
