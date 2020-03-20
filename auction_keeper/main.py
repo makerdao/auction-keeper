@@ -352,6 +352,24 @@ class AuctionKeeper:
                     self.vow.heal(woe).transact(gas_price=self.gas_price)
                 self.vow.flap().transact(gas_price=self.gas_price)
 
+    def reconcile_debt(self, joy: Rad, awe: Rad, ash: Rad, woe: Rad):
+        assert isinstance(joy, Rad)
+        assert isinstance(awe, Rad)
+        assert isinstance(ash, Rad)
+        assert isinstance(woe, Rad)
+
+        if joy > Rad(0):
+            if ash > Rad(0):
+                if joy > ash:
+                    self.vow.kiss(ash)
+                    joy = self.vat.dai(self.vow.address)
+                    if joy > woe:
+                        self.vow.heal(woe)
+                    else:
+                        self.vow.heal(joy)
+                else:
+                    self.vow.kiss(joy)
+
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
         joy = self.vat.dai(self.vow.address)
@@ -397,12 +415,11 @@ class AuctionKeeper:
                         if self.vow.woe() - joy >= sump:
                             break
 
-            # Kiss again to reconcile remaining joy
+            # Reduce on-auction debt and reconcile remaining joy
             joy = self.vat.dai(self.vow.address)
-            if Rad(0) < joy <= self.vow.woe():
-                # kiss() again to reduce ash and implicitly heal, resetting joy
-                self.vow.kiss(goodnight).transact(gas_price=self.gas_price)
-                joy = self.vat.dai(self.vow.address)
+            ash = self.vow.ash()
+            woe = self.vow.woe()
+            self.reconcile_debt(joy, awe, ash, woe)
 
             woe = self.vow.woe()
             if sump <= woe and joy == Rad(0):
