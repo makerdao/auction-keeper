@@ -397,11 +397,11 @@ class AuctionKeeper:
                         if self.vow.woe() - joy >= sump:
                             break
 
-            # use heal() for reconciling the remaining joy
+            # Kiss again to reconcile remaining joy
             joy = self.vat.dai(self.vow.address)
             if Rad(0) < joy <= self.vow.woe():
-                self.vow.heal(joy).transact(gas_price=self.gas_price)
-                # heal() changes joy and woe (the balance of surplus and debt)
+                # kiss() again to reduce ash and implicitly heal, resetting joy
+                self.vow.kiss(goodnight).transact(gas_price=self.gas_price)
                 joy = self.vat.dai(self.vow.address)
 
             woe = self.vow.woe()
