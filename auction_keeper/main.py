@@ -352,9 +352,8 @@ class AuctionKeeper:
                     self.vow.heal(woe).transact(gas_price=self.gas_price)
                 self.vow.flap().transact(gas_price=self.gas_price)
 
-    def reconcile_debt(self, joy: Rad, awe: Rad, ash: Rad, woe: Rad):
+    def reconcile_debt(self, joy: Rad, ash: Rad, woe: Rad):
         assert isinstance(joy, Rad)
-        assert isinstance(awe, Rad)
         assert isinstance(ash, Rad)
         assert isinstance(woe, Rad)
 
@@ -397,7 +396,7 @@ class AuctionKeeper:
             # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
             ash = self.vow.ash()
             if joy > Rad(0):
-                self.reconcile_debt(joy, awe, ash, woe)
+                self.reconcile_debt(joy, ash, woe)
 
             # Convert enough sin in woe to have woe >= sump + joy
             if woe < (sump + joy) and self.cat is not None:
@@ -420,7 +419,7 @@ class AuctionKeeper:
             if joy > Rad(0):
                 ash = self.vow.ash()
                 woe = self.vow.woe()
-                self.reconcile_debt(joy, awe, ash, woe)
+                self.reconcile_debt(joy, ash, woe)
                 joy = self.vat.dai(self.vow.address)
 
             woe = self.vow.woe()
