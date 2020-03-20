@@ -358,17 +358,18 @@ class AuctionKeeper:
         assert isinstance(ash, Rad)
         assert isinstance(woe, Rad)
 
-        if joy > Rad(0):
-            if ash > Rad(0):
-                if joy > ash:
-                    self.vow.kiss(ash)
-                    joy = self.vat.dai(self.vow.address)
-                    if joy > woe:
-                        self.vow.heal(woe)
-                    else:
-                        self.vow.heal(joy)
-                else:
-                    self.vow.kiss(joy)
+        if ash > Rad(0):
+            if joy > ash:
+                self.vow.kiss(ash).transact(gas_price=self.gas_price)
+            else:
+                self.vow.kiss(joy).transact(gas_price=self.gas_price)
+                return
+        if woe > Rad(0):
+            joy = self.vat.dai(self.vow.address)
+            if joy > woe:
+                self.vow.heal(woe).transact(gas_price=self.gas_price)
+            else:
+                self.vow.heal(joy).transact(gas_price=self.gas_price)
 
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
@@ -395,9 +396,8 @@ class AuctionKeeper:
 
             # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
             ash = self.vow.ash()
-            goodnight = min(ash, joy)
-            if goodnight > Rad(0):
-                self.vow.kiss(goodnight).transact(gas_price=self.gas_price)
+            if joy > Rad(0):
+                self.reconcile_debt(joy, awe, ash, woe)
 
             # Convert enough sin in woe to have woe >= sump + joy
             if woe < (sump + joy) and self.cat is not None:
@@ -417,9 +417,11 @@ class AuctionKeeper:
 
             # Reduce on-auction debt and reconcile remaining joy
             joy = self.vat.dai(self.vow.address)
-            ash = self.vow.ash()
-            woe = self.vow.woe()
-            self.reconcile_debt(joy, awe, ash, woe)
+            if joy > Rad(0):
+                ash = self.vow.ash()
+                woe = self.vow.woe()
+                self.reconcile_debt(joy, awe, ash, woe)
+                joy = self.vat.dai(self.vow.address)
 
             woe = self.vow.woe()
             if sump <= woe and joy == Rad(0):
