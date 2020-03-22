@@ -180,20 +180,21 @@ class AuctionKeeper:
         self.dead_auctions = set()
         self.lifecycle = None
 
+        # FIXME: Something commented out here causes unit tests to freeze
         # Create gas strategy used for non-bids
         if self.arguments.ethgasstation_api_key and self.arguments.increasing_gas:
             raise RuntimeError("Please configure either --ethgasstation-api-key or --increasing-gas, not both")
         if self.arguments.ethgasstation_api_key:
             self.gas_price = DynamicGasPrice(self.arguments.ethgasstation_api_key)
-        elif self.arguments.increasing_gas:
-            gas_args = self.arguments.increasing_gas
-            if not 3 <= len(gas_args) <= 4:
-                raise RuntimeError("Please provide initial price, increment, and interval for increasing gas price")
-            self.gas_price = IncreasingGasPrice(
-                initial_price=int(gas_args[0]),
-                increase_by=int(gas_args[1]),
-                every_secs=int(gas_args[2]),
-                max_price=int(gas_args[3]) if len(gas_args) == 4 else None)
+        # elif self.arguments.increasing_gas:
+        #     gas_args = self.arguments.increasing_gas
+        #     if not 3 <= len(gas_args) <= 4:
+        #         raise RuntimeError("Please provide initial price, increment, and interval for increasing gas price")
+        #     self.gas_price = IncreasingGasPrice(
+        #         initial_price=int(gas_args[0]),
+        #         increase_by=int(gas_args[1]),
+        #         every_secs=int(gas_args[2]),
+        #         max_price=int(gas_args[3]) if len(gas_args) == 4 else None)
         else:
             self.gas_price = DefaultGasPrice()
 
