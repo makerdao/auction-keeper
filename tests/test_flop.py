@@ -437,8 +437,6 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         # and
-        time.sleep(2)
-        # and
         self.end_ignoring_transactions()
         # and
         simulate_model_output(model=model, price=Wad.from_number(120.0), gas_price=15)

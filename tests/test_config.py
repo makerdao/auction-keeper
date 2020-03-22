@@ -18,11 +18,78 @@
 import pytest
 
 from auction_keeper.main import AuctionKeeper
-from pymaker import Address
+from pymaker import Address, Transact, Wad
 from pymaker.auctions import Flipper, Flapper, Flopper
 from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
 from pymaker.token import DSToken
-from tests.helper import args
+from tests.conftest import keeper_address, mcd, web3
+from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
+
+
+class TestTransactionMocking(TransactionIgnoringTest):
+    def setup_class(self):
+        """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
+        to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
+        self.web3 = web3()
+        self.mcd = mcd(self.web3)
+        self.keeper_address = keeper_address(self.mcd.web3)
+        self.web3.eth.defaultAccount = self.keeper_address.address
+        self.collateral = self.mcd.collaterals['ETH-A']
+        self.collateral.approve(self.keeper_address)
+        assert self.collateral.gem.deposit(Wad.from_number(1)).transact()
+        self.ilk = self.collateral.ilk
+
+    def test_empty_tx(self):
+        empty_tx = Transact(self, self.web3, None, self.keeper_address, None, None, [self.keeper_address, Wad(0)])
+        empty_tx.transact()
+
+    @pytest.mark.timeout(6)
+    def test_ignore_sync_transaction(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+
+        self.start_ignoring_sync_transactions()
+        assert self.collateral.adapter.join(self.keeper_address, Wad.from_number(0.2)).transact()
+        self.end_ignoring_sync_transactions()
+
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before == balance_after
+
+        self.check_sync_transaction_still_works()
+        self.check_async_transaction_still_works()
+
+    @pytest.mark.skip("the ignored tx gets trapped in Transact's event loop")
+    @pytest.mark.timeout(6)
+    def test_ignore_async_transaction(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+
+        self.start_ignoring_transactions()
+        amount = Wad.from_number(0.2)
+        tx = self.collateral.adapter.join(self.keeper_address, amount)
+        AuctionKeeper._run_future(tx.transact_async())
+        wait_for_other_threads()
+        self.cancel(tx)
+        self.end_ignoring_transactions()
+
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before == balance_after
+
+        self.check_sync_transaction_still_works()
+        self.check_async_transaction_still_works()
+
+    def check_sync_transaction_still_works(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        amount = Wad.from_number(0.01)
+        assert self.collateral.adapter.join(self.keeper_address, amount).transact()
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before + amount == balance_after
+
+    def check_async_transaction_still_works(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        amount = Wad.from_number(0.01)
+        AuctionKeeper._run_future(self.collateral.adapter.exit(self.keeper_address, amount).transact_async())
+        wait_for_other_threads()
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before - amount == balance_after
 
 
 class TestConfig:
