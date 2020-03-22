@@ -43,7 +43,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
         empty_tx = Transact(self, self.web3, None, self.keeper_address, None, None, [self.keeper_address, Wad(0)])
         empty_tx.transact()
 
-    @pytest.mark.timeout(6)
+    @pytest.mark.timeout(15)
     def test_ignore_sync_transaction(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
 
@@ -57,8 +57,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.check_sync_transaction_still_works()
         self.check_async_transaction_still_works()
 
-    @pytest.mark.skip("the ignored tx gets trapped in Transact's event loop")
-    @pytest.mark.timeout(6)
+    @pytest.mark.timeout(15)
     def test_ignore_async_transaction(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
 
@@ -66,9 +65,11 @@ class TestTransactionMocking(TransactionIgnoringTest):
         amount = Wad.from_number(0.2)
         tx = self.collateral.adapter.join(self.keeper_address, amount)
         AuctionKeeper._run_future(tx.transact_async())
-        wait_for_other_threads()
         self.cancel(tx)
         self.end_ignoring_transactions()
+
+        # Wait for async tx threads to exit normally (should consider doing this after every async test)
+        wait_for_other_threads()
 
         balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
         assert balance_before == balance_after

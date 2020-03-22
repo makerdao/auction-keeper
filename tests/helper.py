@@ -105,7 +105,7 @@ class TransactionIgnoringTest:
         self.web3.manager.request_blocking = MagicMock(side_effect=mock_web3manager_request_blocking)
         logging.debug(f"Started ignoring async transactions at nonce {self.original_nonce}")
 
-    def end_ignoring_transactions(self, cancel=True):
+    def end_ignoring_transactions(self):
         def second_send_transaction(transaction):
             print(f"tx_nonce={transaction['nonce']} original_nonce={self.original_nonce}")
             assert transaction['nonce'] == self.original_nonce
