@@ -68,3 +68,16 @@ class TestGasStrategy:
         assert isinstance(keeper.gas_price.gas_station, POANetwork)
         assert keeper.gas_price.gas_station.URL == "http://localhost:8000"
 
+    def test_increasing(self, mcd, keeper_address):
+        # given
+        c = mcd.collaterals['ETH-A']
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type flip "
+                                         f"--from-block 1 "
+                                         f"--ilk {c.ilk.name} "
+                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
+        assert keeper.gas_price.get_gas_price(0) == 5*1000000000
+        assert keeper.gas_price.get_gas_price(61) == 5*1000000000+10*1000000000
+        assert keeper.gas_price.get_gas_price(60000) == 100*1000000000
+
+
