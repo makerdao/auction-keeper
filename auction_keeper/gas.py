@@ -17,7 +17,7 @@
 
 from typing import Optional
 
-from ethgasstation_client import EthGasStation
+from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
 from pymaker.gas import GasPrice, IncreasingGasPrice
 
 
@@ -40,11 +40,16 @@ class DynamicGasPrice(GasPrice):
 
     GWEI = 1000000000
 
-    def __init__(self, api_key):
-        self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=api_key)
+    def __init__(self, arguments):
+        if arguments.ethgasstation_api_key:
+            self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=arguments.ethgasstation_api_key)
+        elif arguments.etherchain_gas:
+            self.gas_station = EtherchainOrg(refresh_interval=60, expiry=600)
+        elif arguments.poanetwork_gas:
+            self.gas_station = POANetwork(refresh_interval=60, expiry=600, alt_url=arguments.poanetwork_url)
 
     def get_gas_price(self, time_elapsed: int) -> Optional[int]:
-        # start with standard price plus backup in case EthGasStation is down, then do fast
+        # start with standard price plus backup in case gas price API is down, then do fast
         if 0 <= time_elapsed <= 60:
             standard_price = self.gas_station.standard_price()
             if standard_price is not None:
