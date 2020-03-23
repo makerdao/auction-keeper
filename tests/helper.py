@@ -84,7 +84,6 @@ class TransactionIgnoringTest:
     def start_ignoring_transactions(self):
         # async def mock_transact_async(**kwargs):
         #     print("mocking Transact.transact_async")
-        #     kwargs['gas_price'] = 0
         #     return self.original_transact_async(**kwargs)
 
         """ Allows an async tx to be created and leaves it trapped in Transact's event loop """
@@ -101,17 +100,23 @@ class TransactionIgnoringTest:
 
         logging.debug(f"Started ignoring async transactions at nonce {self.original_nonce}")
 
-    def end_ignoring_transactions(self):
+    def end_ignoring_transactions(self, ensure_next_tx_is_replacement=True):
         def second_send_transaction(transaction):
             print(f"tx_nonce={transaction['nonce']} original_nonce={self.original_nonce}")
+            # Ensure the second transaction gets sent with the same nonce, replacing the first transaction.
             assert transaction['nonce'] == self.original_nonce
+            # Restore original behavior for the third transaction.
+            self.web3.eth.sendTransaction = self.original_send_transaction
 
             # TestRPC doesn't support `sendTransaction` calls with the `nonce` parameter
             # (unlike proper Ethereum nodes which handle it very well)
             transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
             return self.original_send_transaction(transaction_without_nonce)
 
-        self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
+        if ensure_next_tx_is_replacement:
+            self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
+        else:
+            self.web3.eth.sendTransaction = self.original_send_transaction
         self.web3.eth.getTransaction = self.original_get_transaction
         self.web3.eth.getTransactionCount = self.original_tx_count
         # Transact.transact_async = self.original_transact_async
