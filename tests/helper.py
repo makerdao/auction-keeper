@@ -82,27 +82,23 @@ class TransactionIgnoringTest:
         empty_tx.transact(replace=tx)
 
     def start_ignoring_transactions(self):
-        def mock_web3manager_request_blocking(method: str, params: list):
-            print(f"mock_web3manager_request_blocking called for method={method}")
-            if method == "parity_nextNonce":
-                print("mocking parity_nextNonce")
-                return hex(self.original_nonce)
-            else:
-                return self.original_request_blocking(method, params)
-
-        assert self.web3
+        # async def mock_transact_async(**kwargs):
+        #     print("mocking Transact.transact_async")
+        #     kwargs['gas_price'] = 0
+        #     return self.original_transact_async(**kwargs)
 
         """ Allows an async tx to be created and leaves it trapped in Transact's event loop """
         self.original_send_transaction = self.web3.eth.sendTransaction
         self.original_get_transaction = self.web3.eth.getTransaction
         self.original_tx_count = self.web3.eth.getTransactionCount
         self.original_nonce = self.web3.eth.getTransactionCount(self.keeper_address.address)
-        self.original_request_blocking = self.web3.manager.request_blocking
+        # self.original_transact_async = Transact.transact_async
 
         self.web3.eth.sendTransaction = MagicMock(return_value='0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd')
         self.web3.eth.getTransaction = MagicMock(return_value={'nonce': self.original_nonce})
-        self.web3.eth.getTransactionCount = MagicMock(return_value=8888888888)
-        self.web3.manager.request_blocking = MagicMock(side_effect=mock_web3manager_request_blocking)
+        self.web3.eth.getTransactionCount = MagicMock(return_value=0)
+        # Transact.transact_async = MagicMock(side_effect=mock_transact_async)
+
         logging.debug(f"Started ignoring async transactions at nonce {self.original_nonce}")
 
     def end_ignoring_transactions(self):
@@ -115,16 +111,14 @@ class TransactionIgnoringTest:
             transaction_without_nonce = {key: transaction[key] for key in transaction if key != 'nonce'}
             return self.original_send_transaction(transaction_without_nonce)
 
-        # self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
-        self.web3.eth.sendTransaction = self.original_send_transaction
+        self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
         self.web3.eth.getTransaction = self.original_get_transaction
         self.web3.eth.getTransactionCount = self.original_tx_count
-        self.web3.manager.request_blocking = self.original_request_blocking
+        # Transact.transact_async = self.original_transact_async
+
         logging.debug("Finished ignoring async transactions")
 
     def start_ignoring_sync_transactions(self):
-        assert self.web3
-
         """ Mocks submission of a tx, prentending it happened """
         self.original_tx_count = self.web3.eth.getTransactionCount
         self.original_get_receipt = Transact._get_receipt

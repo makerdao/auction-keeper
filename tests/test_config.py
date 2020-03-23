@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
+import time
 import pytest
 
 from auction_keeper.main import AuctionKeeper
@@ -57,6 +59,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.check_sync_transaction_still_works()
         self.check_async_transaction_still_works()
 
+    @pytest.mark.skip("not what we're really trying to test")
     @pytest.mark.timeout(15)
     def test_ignore_async_transaction(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
@@ -76,6 +79,25 @@ class TestTransactionMocking(TransactionIgnoringTest):
 
         self.check_sync_transaction_still_works()
         self.check_async_transaction_still_works()
+
+    @pytest.mark.timeout(30)
+    def test_replace_async_transaction(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        self.start_ignoring_transactions()
+        amount1 = Wad.from_number(0.14)
+        tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
+        AuctionKeeper._run_future(tx1.transact_async())
+        time.sleep(2)
+        self.end_ignoring_transactions()
+
+        amount2 = Wad.from_number(0.17)
+        tx2 = self.collateral.adapter.join(self.keeper_address, amount2)
+        AuctionKeeper._run_future(tx2.transact_async(replace=tx1))
+
+        # Wait for async tx threads to exit normally (should consider doing this after every async test)
+        wait_for_other_threads()
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before + amount2 == balance_after
 
     def check_sync_transaction_still_works(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
