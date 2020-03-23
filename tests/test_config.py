@@ -84,13 +84,56 @@ class TestTransactionMocking(TransactionIgnoringTest):
     def test_replace_async_transaction(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
         self.start_ignoring_transactions()
-        amount1 = Wad.from_number(0.14)
+        amount1 = Wad.from_number(0.11)
+        tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
+        AuctionKeeper._run_future(tx1.transact_async())
+        self.end_ignoring_transactions()
+
+        amount2 = Wad.from_number(0.14)
+        tx2 = self.collateral.adapter.join(self.keeper_address, amount2)
+        AuctionKeeper._run_future(tx2.transact_async(replace=tx1))
+
+        # Wait for async tx threads to exit normally (should consider doing this after every async test)
+        wait_for_other_threads()
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before + amount2 == balance_after
+
+        self.check_sync_transaction_still_works()
+        self.check_async_transaction_still_works()
+
+    @pytest.mark.timeout(30)
+    def test_replace_async_transaction_delay_expensive_call_while_ignoring_tx(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        self.start_ignoring_transactions()
+        amount1 = Wad.from_number(0.12)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
         AuctionKeeper._run_future(tx1.transact_async())
         time.sleep(2)
         self.end_ignoring_transactions()
 
-        amount2 = Wad.from_number(0.17)
+        amount2 = Wad.from_number(0.15)
+        tx2 = self.collateral.adapter.join(self.keeper_address, amount2)
+        AuctionKeeper._run_future(tx2.transact_async(replace=tx1))
+
+        # Wait for async tx threads to exit normally (should consider doing this after every async test)
+        wait_for_other_threads()
+        balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        assert balance_before + amount2 == balance_after
+
+        self.check_sync_transaction_still_works()
+        self.check_async_transaction_still_works()
+
+    @pytest.mark.timeout(30)
+    def test_replace_async_transaction_delay_expensive_call_after_ignoring_tx(self):
+        balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
+        self.start_ignoring_transactions()
+        amount1 = Wad.from_number(0.13)
+        tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
+        AuctionKeeper._run_future(tx1.transact_async())
+        self.end_ignoring_transactions()
+
+        time.sleep(2)
+        amount2 = Wad.from_number(0.16)
         tx2 = self.collateral.adapter.join(self.keeper_address, amount2)
         AuctionKeeper._run_future(tx2.transact_async(replace=tx1))
 
