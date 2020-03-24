@@ -68,7 +68,7 @@ class DynamicGasPrice(GasPrice):
             else:
                 return self.default_gas_pricing(time_elapsed)
 
-    # default gas pricing when EthGasStation feed is down
+    # default gas pricing when remote feed is down
     def default_gas_pricing(self, time_elapsed: int):
         return IncreasingGasPrice(initial_price=5*self.GWEI,
                                   increase_by=10*self.GWEI,

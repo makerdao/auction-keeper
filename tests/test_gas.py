@@ -16,8 +16,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from auction_keeper.main import AuctionKeeper
+from pymaker.gas import DefaultGasPrice, IncreasingGasPrice
 from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg
 
+from auction_keeper.gas import DynamicGasPrice
 from tests.helper import args
 
 
@@ -80,4 +82,27 @@ class TestGasStrategy:
         assert keeper.gas_price.get_gas_price(61) == 5*1000000000+10*1000000000
         assert keeper.gas_price.get_gas_price(60000) == 100*1000000000
 
+    def test_gas_config(self, web3, keeper_address):
+        default_behavior = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flop --from-block 1 "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(default_behavior.gas_price, DynamicGasPrice)
 
+        increasing_no_max = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flop --from-block 1 "
+                                                   f"--increasing-gas 1000 20 3 "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(increasing_no_max.gas_price, IncreasingGasPrice)
+        assert increasing_no_max.gas_price.initial_price == 1000
+        assert increasing_no_max.gas_price.increase_by == 20
+        assert increasing_no_max.gas_price.every_secs == 3
+
+        increasing_max = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                    f"--type flop --from-block 1 "
+                                                    f"--increasing-gas 2000 30 4 50000 "
+                                                    f"--model ./bogus-model.sh"), web3=web3)
+        assert isinstance(increasing_max.gas_price, IncreasingGasPrice)
+        assert increasing_max.gas_price.initial_price == 2000
+        assert increasing_max.gas_price.increase_by == 30
+        assert increasing_max.gas_price.every_secs == 4
+        assert increasing_max.gas_price.max_price == 50000

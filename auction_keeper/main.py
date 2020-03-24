@@ -106,6 +106,7 @@ class AuctionKeeper:
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
+        # TODO: Move these into a group to make them mutually exclusive
         parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
         parser.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
                             help="Use etherchain.org gas price")
@@ -186,22 +187,18 @@ class AuctionKeeper:
         self.dead_auctions = set()
         self.lifecycle = None
 
-        # Create gas strategy used for non-bids
-        if self.arguments.ethgasstation_api_key and self.arguments.increasing_gas:
-            raise RuntimeError("Please configure either --ethgasstation-api-key or --increasing-gas, not both")
-        if self.arguments.ethgasstation_api_key:
-            self.gas_price = DynamicGasPrice(self.arguments)
-        # elif self.arguments.increasing_gas:
-        #     gas_args = self.arguments.increasing_gas
-        #     if not 3 <= len(gas_args) <= 4:
-        #         raise RuntimeError("Please provide initial price, increment, and interval for increasing gas price")
-        #     self.gas_price = IncreasingGasPrice(
-        #         initial_price=int(gas_args[0]),
-        #         increase_by=int(gas_args[1]),
-        #         every_secs=int(gas_args[2]),
-        #         max_price=int(gas_args[3]) if len(gas_args) == 4 else None)
+        # Create gas strategy used for non-bids and bids which do not supply gas price
+        if self.arguments.increasing_gas:
+            gas_args = self.arguments.increasing_gas
+            if not 3 <= len(gas_args) <= 4:
+                raise RuntimeError("Please provide initial price, increment, and interval for increasing gas price")
+            self.gas_price = IncreasingGasPrice(
+                initial_price=int(gas_args[0]),
+                increase_by=int(gas_args[1]),
+                every_secs=int(gas_args[2]),
+                max_price=int(gas_args[3]) if len(gas_args) == 4 else None)
         else:
-            self.gas_price = DefaultGasPrice()
+            self.gas_price = DynamicGasPrice(self.arguments)
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
