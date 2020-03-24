@@ -17,7 +17,6 @@
 
 import math
 import pytest
-import time
 
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
@@ -44,7 +43,7 @@ def kick(mcd, c: Collateral, gal_address) -> int:
     return kick
 
 
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(380)
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = web3()
@@ -360,7 +359,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flapper.ttl() + 1)
         assert self.flapper.deal(kick).transact()
 
-    @pytest.mark.skip("Timing issue causes this to fail on Travis and under CPU pressure")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
@@ -401,8 +399,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         # and
-        time.sleep(2)
-        # and
         self.end_ignoring_transactions()
         # and
         simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
@@ -431,7 +427,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         # and
         self.end_ignoring_transactions()
-        wait_for_other_threads()
         # and
         simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
         # and

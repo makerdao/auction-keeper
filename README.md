@@ -183,6 +183,18 @@ Please note **collateral types in the table above are provided for illustrative 
 as an endorsement of which collaterals should be deployed to mainnet**, which will be determined by an appropriate 
 governance process.  A complete list of `ilk`s for a deployment may be gleaned from the `addresses.json`.
 
+## Gas price strategy
+
+Auction keeper can be configured to use several API sources for retrieving gas prices:  
+    - **Ethgasstation** if a key is passed as `--ethgasstation-api-key` (e.g. `--ethgasstation-api-key MY_API_KEY`)  
+    - **Etherchain.org** if keeper started with `--etherchain-gas-price` switch  
+    - **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
+    that is useful when server hosted locally (e.g. `--poanetwork-url http://localhost:8000`)  
+
+If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
+
+Note: this gas strategy is used by keeper in all interactions with chain but when sending a bid (which is provided by model)
+
 
 ### Accounting
 

@@ -31,7 +31,7 @@ argument.
 
 Here's an example of running a script manually from the repository root:
 ```bash
-export PYTHONPATH=$PYTHONPATH:.:lib/pymaker
+export PYTHONPATH=$PYTHONPATH:.:lib/pymaker:lib/ethgasstation-client
 python3 tests/manual/mint_mkr.py 1.0
 ```
 

@@ -105,7 +105,13 @@ class AuctionKeeper:
 
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
+
         parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
+        parser.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
+                            help="Use etherchain.org gas price")
+        parser.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
+                            help="Use POANetwork gas price")
+        parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
         parser.add_argument("--increasing-gas", type=str, nargs="+",
                             help="Provide an initial price (wei), increment (wei), and delay (seconds)")
 
@@ -180,12 +186,11 @@ class AuctionKeeper:
         self.dead_auctions = set()
         self.lifecycle = None
 
-        # FIXME: Something commented out here causes unit tests to freeze
         # Create gas strategy used for non-bids
         if self.arguments.ethgasstation_api_key and self.arguments.increasing_gas:
             raise RuntimeError("Please configure either --ethgasstation-api-key or --increasing-gas, not both")
         if self.arguments.ethgasstation_api_key:
-            self.gas_price = DynamicGasPrice(self.arguments.ethgasstation_api_key)
+            self.gas_price = DynamicGasPrice(self.arguments)
         # elif self.arguments.increasing_gas:
         #     gas_args = self.arguments.increasing_gas
         #     if not 3 <= len(gas_args) <= 4:
@@ -366,6 +371,24 @@ class AuctionKeeper:
                     self.vow.heal(woe).transact(gas_price=self.gas_price)
                 self.vow.flap().transact(gas_price=self.gas_price)
 
+    def reconcile_debt(self, joy: Rad, ash: Rad, woe: Rad):
+        assert isinstance(joy, Rad)
+        assert isinstance(ash, Rad)
+        assert isinstance(woe, Rad)
+
+        if ash > Rad(0):
+            if joy > ash:
+                self.vow.kiss(ash).transact(gas_price=self.gas_price)
+            else:
+                self.vow.kiss(joy).transact(gas_price=self.gas_price)
+                return
+        if woe > Rad(0):
+            joy = self.vat.dai(self.vow.address)
+            if joy > woe:
+                self.vow.heal(woe).transact(gas_price=self.gas_price)
+            else:
+                self.vow.heal(joy).transact(gas_price=self.gas_price)
+
     def check_flop(self):
         # Check if Vow has a surplus of bad debt compared to Dai
         joy = self.vat.dai(self.vow.address)
@@ -391,9 +414,8 @@ class AuctionKeeper:
 
             # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
             ash = self.vow.ash()
-            goodnight = min(ash, joy)
-            if goodnight > Rad(0):
-                self.vow.kiss(goodnight).transact(gas_price=self.gas_price)
+            if joy > Rad(0):
+                self.reconcile_debt(joy, ash, woe)
 
             # Convert enough sin in woe to have woe >= sump + joy
             if woe < (sump + joy) and self.cat is not None:
@@ -411,11 +433,12 @@ class AuctionKeeper:
                         if self.vow.woe() - joy >= sump:
                             break
 
-            # use heal() for reconciling the remaining joy
+            # Reduce on-auction debt and reconcile remaining joy
             joy = self.vat.dai(self.vow.address)
-            if Rad(0) < joy <= self.vow.woe():
-                self.vow.heal(joy).transact(gas_price=self.gas_price)
-                # heal() changes joy and woe (the balance of surplus and debt)
+            if joy > Rad(0):
+                ash = self.vow.ash()
+                woe = self.vow.woe()
+                self.reconcile_debt(joy, ash, woe)
                 joy = self.vat.dai(self.vow.address)
 
             woe = self.vow.woe()
@@ -444,7 +467,7 @@ class AuctionKeeper:
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
                 else:
-                    logging.debug(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
+                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
         self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
@@ -557,8 +580,11 @@ class AuctionKeeper:
             # if transaction has not been submitted...
             if transaction_in_progress is None:
                 self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
+
                 auction.price = bid_price
+                auction.gas_price = UpdatableGasPrice(output.gas_price)
                 auction.register_transaction(bid_transact)
+
                 self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
                 if self.arguments.bid_delay:
                     logging.debug(f"Waiting {self.arguments.bid_delay}s")
@@ -570,12 +596,14 @@ class AuctionKeeper:
                 if bid_price != auction.price:
                     self.logger.info(
                         f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
+
                     auction.price = bid_price
                     if output.gas_price > auction.gas_price.gas_price:  # model provided higher price
                         auction.gas_price.update_gas_price(output.gas_price)
                     else:  # model price needs to be ignored to replace the transaction
                         auction.gas_price.update_gas_price(auction.gas_price.gas_price*1.1)
                     auction.register_transaction(bid_transact)
+
                     self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                                  gas_price=auction.gas_price))
                 # ...or let pymaker replace gas_price if bid price stays the same
