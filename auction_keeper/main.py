@@ -105,7 +105,13 @@ class AuctionKeeper:
 
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
+
         parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
+        parser.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
+                            help="Use etherchain.org gas price")
+        parser.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
+                            help="Use POANetwork gas price")
+        parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -179,10 +185,7 @@ class AuctionKeeper:
         self.lifecycle = None
 
         # Create gas strategy used for non-bids
-        if self.arguments.ethgasstation_api_key:
-            self.gas_price = DynamicGasPrice(self.arguments.ethgasstation_api_key)
-        else:
-            self.gas_price = DefaultGasPrice()
+        self.gas_price = DynamicGasPrice(self.arguments)
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
