@@ -75,12 +75,6 @@ class TransactionIgnoringTest:
             })
             self.successful = True
 
-    def cancel(self, tx: Transact):
-        assert isinstance(tx, Transact)
-        logging.debug(f"Cancelling transaction {tx}")
-        empty_tx = Transact(self, self.web3, None, self.keeper_address, None, None, [self.keeper_address, Wad(0)])
-        empty_tx.transact(replace=tx)
-
     def start_ignoring_transactions(self):
         """ Allows an async tx to be created and leaves it trapped in Transact's event loop """
         self.original_send_transaction = self.web3.eth.sendTransaction
