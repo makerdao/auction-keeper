@@ -28,7 +28,6 @@ from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
-from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
 from pymaker.gas import DefaultGasPrice, IncreasingGasPrice
 from pymaker.keys import register_keys
@@ -554,6 +553,7 @@ class AuctionKeeper:
             # if no transaction in progress, send a new one
             transaction_in_progress = auction.transaction_in_progress()
 
+            # Ensure this auction has a gas strategy assigned
             if auction.gas_price:
                 # Model started supplying gas price
                 if output.gas_price and not isinstance(auction.gas_price, UpdatableGasPrice):
@@ -561,7 +561,7 @@ class AuctionKeeper:
                     auction.gas_price = UpdatableGasPrice(output.gas_price)
                 # Handle case where model stopped supplying gas price
                 if not output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
-                    print(f"output did not supply gas price; switching to our gas strategy")
+                    print("output did not supply gas price; switching to our gas strategy")
                     auction.gas_price = self.gas_price
             else:
                 # Model is supplying gas price
@@ -579,7 +579,6 @@ class AuctionKeeper:
                 self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
 
                 auction.price = bid_price
-                auction.gas_price = UpdatableGasPrice(output.gas_price)
                 auction.register_transaction(bid_transact)
 
                 self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))

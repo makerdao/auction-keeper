@@ -18,6 +18,7 @@
 import math
 import pytest
 
+from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from pymaker.approval import directly, hope_directly
@@ -58,12 +59,15 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flap "
                                               f"--from-block 1 "
-                                              f"--bid-check-interval 0.05 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
         mint_mkr(self.mcd.mkr, self.keeper_address, Wad.from_number(50000))
         mint_mkr(self.mcd.mkr, self.other_address, Wad.from_number(50000))
+
+        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
+        # Since no args were assigned, gas strategy should return a default IncreasingGasPrice
+        self.default_gas_price = 5 * DynamicGasPrice.GWEI
 
     def test_should_detect_flap(self, web3, mcd, c, gal_address, keeper_address):
         # given some MKR is available to the keeper and a count of flap auctions
@@ -542,7 +546,9 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert auction.guy == self.keeper_address
         assert auction.bid > Wad(0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
-               self.web3.eth.gasPrice
+               self.default_gas_price
+
+        print(f"tx gas price is {self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice}, web3.eth.gasPrice is {self.web3.eth.gasPrice}")
 
         # cleanup
         time_travel_by(self.web3, self.flapper.ttl() + 1)

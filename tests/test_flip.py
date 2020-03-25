@@ -25,6 +25,7 @@ from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral
+from pymaker.gas import IncreasingGasPrice
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, keeper_address, mcd, models, \
                            reserve_dai, simulate_model_output, web3
@@ -67,9 +68,12 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
                                      f"--type flip "
                                      f"--from-block 1 "
                                      f"--ilk {self.collateral.ilk.name} "
-                                     f"--bid-check-interval 0.03 "
+                                     f"--increasing-gas 23000000000 1 3600 "
                                      f"--model ./bogus-model.sh"), web3=self.mcd.web3)
         self.keeper.approve()
+
+        assert isinstance(self.keeper.gas_price, IncreasingGasPrice)
+        self.default_gas_price = self.keeper.gas_price.initial_price
 
     @staticmethod
     def gem_balance(address: Address, c: Collateral) -> Wad:
@@ -775,8 +779,8 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         assert flipper.bids(kick).bid == Rad(Wad.from_number(16.0) * tend_lot)
-        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[
-                   0].gasPrice == self.web3.eth.gasPrice
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.default_gas_price
 
         # cleanup
         time_travel_by(self.web3, flipper.ttl() + 1)
