@@ -105,15 +105,15 @@ class AuctionKeeper:
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
-        # TODO: Move these into a group to make them mutually exclusive
-        parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
-        parser.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
-                            help="Use etherchain.org gas price")
-        parser.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
-                            help="Use POANetwork gas price")
+        gas_group = parser.add_mutually_exclusive_group()
+        gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
+        gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
+                               help="Use etherchain.org gas price")
+        gas_group.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
+                               help="Use POANetwork gas price")
+        gas_group.add_argument("--increasing-gas", type=str, nargs="+",
+                               help="Provide an initial price (Gwei), increment (Gwei), and delay (seconds)")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
-        parser.add_argument("--increasing-gas", type=str, nargs="+",
-                            help="Provide an initial price (wei), increment (wei), and delay (seconds)")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -186,24 +186,20 @@ class AuctionKeeper:
         self.dead_auctions = set()
         self.lifecycle = None
 
+        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
+                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
+
         # Create gas strategy used for non-bids and bids which do not supply gas price
         if self.arguments.increasing_gas:
             gas_args = self.arguments.increasing_gas
             if not 3 <= len(gas_args) <= 4:
                 raise RuntimeError("Please provide initial price, increment, and interval for increasing gas price")
-            self.gas_price = IncreasingGasPrice(
-                initial_price=int(gas_args[0]),
-                increase_by=int(gas_args[1]),
-                every_secs=int(gas_args[2]),
-                max_price=int(gas_args[3]) if len(gas_args) == 4 else None)
+            self.gas_price = AuctionKeeper.create_increasing_gas_strategy(gas_args)
         else:
             self.gas_price = DynamicGasPrice(self.arguments)
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
-
-        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
-                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Configure account(s) for which we'll deal auctions
         self.deal_all = False
@@ -223,6 +219,24 @@ class AuctionKeeper:
         logging.getLogger("web3").setLevel(logging.INFO)
         logging.getLogger("asyncio").setLevel(logging.INFO)
         logging.getLogger("requests").setLevel(logging.INFO)
+
+    @staticmethod
+    def create_increasing_gas_strategy(gas_args) -> IncreasingGasPrice:
+        def gwei_to_wei(arg: str):
+            assert isinstance(arg, str)
+            return int(round(float(arg) * DynamicGasPrice.GWEI))
+
+        description = f"Gas price will start at {gas_args[0]}Gwei and increase by {gas_args[1]}Gwei "\
+                      f"every {gas_args[2]} seconds"
+        if len(gas_args) == 4:
+            description += f" up to {gas_args[3]}Gwei"
+        logging.info(description)
+
+        return IncreasingGasPrice(
+                initial_price=gwei_to_wei(gas_args[0]),
+                increase_by=gwei_to_wei(gas_args[1]),
+                every_secs=int(gas_args[2]),
+                max_price=gwei_to_wei(gas_args[3]) if len(gas_args) == 4 else None)
 
     def main(self):
         def seq_func(check_func: callable):
@@ -258,7 +272,7 @@ class AuctionKeeper:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
 
     def startup(self):
-        self.approve()
+        # self.approve()
         self.rebalance_dai()
         if self.flapper:
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
@@ -462,8 +476,8 @@ class AuctionKeeper:
                 # Prevent growing the auctions collection beyond the configured size
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
-                else:
-                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
+                # else:
+                    # logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
         self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
@@ -557,22 +571,22 @@ class AuctionKeeper:
             if auction.gas_price:
                 # Model started supplying gas price
                 if output.gas_price and not isinstance(auction.gas_price, UpdatableGasPrice):
-                    print(f"output supplied gas price {output.gas_price}, creating UpdatableGasPrice")
+                    self.logger.info(f"Model output supplied gas price {output.gas_price}, creating UpdatableGasPrice")
                     auction.gas_price = UpdatableGasPrice(output.gas_price)
                 # Handle case where model stopped supplying gas price
                 if not output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
-                    print("output did not supply gas price; switching to our gas strategy")
+                    self.logger.info("Model output did not supply gas price; switching to our gas strategy")
                     auction.gas_price = self.gas_price
             else:
                 # Model is supplying gas price
+                # FIXME: This case requires explicit replacement
                 if output.gas_price:
-                    print(f"output supplied gas price {output.gas_price}, creating UpdatableGasPrice")
+                    self.logger.info(f"Model output supplied gas price {output.gas_price}, creating UpdatableGasPrice")
                     auction.gas_price = UpdatableGasPrice(output.gas_price)
                 # Create a gas strategy for the auction
                 else:
-                    print("output did not supply gas price; using our gas strategy")
+                    self.logger.info("Model output did not supply gas price; using our gas strategy")
                     auction.gas_price = self.gas_price
-            print(f"output.gas_price={output.gas_price} auction.gas_price={auction.gas_price}")
 
             # if transaction has not been submitted...
             if transaction_in_progress is None:
@@ -604,6 +618,7 @@ class AuctionKeeper:
                                                                  gas_price=auction.gas_price))
                 # ...or let pymaker replace gas_price if bid price stays the same
                 elif output.gas_price > auction.gas_price.gas_price:
+                    # FIXME: If model started providing a price, the UpdatableGasPrice here gets ignored
                     self.logger.info(f"Updating gas strategy with new gas_price ({output.gas_price})")
                     auction.gas_price.update_gas_price(output.gas_price)
 
