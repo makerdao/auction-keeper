@@ -564,71 +564,85 @@ class AuctionKeeper:
                 return
 
         if bid_price is not None and bid_transact is not None:
+            # Ensure this auction has a gas strategy assigned
+            new_gas_strategy = None
+            fixed_gas_price_changed = False
+            # if the auction already has a gas strategy...
+            if auction.gas_price:
+                print(f"auction already has a gas price: {auction.gas_price}")
+                # ...and the model just started supplying gas price
+                if output.gas_price:
+                    if isinstance(auction.gas_price, UpdatableGasPrice):
+                        fixed_gas_price_changed = output.gas_price != auction.gas_price.gas_price
+                        print(f"fixed_gas_price_changed={fixed_gas_price_changed}, output.gas_price={output.gas_price}, auction.gas_price.gas_price={auction.gas_price.gas_price}")
+                    else:
+                        self.logger.info(f"Model supplied gas price {output.gas_price}, switching to UpdatableGasPrice "
+                                         f"for auction {id}")
+                        new_gas_strategy = UpdatableGasPrice(output.gas_price)
+                # ...and the model stopped supplying gas price
+                elif not output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
+                    self.logger.info(f"Model did not supply gas price; switching to our gas strategy for auction {id}")
+                    new_gas_strategy = self.gas_price
+            # ...else create the gas strategy relevant to the model
+            else:
+                # model is supplying gas price
+                if output.gas_price:
+                    self.logger.info(f"Model supplied gas price {output.gas_price}, creating UpdatableGasPrice "
+                                     f"for auction {id}")
+                    new_gas_strategy = UpdatableGasPrice(output.gas_price)
+                # use the keeper's configured gas strategy for the auction
+                else:
+                    self.logger.info("Model did not supply gas price; using our gas strategy")
+                    new_gas_strategy = self.gas_price
+
             # if no transaction in progress, send a new one
             transaction_in_progress = auction.transaction_in_progress()
 
-            # Ensure this auction has a gas strategy assigned
-            if auction.gas_price:
-                # Model started supplying gas price
-                if output.gas_price and not isinstance(auction.gas_price, UpdatableGasPrice):
-                    self.logger.info(f"Model output supplied gas price {output.gas_price}, creating UpdatableGasPrice")
-                    auction.gas_price = UpdatableGasPrice(output.gas_price)
-                # Handle case where model stopped supplying gas price
-                if not output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
-                    self.logger.info("Model output did not supply gas price; switching to our gas strategy")
-                    auction.gas_price = self.gas_price
-            else:
-                # Model is supplying gas price
-                # FIXME: This case requires explicit replacement
-                if output.gas_price:
-                    self.logger.info(f"Model output supplied gas price {output.gas_price}, creating UpdatableGasPrice")
-                    auction.gas_price = UpdatableGasPrice(output.gas_price)
-                # Create a gas strategy for the auction
-                else:
-                    self.logger.info("Model output did not supply gas price; using our gas strategy")
-                    auction.gas_price = self.gas_price
-
             # if transaction has not been submitted...
             if transaction_in_progress is None:
-                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
-
+                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price}) for auction {id}")
                 auction.price = bid_price
+                auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
                 auction.register_transaction(bid_transact)
 
+                # ...submit a new transaction and wait the delay period (if so configured)
                 self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
                 if self.arguments.bid_delay:
                     logging.debug(f"Waiting {self.arguments.bid_delay}s")
                     time.sleep(self.arguments.bid_delay)
 
-            # if transaction in progress and model provides a fixed gas price...
-            elif output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
-                # replace the entire bid if the bid price has changed...
-                if bid_price != auction.price:
-                    self.logger.info(
-                        f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
-
-                    auction.price = bid_price
-                    if output.gas_price > auction.gas_price.gas_price:  # model provided higher price
-                        auction.gas_price.update_gas_price(output.gas_price)
-                    else:  # model price needs to be ignored to replace the transaction
-                        auction.gas_price.update_gas_price(auction.gas_price.gas_price*1.1)
-                    auction.register_transaction(bid_transact)
-
-                    self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
-                                                                 gas_price=auction.gas_price))
-                # ...or let pymaker replace gas_price if bid price stays the same
-                elif output.gas_price > auction.gas_price.gas_price:
-                    # FIXME: If model started providing a price, the UpdatableGasPrice here gets ignored
-                    self.logger.info(f"Updating gas strategy with new gas_price ({output.gas_price})")
-                    auction.gas_price.update_gas_price(output.gas_price)
-
-            # if transaction in progress and the bid price has changed...
+            # if transaction in progress and the bid price changed...
             elif bid_price != auction.price:
-                self.logger.info(f"Attempting to override pending bid with new bid @{output.price}")
+                self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
                 auction.price = bid_price
+                if new_gas_strategy:  # gas strategy changed
+                    auction.gas_price = new_gas_strategy
+                elif fixed_gas_price_changed:  # gas price updated
+                    assert isinstance(auction.gas_price, UpdatableGasPrice)
+                    auction.gas_price.update_gas_price(output.gas_price)
                 auction.register_transaction(bid_transact)
-                # ...if the gas strategy happens to generate a sufficiently higher gas price, pymaker will replace it
-                self._run_future(bid_transact.transact_async(replace=transaction_in_progress))
+
+                # ...ask pymaker to replace the transaction
+                print(f"auction.price={auction.price}, bid_price={bid_price}")
+                self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                             gas_price=auction.gas_price))
+
+            # if model has been providing a gas price, and only that changed...
+            elif fixed_gas_price_changed:
+                assert isinstance(auction.gas_price, UpdatableGasPrice)
+                self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price}) for auction {id}")
+                auction.gas_price.update_gas_price(output.gas_price)
+
+            # if transaction in progress, bid price unchanged, but gas strategy changed...
+            elif new_gas_strategy:
+                self.logger.info(f"Changing gas strategy for pending bid @{output.price} for auction {id}")
+                auction.price = bid_price
+                auction.gas_price = new_gas_strategy
+                auction.register_transaction(bid_transact)
+
+                # ...ask pymaker to replace the transaction
+                self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                             gas_price=auction.gas_price))
 
     def check_bid_cost(self, cost: Rad) -> bool:
         assert isinstance(cost, Rad)
