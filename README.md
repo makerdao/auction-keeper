@@ -112,7 +112,6 @@ This is the most convenient way of implementing logging from _bidding models_.
 **No facility is provided to prevent you from bidding an unprofitable price.**  Please ensure you understand how your 
 model produces prices and how prices are consumed by the keeper for each of the auction types in which you participate.
 
-
 ### Simplest possible _bidding model_
 
 If you just want to bid a fixed price for each auction, this is the simplest possible _bidding model_
@@ -130,6 +129,11 @@ done
 The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The 
 sleep locks the price in place for the specified duration, after which the keeper will restart the price model and read a new price.  
 Consider this your price update interval.  To conserve system resources, take care not to set this too low.
+
+### Other bidding models
+Thanks to our community for these examples:
+ * *banteg*'s [Python boilerplate model](https://gist.github.com/banteg/93808e6c0f1b9b6b470beaba5a140813)
+ * *theogravity*'s [NodeJS bidding model](https://github.com/theogravity/dai-auction-keeper)
 
 
 ## Limitations
@@ -274,6 +278,18 @@ the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your ac
  * The most expensive keepers are `flip` and `flop` keepers configured to `kick` new auctions.
  * To prevent process churn, ensure your pricing model stays running for a reasonable amount of time.
  
+ 
+## Infrastructure
+
+This keeper connects to the Ethereum network using [Web3.py](https://github.com/ethereum/web3.py) and interacts with 
+the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pymaker).  A connection to an Ethereum node 
+(`--rpc-host`) is required.  [Parity](https://www.parity.io/ethereum/) and [Geth](https://geth.ethereum.org/) nodes are 
+supported over HTTP.  Websocket endpoints are not supported by `pymaker`.
+
+If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested 
+with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/).
+
+
 ## Testing
 
 This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized 

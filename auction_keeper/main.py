@@ -48,10 +48,10 @@ class AuctionKeeper:
     def __init__(self, args: list, **kwargs):
         parser = argparse.ArgumentParser(prog='auction-keeper')
 
-        parser.add_argument("--rpc-host", type=str, default="localhost",
-                            help="JSON-RPC host (default: `localhost')")
+        parser.add_argument("--rpc-host", type=str, default="http://localhost:8545",
+                            help="JSON-RPC endpoint URI with port (default: `http://localhost:8545')")
         parser.add_argument("--rpc-port", type=int, default=8545,
-                            help="JSON-RPC port (default: `8545')")
+                            help="JSON-RPC port (deprecated) to support legacy configs")
         parser.add_argument("--rpc-timeout", type=int, default=10,
                             help="JSON-RPC timeout (in seconds, default: 10)")
 
@@ -119,14 +119,13 @@ class AuctionKeeper:
         self.arguments = parser.parse_args(args)
 
         # Configure connection to the chain
-        if self.arguments.rpc_host.startswith("http"):
-            endpoint_uri = f"{self.arguments.rpc_host}:{self.arguments.rpc_port}"
-        else:
-            # Should probably default this to use TLS, but I don't want to break existing configs
-            endpoint_uri = f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}"
-        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(
-            HTTPProvider(endpoint_uri=endpoint_uri,
-                         request_kwargs={"timeout": self.arguments.rpc_timeout}))
+        if self.arguments.rpc_host.startswith("http"):  # http connection
+            provider = HTTPProvider(endpoint_uri=self.arguments.rpc_host,
+                                    request_kwargs={'timeout': self.arguments.rpc_timeout})
+        else:  # legacy config; separate host and port
+            provider = HTTPProvider(endpoint_uri=f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}",
+                                    request_kwargs={'timeout': self.arguments.rpc_timeout})
+        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(provider)
         self.web3.eth.defaultAccount = self.arguments.eth_from
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
