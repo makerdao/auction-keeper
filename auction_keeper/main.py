@@ -569,12 +569,10 @@ class AuctionKeeper:
             fixed_gas_price_changed = False
             # if the auction already has a gas strategy...
             if auction.gas_price:
-                print(f"auction already has a gas price: {auction.gas_price}")
                 # ...and the model just started supplying gas price
                 if output.gas_price:
                     if isinstance(auction.gas_price, UpdatableGasPrice):
                         fixed_gas_price_changed = output.gas_price != auction.gas_price.gas_price
-                        print(f"fixed_gas_price_changed={fixed_gas_price_changed}, output.gas_price={output.gas_price}, auction.gas_price.gas_price={auction.gas_price.gas_price}")
                     else:
                         self.logger.info(f"Model supplied gas price {output.gas_price}, switching to UpdatableGasPrice "
                                          f"for auction {id}")
@@ -623,7 +621,6 @@ class AuctionKeeper:
                 auction.register_transaction(bid_transact)
 
                 # ...ask pymaker to replace the transaction
-                print(f"auction.price={auction.price}, bid_price={bid_price}")
                 self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                              gas_price=auction.gas_price))
 
