@@ -186,14 +186,23 @@ governance process.  A complete list of `ilk`s for a deployment may be gleaned f
 ## Gas price strategy
 
 Auction keeper can be configured to use several API sources for retrieving gas prices:  
-    - **Ethgasstation** if a key is passed as `--ethgasstation-api-key` (e.g. `--ethgasstation-api-key MY_API_KEY`)  
-    - **Etherchain.org** if keeper started with `--etherchain-gas-price` switch  
-    - **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
+ * **Ethgasstation** if a key is passed as `--ethgasstation-api-key` (e.g. `--ethgasstation-api-key MY_API_KEY`)  
+ * **Etherchain.org** if keeper started with `--etherchain-gas-price` switch  
+ * **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
     that is useful when server hosted locally (e.g. `--poanetwork-url http://localhost:8000`)  
+
+Auction keeper also supports a gas strategy which automatically increases gas price when transactions are queueing.
+To use this, pass `--increasing-gas [INITIAL_PRICE] [INCREMENT] [DELAY] ([MAX_PRICE])` where:
+
+ * `INITIAL_PRICE` is the starting gas price, in Gwei
+ * `INCREMENT` is the amount (in Gwei) to increase; ensure this is at least 12.5% of the initial price
+ * `DELAY` is the number of seconds waited before increasing gas on a queued transaction
+ * optionally, `MAX_PRICE` is the highest gas price to submit
 
 If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
 
-Note: this gas strategy is used by keeper in all interactions with chain but when sending a bid (which is provided by model)
+This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only 
+when the model does not provide a gas price.
 
 
 ### Accounting

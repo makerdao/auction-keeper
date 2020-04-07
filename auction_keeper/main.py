@@ -272,7 +272,7 @@ class AuctionKeeper:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
 
     def startup(self):
-        # self.approve()
+        self.approve()
         self.rebalance_dai()
         if self.flapper:
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
