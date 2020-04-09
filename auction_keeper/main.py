@@ -282,7 +282,8 @@ class AuctionKeeper:
             logging.info("Keeper will perform the following operation(s) in parallel:")
             [logging.info(line) for line in notice_string]
 
-            logging.info("*** Although it may seem 'stuck', the Keeper is executing the above processeses and will rest in this state while awaiting new auctions ***")
+            logging.info("*** When Keeper is dealing/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
+            logging.info("*** When Keeper is kicking, the recurring query of Vaults will likely take > 30 minutes each loop without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
@@ -335,7 +336,7 @@ class AuctionKeeper:
 
         # Look for unsafe CDPs and bite them
         urns = self.urn_history.get_urns()
-        logging.info(f"Initial query of {len(urns)} {self.ilk} urns to be evaluated and bitten if any are unsafe")
+        logging.debug(f"Initial query of {len(urns)} {self.ilk} urns to be evaluated and bitten if any are unsafe")
 
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
@@ -352,7 +353,7 @@ class AuctionKeeper:
 
                 self._run_future(self.cat.bite(ilk, urn).transact_async(gas_price=self.gas_price))
 
-        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
+        self.logger.info(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
@@ -476,7 +477,7 @@ class AuctionKeeper:
                 else:
                     logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
-        self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
+        self.logger.info(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
         with self.auctions_lock:

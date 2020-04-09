@@ -195,7 +195,8 @@ Auction keeper can be configured to use several API sources for retrieving gas p
     - **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
     that is useful when server hosted locally (e.g. `--poanetwork-url http://localhost:8000`)  
 
-If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
+If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting
+with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
 
 Note: this gas strategy is used by keeper in all interactions with chain but when sending a bid (which is provided by model)
 
@@ -287,11 +288,15 @@ the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pyma
 supported over HTTP. Websocket endpoints are not supported by `pymaker`.
 
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
-with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because it does not support the `eth_sendTransaction` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/69c7b6d869bb3bc9c4cca7b82cc6e8d435966d4b/pymaker/__init__.py#L431) pymaker.
+with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because
+it does not support the `eth_sendTransaction` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/69c7b6d869bb3bc9c4cca7b82cc6e8d435966d4b/pymaker/__init__.py#L431) pymaker.
 
 ### Limitations
-When a keeper, without VulcanizeDB subscription, is allowed to `kick`, it first gathers all historically active urns by making a single log query. The following limitation arises in this scenario:
-* A Geth node will likely cause issues (in the form of a `ValueError: {'code': -32000, 'message': 'Filter not found'}`), owing to a lack of support for large, complex filtered log queries. If a growing chain state begins to inhibit log requests with Parity nodes, then future releases of pymaker could include log query batching.
+When a keeper, without VulcanizeDB subscription, is allowed to `kick`, it first gathers all historically active urns by
+making a single log query. The following limitation arises in this scenario:
+* A Geth node will likely cause issues (in the form of a `ValueError: {'code': -32000, 'message': 'Filter not found'}`),
+owing to a lack of support for large, complex filtered log queries. If a growing chain state begins to inhibit log
+requests with Parity nodes, then future releases of pymaker could include log query batching.
 
 
 
