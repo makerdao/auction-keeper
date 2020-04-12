@@ -3,13 +3,13 @@
 [![Build Status](https://travis-ci.org/makerdao/auction-keeper.svg?branch=master)](https://travis-ci.org/makerdao/auction-keeper)
 [![codecov](https://codecov.io/gh/makerdao/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/makerdao/auction-keeper)
 
-The _DAI Stablecoin System_ incentivizes external agents, called _keepers_, to automate certain operations around the 
+The _DAI Stablecoin System_ incentivizes external agents, called _keepers_, to automate certain operations around the
 Ethereum blockchain.  The purpose of `auction-keeper` is to:
  * Seek out opportunities and start new auctions
  * Detect auctions started by other participants
  * Bid on auctions by converting token prices into bids
 
-Check out the <a href="https://youtu.be/wevzK3ADEjo?t=733">July 23rd, 2019 community meeting</a> 
+Check out the <a href="https://youtu.be/wevzK3ADEjo?t=733">July 23rd, 2019 community meeting</a>
 for some more information about MCD auctions and the purpose of this component.
 
 `auction-keeper` can participate in `flip` (collateral sale), `flap` (MKR buy-and-burn)
@@ -20,7 +20,7 @@ of a _bidding model_ for it and then act according to its instructions. _Bidding
 be automatically terminated by the keeper the moment the auction expires.  The keeper also
 automatically `deal`s expired auctions if it's us who won them.
 
-This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to 
+This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to
 develop your own auction trading bot.
 
 <https://chat.makerdao.com/channel/keeper>
@@ -33,7 +33,7 @@ deployed to the Ethereum blockchain. Decisions which involve pricing are delegat
 
 _Bidding models_ are simple processes, external to the main `auction-keeper` process. As they do not have to know
 anything about blockchain and smart contracts, they can be implemented in basically any programming language.
-The only thing they need to do is to read and write JSON documents they exchange with `auction-keeper`. The simplest 
+The only thing they need to do is to read and write JSON documents they exchange with `auction-keeper`. The simplest
 example of a bidding model is a shell script which echoes a fixed price.
 
 
@@ -43,7 +43,7 @@ The main task of this keeper, as already outlined above, is to constantly monito
 discover new ones, ensure that an instance of _bidding model_ is running for each auction, provide
 these instances of the current status of their auctions and bid according to decisions taken by them.
 
-The way the auction discovery and monitoring mechanism works at the moment is simplistic for illustration purposes. 
+The way the auction discovery and monitoring mechanism works at the moment is simplistic for illustration purposes.
 It basically operates as a loop which kicks in on every new block enumerating all auctions from `1` to `kicks`.
 Bidding models are checked every 2 seconds and submitted where appropriate.
 
@@ -109,9 +109,8 @@ and `flop` auctions) or the collateral price expressed in DAI e.g. DGX/DAI (for 
 Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
 This is the most convenient way of implementing logging from _bidding models_.
 
-**No facility is provided to prevent you from bidding an unprofitable price.**  Please ensure you understand how your 
+**No facility is provided to prevent you from bidding an unprofitable price.**  Please ensure you understand how your
 model produces prices and how prices are consumed by the keeper for each of the auction types in which you participate.
-
 
 ### Simplest possible _bidding model_
 
@@ -122,31 +121,36 @@ you can use:
 #!/usr/bin/env bash
 
 while true; do
-  echo "{\"price\": \"123.0\"}" # put your desired price amount here
-  sleep 120                     # locking the price for n seconds
+  echo "{\"price\": \"723.0\"}" # put your desired price amount here
+  sleep 120                      # locking the price for n seconds
 done
 ```
 
-The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The 
+The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The
 sleep locks the price in place for the specified duration, after which the keeper will restart the price model and read a new price.  
 Consider this your price update interval.  To conserve system resources, take care not to set this too low.
+
+### Other bidding models
+Thanks to our community for these examples:
+ * *banteg*'s [Python boilerplate model](https://gist.github.com/banteg/93808e6c0f1b9b6b470beaba5a140813)
+ * *theogravity*'s [NodeJS bidding model](https://github.com/theogravity/dai-auction-keeper)
 
 
 ## Limitations
 
-* If an auction started before the keeper was started, this keeper will not participate in it until the next block 
+* If an auction started before the keeper was started, this keeper will not participate in it until the next block
 is mined.
 * This keeper does not explicitly handle global settlement, and may submit transactions which fail during shutdown.
-* Some keeper functions incur gas fees regardless of whether a bid is submitted.  This includes, but is not limited to, 
+* Some keeper functions incur gas fees regardless of whether a bid is submitted.  This includes, but is not limited to,
 the following actions:
   * submitting approvals
   * adjusting the balance of surplus to debt
   * queuing debt for auction
   * biting a CDP or starting a flap or flop auction
-* The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in 
-response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too 
+* The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in
+response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too
 imposes a gas fee.
-* When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add 
+* When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add
 Dai to the Vat.
 
 
@@ -169,18 +173,18 @@ For some known Ubuntu and macOS issues see the [pymaker](https://github.com/make
 
 Run `bin/auction-keeper -h` without arguments to see an up-to-date list of arguments and usage information.
 
-To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as 
-one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter 
-corresponding to a set of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the 
+To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as
+one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter
+corresponding to a set of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the
 same underlying token (WETH).
 
-Configure `--from-block` to the block where MCD was deployed.  One way to find this is to look at the `MCD_DAI` 
+Configure `--from-block` to the block where MCD was deployed.  One way to find this is to look at the `MCD_DAI`
 contract of the deployment you are using and determine the block in which it was deployed.
 
 ![example list of keepers](README-keeper-config-example.png)
 
-Please note **collateral types in the table above are provided for illustrative purposes, and should not be interpreted 
-as an endorsement of which collaterals should be deployed to mainnet**, which will be determined by an appropriate 
+Please note **collateral types in the table above are provided for illustrative purposes, and should not be interpreted
+as an endorsement of which collaterals should be deployed to mainnet**, which will be determined by an appropriate
 governance process.  A complete list of `ilk`s for a deployment may be gleaned from the `addresses.json`.
 
 ## Gas price strategy
@@ -199,7 +203,8 @@ To use this, pass `--increasing-gas [INITIAL_PRICE] [INCREMENT] [DELAY] ([MAX_PR
  * `DELAY` is the number of seconds waited before increasing gas on a queued transaction
  * optionally, `MAX_PRICE` is the highest gas price to submit
 
-If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
+If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting
+with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
 
 This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only 
 when the model does not provide a gas price.
@@ -207,34 +212,34 @@ when the model does not provide a gas price.
 
 ### Accounting
 
-Auction contracts exclusively interact with Dai (for all auctions) and collateral (for `flip` auctions) in the `Vat`. 
+Auction contracts exclusively interact with Dai (for all auctions) and collateral (for `flip` auctions) in the `Vat`.
 More explicitly:
  * Dai used to bid on auctions is withdrawn from the `Vat`.
  * Collateral and surplus Dai won at auction is placed in the `Vat`.
- 
-By default, all Dai and collateral in your `eth-from` account is `exit`ed from the Vat and added to your token balance 
-when the keeper is shut down.  This feature may be disabled using the `--keep-dai-in-vat-on-exit` and 
-`--keep-gem-in-vat-on-exit` switches respectively.  **Using an `eth-from` account with an open CDP is discouraged**, 
-as debt will hinder the auction contracts' ability to access your Dai, and `auction-keeper`'s ability to `exit` Dai 
+
+By default, all Dai and collateral in your `eth-from` account is `exit`ed from the Vat and added to your token balance
+when the keeper is shut down.  This feature may be disabled using the `--keep-dai-in-vat-on-exit` and
+`--keep-gem-in-vat-on-exit` switches respectively.  **Using an `eth-from` account with an open CDP is discouraged**,
+as debt will hinder the auction contracts' ability to access your Dai, and `auction-keeper`'s ability to `exit` Dai
 from the `Vat`.
 
 **Using the `eth-from` account on multiple keepers is also discouraged** as it complicates `Vat` inventory management.
 When running multiple keepers using the same account, the balance of Dai in the `Vat` will be shared across keepers.  
-If using the feature, set `--vat-dai-target` to the same value on each keeper, and sufficiently high to cover total 
+If using the feature, set `--vat-dai-target` to the same value on each keeper, and sufficiently high to cover total
 desired exposure.
 
-To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit` 
-switches, and do not pass the `--vat-dai-target` switch.  You may use [mcd-cli](https://github.com/makerdao/mcd-cli) 
-to manually `join`/`exit` Dai to/from each of your keeper accounts.  Here is an example to join 6000 Dai on a testnet, 
+To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit`
+switches, and do not pass the `--vat-dai-target` switch.  You may use [mcd-cli](https://github.com/makerdao/mcd-cli)
+to manually `join`/`exit` Dai to/from each of your keeper accounts.  Here is an example to join 6000 Dai on a testnet,
 and exit 300 Dai on Kovan, respectively:
 ```bash
 mcd -C testnet dai join 6000
 mcd -C kovan dai exit 300
 ```
-`mcd-cli` requires installation and configuration; view the 
+`mcd-cli` requires installation and configuration; view the
 [mcd-cli README](https://github.com/makerdao/mcd-cli#mcd-command-line-interface) for more information.
 
-MKR used to bid on `flap` auctions is directly withdrawn from your token balance.  MKR won at `flop` auctions is 
+MKR used to bid on `flap` auctions is directly withdrawn from your token balance.  MKR won at `flop` auctions is
 directly deposited to your token balance.
 
 
@@ -242,50 +247,71 @@ directly deposited to your token balance.
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are two 
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are two
 ways it can build this:
- * **Set `--from-block` to the block where the first urn was created** to instruct the keeper to use logs published by 
-    the `vat` contract to bulid a list of urns, and then check the status of each urn.  Setting this too low will 
+ * **Set `--from-block` to the block where the first urn was created** to instruct the keeper to use logs published by
+    the `vat` contract to bulid a list of urns, and then check the status of each urn.  Setting this too low will
     overburden your node.
- * **Deploy a [VulcanizeDB lite instance](https://github.com/makerdao/vdb-lite-mcd-transformers) to maintain your own 
-    copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve 
+ * **Deploy a [VulcanizeDB lite instance](https://github.com/makerdao/vdb-lite-mcd-transformers) to maintain your own
+    copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve
     resources on your node and keeper.
-    
-To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically 
+
+To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first bite which has not been `flog`ged.
 
-The `--min-auction` argument arbitrarily ignores older completed auctions, such that the keeper needn't check their 
-status.  The `--max-auctions` argument allows you to limit the number of bidding models created to handle active 
+The `--min-auction` argument arbitrarily ignores older completed auctions, such that the keeper needn't check their
+status.  The `--max-auctions` argument allows you to limit the number of bidding models created to handle active
 auctions.  Both switches help reduce the number of _requests_ (not just transactions) made to the node.
 
 #### Transaction management
 
-Bid management can be sharded across multiple keepers by **auction id**.  To do this, configure `--shards` with the 
-number of keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to 
-configure three keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three 
-keepers.  **Kicks are not sharded**; for an auction contract, only one keeper should be configured to `kick`. 
+Bid management can be sharded across multiple keepers by **auction id**.  To do this, configure `--shards` with the
+number of keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to
+configure three keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` for the three
+keepers.  **Kicks are not sharded**; for an auction contract, only one keeper should be configured to `kick`.
 
-If you are sharding across multiple accounts, you may wish to have another account handle all your `deal`s.  The 
-`--deal-for` argument allows you to specify a space-delimited list of accounts for which you'll deal auctions.  You 
-may disable dealing auctions by specifying `--deal-for NONE` in each of your shards.  If you'd like to donate your gas 
-to deal auctions for all participants, `--deal-for ALL` is also supported.  Unlike kicks, **deals are sharded**, so 
-remove sharding configuration if running a dedicated deal keeper. 
+If you are sharding across multiple accounts, you may wish to have another account handle all your `deal`s.  The
+`--deal-for` argument allows you to specify a space-delimited list of accounts for which you'll deal auctions.  You
+may disable dealing auctions by specifying `--deal-for NONE` in each of your shards.  If you'd like to donate your gas
+to deal auctions for all participants, `--deal-for ALL` is also supported.  Unlike kicks, **deals are sharded**, so
+remove sharding configuration if running a dedicated deal keeper.
 
-Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  By 
-waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still 
-allowing some time for older transactions to complete, freeing up the queue.  Many parameters determine the appropriate 
-amount of time to wait.  For illustration purposes, assume the queue can hold 12 transactions, and gas prices are 
-reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of 
-the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue. 
- 
+Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  By
+waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still
+allowing some time for older transactions to complete, freeing up the queue.  Many parameters determine the appropriate
+amount of time to wait.  For illustration purposes, assume the queue can hold 12 transactions, and gas prices are
+reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of
+the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue.
+
 #### Hardware and operating system resources
 
  * The most expensive keepers are `flip` and `flop` keepers configured to `kick` new auctions.
  * To prevent process churn, ensure your pricing model stays running for a reasonable amount of time.
- 
+
+
+## Infrastructure
+
+This keeper connects to the Ethereum network using [Web3.py](https://github.com/ethereum/web3.py) and interacts with
+the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pymaker).  A connection to an Ethereum node
+(`--rpc-host`) is required.  [Parity](https://www.parity.io/ethereum/) and [Geth](https://geth.ethereum.org/) nodes are
+supported over HTTP. Websocket endpoints are not supported by `pymaker`.
+
+If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
+with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because
+it does not support the `eth_sendTransaction` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/69c7b6d869bb3bc9c4cca7b82cc6e8d435966d4b/pymaker/__init__.py#L431) pymaker.
+
+### Limitations
+When a keeper, without VulcanizeDB subscription, is allowed to `kick`, it first gathers all historically active urns by
+making a single log query. The following limitation arises in this scenario:
+* A Geth node will likely cause issues (in the form of a `ValueError: {'code': -32000, 'message': 'Filter not found'}`),
+owing to a lack of support for large, complex filtered log queries. If a growing chain state begins to inhibit log
+requests with Parity nodes, then future releases of pymaker could include log query batching.
+
+
+
 ## Testing
 
-This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized 
+This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized
 local testchain included in `lib\pymaker\tests\config`.
 
 In order to be able to run tests, please install development dependencies first by executing:
@@ -307,4 +333,4 @@ See [COPYING](https://github.com/makerdao/auction-keeper/blob/master/COPYING) fi
 
 YOU (MEANING ANY INDIVIDUAL OR ENTITY ACCESSING, USING OR BOTH THE SOFTWARE INCLUDED IN THIS GITHUB REPOSITORY) EXPRESSLY UNDERSTAND AND AGREE THAT YOUR USE OF THE SOFTWARE IS AT YOUR SOLE RISK.
 THE SOFTWARE IN THIS GITHUB REPOSITORY IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-YOU RELEASE AUTHORS OR COPYRIGHT HOLDERS FROM ALL LIABILITY FOR YOU HAVING ACQUIRED OR NOT ACQUIRED CONTENT IN THIS GITHUB REPOSITORY. THE AUTHORS OR COPYRIGHT HOLDERS MAKE NO REPRESENTATIONS CONCERNING ANY CONTENT CONTAINED IN OR ACCESSED THROUGH THE SERVICE, AND THE AUTHORS OR COPYRIGHT HOLDERS WILL NOT BE RESPONSIBLE OR LIABLE FOR THE ACCURACY, COPYRIGHT COMPLIANCE, LEGALITY OR DECENCY OF MATERIAL CONTAINED IN OR ACCESSED THROUGH THIS GITHUB REPOSITORY. 
+YOU RELEASE AUTHORS OR COPYRIGHT HOLDERS FROM ALL LIABILITY FOR YOU HAVING ACQUIRED OR NOT ACQUIRED CONTENT IN THIS GITHUB REPOSITORY. THE AUTHORS OR COPYRIGHT HOLDERS MAKE NO REPRESENTATIONS CONCERNING ANY CONTENT CONTAINED IN OR ACCESSED THROUGH THE SERVICE, AND THE AUTHORS OR COPYRIGHT HOLDERS WILL NOT BE RESPONSIBLE OR LIABLE FOR THE ACCURACY, COPYRIGHT COMPLIANCE, LEGALITY OR DECENCY OF MATERIAL CONTAINED IN OR ACCESSED THROUGH THIS GITHUB REPOSITORY.

@@ -47,10 +47,8 @@ class AuctionKeeper:
     def __init__(self, args: list, **kwargs):
         parser = argparse.ArgumentParser(prog='auction-keeper')
 
-        parser.add_argument("--rpc-host", type=str, default="localhost",
-                            help="JSON-RPC host (default: `localhost')")
-        parser.add_argument("--rpc-port", type=int, default=8545,
-                            help="JSON-RPC port (default: `8545')")
+        parser.add_argument("--rpc-host", type=str, default="http://localhost:8545",
+                            help="JSON-RPC endpoint URI with port (default: `http://localhost:8545')")
         parser.add_argument("--rpc-timeout", type=int, default=10,
                             help="JSON-RPC timeout (in seconds, default: 10)")
 
@@ -80,7 +78,7 @@ class AuctionKeeper:
         parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
         parser.add_argument('--bid-check-interval', type=float, default=2.0,
-                            help="Period of timer used to check bidding models for changes")
+                            help="Period of timer [in seconds] used to check bidding models for changes")
         parser.add_argument('--bid-delay', type=float, default=0.0,
                             help="Seconds to wait between bids, used to manage OS and hardware limitations")
         parser.add_argument('--shard-id', type=int, default=0,
@@ -121,14 +119,9 @@ class AuctionKeeper:
         self.arguments = parser.parse_args(args)
 
         # Configure connection to the chain
-        if self.arguments.rpc_host.startswith("http"):
-            endpoint_uri = f"{self.arguments.rpc_host}:{self.arguments.rpc_port}"
-        else:
-            # Should probably default this to use TLS, but I don't want to break existing configs
-            endpoint_uri = f"http://{self.arguments.rpc_host}:{self.arguments.rpc_port}"
-        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(
-            HTTPProvider(endpoint_uri=endpoint_uri,
-                         request_kwargs={"timeout": self.arguments.rpc_timeout}))
+        provider = HTTPProvider(endpoint_uri=self.arguments.rpc_host,
+                                request_kwargs={'timeout': self.arguments.rpc_timeout})
+        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(provider)
         self.web3.eth.defaultAccount = self.arguments.eth_from
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
@@ -271,25 +264,48 @@ class AuctionKeeper:
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
 
+    def auction_notice(self) -> str:
+        if self.arguments.type == 'flip':
+            return "--> Check all urns and kick off new auctions if any" + \
+                   " unsafe urns need to be bitten"
+        else:
+            return "--> Check thresholds in Vow Contract and kick off new" + \
+                  f" {self.arguments.type} auctions once reached"
+
     def startup(self):
         self.approve()
         self.rebalance_dai()
         if self.flapper:
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
+        notice_string = []
         if not self.arguments.create_auctions:
             logging.info("Keeper will not create new auctions")
+        else:
+            notice_string.append(self.auction_notice())
         if not self.arguments.bid_on_auctions:
             logging.info("Keeper will not bid on auctions")
+        else:
+            notice_string.append("--> Check all auctions being monitored and evaluate" + \
+                                f" bidding opportunity every {self.arguments.bid_check_interval} seconds")
 
         if self.deal_all:
-            logging.info("Keeper will deal auctions for any address")
+            notice_string.append("--> Check all auctions and deal for any address")
         elif len(self.deal_for) == 1:
-            logging.info(f"Keeper will deal auctions for {list(self.deal_for)[0].address}")
+            notice_string.append(f"--> Check all auctions and deal for {list(self.deal_for)[0].address}")
         elif len(self.deal_for) > 0:
-            logging.info(f"Keeper will deal auctions for {[a.address for a in self.deal_for]} addresses")
+            notice_string.append(f"--> Check all auctions and deal for {[a.address for a in self.deal_for]} addresses")
         else:
             logging.info("Keeper will not deal auctions")
+
+        if notice_string:
+            logging.info("Keeper will perform the following operation(s) in parallel:")
+            [logging.info(line) for line in notice_string]
+
+            logging.info("*** When Keeper is dealing/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
+            logging.info("*** When Keeper is kicking, the recurring query of Vaults will likely take > 30 minutes each loop without using VulcanizeDB via `--vulcanize-endpoint` ***")
+        else:
+            logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
@@ -340,6 +356,8 @@ class AuctionKeeper:
 
         # Look for unsafe CDPs and bite them
         urns = self.urn_history.get_urns()
+        logging.debug(f"Initial query of {len(urns)} {self.ilk} urns to be evaluated and bitten if any are unsafe")
+
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
@@ -355,7 +373,7 @@ class AuctionKeeper:
 
                 self._run_future(self.cat.bite(ilk, urn).transact_async(gas_price=self.gas_price))
 
-        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
+        self.logger.info(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
@@ -476,10 +494,10 @@ class AuctionKeeper:
                 # Prevent growing the auctions collection beyond the configured size
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
-                # else:
-                    # logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
+                else:
+                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
-        self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
+        self.logger.info(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
         with self.auctions_lock:
@@ -661,6 +679,7 @@ class AuctionKeeper:
         return True
 
     def rebalance_dai(self):
+        logging.info(f"Checking if internal Dai balance needs to be rebalanced")
         if self.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
             return
 
