@@ -17,6 +17,7 @@
 
 import pytest
 
+from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from datetime import datetime
@@ -25,7 +26,6 @@ from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral
-from pymaker.gas import IncreasingGasPrice
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, keeper_address, mcd, models, \
                            reserve_dai, simulate_model_output, web3
@@ -68,12 +68,11 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
                                      f"--type flip "
                                      f"--from-block 1 "
                                      f"--ilk {self.collateral.ilk.name} "
-                                     f"--increasing-gas 23000000000 1 3600 "
                                      f"--model ./bogus-model.sh"), web3=self.mcd.web3)
         self.keeper.approve()
 
-        assert isinstance(self.keeper.gas_price, IncreasingGasPrice)
-        self.default_gas_price = self.keeper.gas_price.initial_price
+        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
+        self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
 
     @staticmethod
     def gem_balance(address: Address, c: Collateral) -> Wad:

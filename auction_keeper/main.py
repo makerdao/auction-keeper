@@ -29,7 +29,6 @@ from web3 import Web3, HTTPProvider
 
 from pymaker import Address
 from pymaker.deployment import DssDeployment
-from pymaker.gas import DefaultGasPrice, IncreasingGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
 from pymaker.numeric import Wad, Ray, Rad
@@ -109,9 +108,13 @@ class AuctionKeeper:
                                help="Use etherchain.org gas price")
         gas_group.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
                                help="Use POANetwork gas price")
-        gas_group.add_argument("--increasing-gas", type=str, nargs="+",
-                               help="Provide an initial price (Gwei), increment (Gwei), and delay (seconds)")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
+        parser.add_argument("--gas-initial-multiplier", type=float, default=1.05,
+                            help="Adjusts the initial API-provided 'fast' gas price, default 1.05 (5%)")
+        parser.add_argument("--gas-reactive-multiplier", type=float, default=1.125,
+                            help="Inrceases gas price when transactions haven't been mined after some time")
+        parser.add_argument("--gas-maximum", type=float, default=100000,
+                            help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -183,13 +186,8 @@ class AuctionKeeper:
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Create gas strategy used for non-bids and bids which do not supply gas price
-        if self.arguments.increasing_gas:
-            gas_args = self.arguments.increasing_gas
-            if not 3 <= len(gas_args) <= 4:
-                raise RuntimeError("Please provide initial price, increment, and interval for increasing gas price")
-            self.gas_price = AuctionKeeper.create_increasing_gas_strategy(gas_args)
-        else:
-            self.gas_price = DynamicGasPrice(self.arguments)
+        self.gas_price = DynamicGasPrice(self.arguments)
+        # TODO: Log a message explaining the gas configuration
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
@@ -213,23 +211,6 @@ class AuctionKeeper:
         logging.getLogger("asyncio").setLevel(logging.INFO)
         logging.getLogger("requests").setLevel(logging.INFO)
 
-    @staticmethod
-    def create_increasing_gas_strategy(gas_args) -> IncreasingGasPrice:
-        def gwei_to_wei(arg: str):
-            assert isinstance(arg, str)
-            return int(round(float(arg) * DynamicGasPrice.GWEI))
-
-        description = f"Gas price will start at {gas_args[0]}Gwei and increase by {gas_args[1]}Gwei "\
-                      f"every {gas_args[2]} seconds"
-        if len(gas_args) == 4:
-            description += f" up to {gas_args[3]}Gwei"
-        logging.info(description)
-
-        return IncreasingGasPrice(
-                initial_price=gwei_to_wei(gas_args[0]),
-                increase_by=gwei_to_wei(gas_args[1]),
-                every_secs=int(gas_args[2]),
-                max_price=gwei_to_wei(gas_args[3]) if len(gas_args) == 4 else None)
 
     def main(self):
         def seq_func(check_func: callable):

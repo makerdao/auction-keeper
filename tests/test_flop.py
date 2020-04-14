@@ -18,6 +18,7 @@
 import pytest
 import time
 
+from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from auction_keeper.strategy import FlopperStrategy
@@ -26,7 +27,6 @@ from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.auctions import Flopper
 from pymaker.deployment import DssDeployment
-from pymaker.gas import IncreasingGasPrice
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
     models, our_address, other_address, reserve_dai, simulate_model_output, web3
@@ -82,12 +82,11 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
                                               f"--from-block 1 "
-                                              f"--increasing-gas 36900000000 1 3600 50000000000 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
-        assert isinstance(self.keeper.gas_price, IncreasingGasPrice)
-        self.default_gas_price = self.keeper.gas_price.initial_price
+        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
+        self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
 
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.keeper_address, Wad.from_number(200.00000))
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
