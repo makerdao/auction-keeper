@@ -50,7 +50,7 @@ class DynamicGasPrice(GasPrice):
             self.gas_station = POANetwork(refresh_interval=60, expiry=600, alt_url=arguments.poanetwork_url)
         self.initial_multiplier = arguments.gas_initial_multiplier
         self.reactive_multiplier = arguments.gas_reactive_multiplier
-        self.gas_maximum = arguments.gas_maximum
+        self.gas_maximum = arguments.gas_maximum * self.GWEI
 
     def get_gas_price(self, time_elapsed: int) -> Optional[int]:
         # start with fast price
@@ -66,15 +66,15 @@ class DynamicGasPrice(GasPrice):
         # TODO: Consider logging a warning that TX hasn't been mined after 30sec.
         else:
             # CAUTION: Since this is stateless, fast_price may have dropped, which means the reactive multiplier
-            # cannot guarantee a replacement will occur.
+            #  cannot guarantee a replacement will occur.
             return GeometricGasPrice(initial_price=fast_price,
                                      every_secs=30,
                                      coefficient=self.reactive_multiplier,
-                                     max_price=self.gas_maximum * self.GWEI).get_gas_price(time_elapsed)
+                                     max_price=self.gas_maximum).get_gas_price(time_elapsed)
 
     # default gas pricing when remote feed is down or not configured
     def default_gas_pricing(self, time_elapsed: int):
         return GeometricGasPrice(initial_price=10*self.GWEI,
                                  every_secs=30,
                                  coefficient=self.reactive_multiplier,
-                                 max_price=self.gas_maximum*self.GWEI).get_gas_price(time_elapsed)
+                                 max_price=self.gas_maximum).get_gas_price(time_elapsed)

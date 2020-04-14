@@ -25,7 +25,12 @@ from auction_keeper.gas import DynamicGasPrice
 from tests.helper import args
 
 
+GWEI = 1000000000
+default_initial_gas = 10
+default_max_gas = 100000
+
 class TestGasStrategy:
+
     def test_ethgasstation(self, mcd, keeper_address):
         # given
         c = mcd.collaterals['ETH-A']
@@ -72,56 +77,51 @@ class TestGasStrategy:
         assert isinstance(keeper.gas_price.gas_station, POANetwork)
         assert keeper.gas_price.gas_station.URL == "http://localhost:8000"
 
-    def test_increasing(self, mcd, keeper_address):
+    def test_default_gas_config(self, web3, keeper_address):
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type flop --from-block 1 "
+                                         f"--model ./bogus-model.sh"), web3=web3)
+
+        assert isinstance(keeper.gas_price, DynamicGasPrice)
+        assert keeper.gas_price.initial_multiplier == 1.0
+        assert keeper.gas_price.reactive_multiplier == 2.25
+        assert keeper.gas_price.gas_maximum == default_max_gas * GWEI
+
+        assert keeper.gas_price.get_gas_price(0) == default_initial_gas * GWEI
+        assert keeper.gas_price.get_gas_price(31) == default_initial_gas * GWEI * 2.25
+        assert keeper.gas_price.get_gas_price(61) == default_initial_gas * GWEI * 2.25 ** 2
+        assert keeper.gas_price.get_gas_price(91) == default_initial_gas * GWEI * 2.25 ** 3
+        assert keeper.gas_price.get_gas_price(30*80) == default_max_gas * GWEI
+
+    def test_nondefault(self, mcd, keeper_address):
         # given
         c = mcd.collaterals['ETH-A']
+
+        reactive_multipler = 1.125 * 2
+
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
                                          f"--from-block 1 "
                                          f"--ilk {c.ilk.name} "
+                                         f"--gas-reactive-multiplier {reactive_multipler} "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
-        GWEI = 1000000000
-        assert keeper.gas_price.get_gas_price(0) == 10 * GWEI
-        assert keeper.gas_price.get_gas_price(31) == 10 * GWEI * 1.125
-        assert keeper.gas_price.get_gas_price(61) == 10 * GWEI * 1.125 * 1.125
-        assert keeper.gas_price.get_gas_price(91) == 10 * GWEI * 1.125 * 1.125 * 1.125
+        initial_amount = default_initial_gas * GWEI
+        assert keeper.gas_price.get_gas_price(0) == initial_amount
+        assert keeper.gas_price.get_gas_price(31) == initial_amount * reactive_multipler
+        assert keeper.gas_price.get_gas_price(61) == initial_amount * reactive_multipler ** 2
+        assert keeper.gas_price.get_gas_price(91) == initial_amount * reactive_multipler ** 3
+        assert keeper.gas_price.get_gas_price(30*12) == default_max_gas * GWEI
 
-    def test_default_gas_config(self, web3, keeper_address):
-        default_behavior = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+    def test_increasing_gas_config_negative(self, web3, keeper_address):
+        with pytest.raises(SystemExit):
+            missing_arg = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                                    f"--type flop --from-block 1 "
+                                                   f"--gas-reactive-multiplier "
                                                    f"--model ./bogus-model.sh"), web3=web3)
-        assert isinstance(default_behavior.gas_price, DynamicGasPrice)
 
-    # def test_increasing_gas_config(self, web3, keeper_address):
-    #     increasing_no_max = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-    #                                                f"--type flop --from-block 1 "
-    #                                                f"--increasing-gas 1000 20 3 "
-    #                                                f"--model ./bogus-model.sh"), web3=web3)
-    #     assert isinstance(increasing_no_max.gas_price, IncreasingGasPrice)
-    #     assert increasing_no_max.gas_price.initial_price == 1000 * DynamicGasPrice.GWEI
-    #     assert increasing_no_max.gas_price.increase_by == 20 * DynamicGasPrice.GWEI
-    #     assert increasing_no_max.gas_price.every_secs == 3
-    #
-    #     increasing_max = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-    #                                                 f"--type flop --from-block 1 "
-    #                                                 f"--increasing-gas 2000 30 4 50000 "
-    #                                                 f"--model ./bogus-model.sh"), web3=web3)
-    #     assert isinstance(increasing_max.gas_price, IncreasingGasPrice)
-    #     assert increasing_max.gas_price.initial_price == 2000 * DynamicGasPrice.GWEI
-    #     assert increasing_max.gas_price.increase_by == 30 * DynamicGasPrice.GWEI
-    #     assert increasing_max.gas_price.every_secs == 4
-    #     assert increasing_max.gas_price.max_price == 50000 * DynamicGasPrice.GWEI
-    #
-    # def test_increasing_gas_config_negative(self, web3, keeper_address):
-    #     with pytest.raises(Exception):
-    #         not_enough_args = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-    #                                                f"--type flop --from-block 1 "
-    #                                                f"--increasing-gas 1 2 "
-    #                                                f"--model ./bogus-model.sh"), web3=web3)
-    #
-    #     with pytest.raises(SystemExit):
-    #         conflicting_args = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-    #                                                f"--type flop --from-block 1 "
-    #                                                f"--increasing-gas 3 4 5 "
-    #                                                f"--poanetwork-gas-price "
-    #                                                f"--model ./bogus-model.sh"), web3=web3)
+        with pytest.raises(SystemExit):
+            conflicting_args = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                   f"--type flop --from-block 1 "
+                                                   f"--etherchain-gas-price "
+                                                   f"--poanetwork-gas-price "
+                                                   f"--model ./bogus-model.sh"), web3=web3)
