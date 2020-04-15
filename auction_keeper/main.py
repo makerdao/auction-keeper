@@ -108,6 +108,8 @@ class AuctionKeeper:
                                help="Use etherchain.org gas price")
         gas_group.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
                                help="Use POANetwork gas price")
+        gas_group.add_argument('--fixed-gas-price', type=float, default=None,
+                               help="Uses a fixed value (in Gwei) instead of an external API to determine initial gas")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
         parser.add_argument("--gas-initial-multiplier", type=float, default=1.0,
                             help="Adjusts the initial API-provided 'fast' gas price, default 1.0")

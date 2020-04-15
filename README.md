@@ -189,25 +189,25 @@ governance process.  A complete list of `ilk`s for a deployment may be gleaned f
 
 ## Gas price strategy
 
-Auction keeper can be configured to use several API sources for retrieving gas prices:  
+Auction keeper can use one of several sources for the initial gas price of a transaction:  
  * **Ethgasstation** if a key is passed as `--ethgasstation-api-key` (e.g. `--ethgasstation-api-key MY_API_KEY`)  
  * **Etherchain.org** if keeper started with `--etherchain-gas-price` switch  
  * **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
     that is useful when server hosted locally (e.g. `--poanetwork-url http://localhost:8000`)  
+ * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 12.4`) 
+ 
+When using an API source for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the initial 
+value provided by the API.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no 
+initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price of 
+10 Gwei.
 
-Auction keeper also supports a gas strategy which automatically increases gas price when transactions are queueing.
-To use this, pass `--increasing-gas [INITIAL_PRICE] [INCREMENT] [DELAY] ([MAX_PRICE])` where:
-
- * `INITIAL_PRICE` is the starting gas price, in Gwei
- * `INCREMENT` is the amount (in Gwei) to increase; ensure this is at least 12.5% of the initial price
- * `DELAY` is the number of seconds waited before increasing gas on a queued transaction
- * optionally, `MAX_PRICE` is the highest gas price to submit
-
-If no gas price type specified or gas price API not accessible then keeper will apply an increased gas price, starting
-with a value of 5 GWEI and increased by 10 GWEI each minute, up to 100 GWEI.
+Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a 
+transaction's gas price will be multiplied by `--gas-initial-multiplier` (default `2.25`, or 225%) until it is mined or 
+`--gas-maximum` (default 100000 Gwei) is reached.
 
 This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only 
-when the model does not provide a gas price.
+when the model does not provide a gas price.  Unless your price model is aware of your transaction status, it is 
+generally advisable to allow the keeper to manage gas prices for bids, and not supply a `gasPrice` in your model.
 
 
 ### Accounting

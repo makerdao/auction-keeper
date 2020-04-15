@@ -93,11 +93,10 @@ class TestGasStrategy:
         assert keeper.gas_price.get_gas_price(91) == default_initial_gas * GWEI * 2.25 ** 3
         assert keeper.gas_price.get_gas_price(30*80) == default_max_gas * GWEI
 
-    def test_nondefault(self, mcd, keeper_address):
-        # given
+    def test_no_api_non_fixed(self, mcd, keeper_address):
         c = mcd.collaterals['ETH-A']
 
-        reactive_multipler = 1.125 * 2
+        reactive_multipler = 1.125 * 3
 
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
@@ -112,7 +111,25 @@ class TestGasStrategy:
         assert keeper.gas_price.get_gas_price(91) == initial_amount * reactive_multipler ** 3
         assert keeper.gas_price.get_gas_price(30*12) == default_max_gas * GWEI
 
-    def test_increasing_gas_config_negative(self, web3, keeper_address):
+    def test_fixed_with_explicit_max(self, web3, keeper_address):
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type flap "
+                                         f"--fixed-gas 100 "
+                                         f'--gas-maximum 4000 '
+                                         f"--model ./bogus-model.sh"), web3=web3)
+
+        assert isinstance(keeper.gas_price, DynamicGasPrice)
+        assert keeper.gas_price.fixed_gas == 100 * GWEI
+        assert keeper.gas_price.reactive_multiplier == 2.25
+        assert keeper.gas_price.gas_maximum == 4000 * GWEI
+
+        assert keeper.gas_price.get_gas_price(0) == 100 * GWEI
+        assert keeper.gas_price.get_gas_price(31) == 100 * GWEI * 2.25
+        assert keeper.gas_price.get_gas_price(61) == 100 * GWEI * 2.25 ** 2
+        assert keeper.gas_price.get_gas_price(91) == 100 * GWEI * 2.25 ** 3
+        assert keeper.gas_price.get_gas_price(30*5) == 4000 * GWEI
+
+    def test_config_negative(self, web3, keeper_address):
         with pytest.raises(SystemExit):
             missing_arg = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                                    f"--type flop --from-block 1 "

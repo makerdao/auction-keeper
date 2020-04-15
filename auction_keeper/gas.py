@@ -42,39 +42,33 @@ class DynamicGasPrice(GasPrice):
 
     def __init__(self, arguments):
         self.gas_station = None
+        self.fixed_gas = None
         if arguments.ethgasstation_api_key:
             self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=arguments.ethgasstation_api_key)
         elif arguments.etherchain_gas:
             self.gas_station = EtherchainOrg(refresh_interval=60, expiry=600)
         elif arguments.poanetwork_gas:
             self.gas_station = POANetwork(refresh_interval=60, expiry=600, alt_url=arguments.poanetwork_url)
+        elif arguments.fixed_gas_price:
+            self.fixed_gas = int(round(arguments.fixed_gas_price * self.GWEI))
         self.initial_multiplier = arguments.gas_initial_multiplier
         self.reactive_multiplier = arguments.gas_reactive_multiplier
-        self.gas_maximum = arguments.gas_maximum * self.GWEI
+        self.gas_maximum = int(round(arguments.gas_maximum * self.GWEI))
+        if self.fixed_gas:
+            assert self.fixed_gas <= self.gas_maximum
 
     def get_gas_price(self, time_elapsed: int) -> Optional[int]:
-        # start with fast price
+        # start with fast price from the configured gas API
         fast_price = self.gas_station.fast_price() if self.gas_station else None
 
-        # if API produces no price, or remote feed not configured, use the default strategy
+        # if API produces no price, or remote feed not configured, start with a fixed price
         if fast_price is None:
-            return self.default_gas_pricing(time_elapsed)
-        # start with the fast price times an initial multiplier which tunes aggressiveness
-        elif time_elapsed < 30:
-            return fast_price * self.initial_multiplier
-        # if we get here often; the initial multiplier is insufficiently aggressive
-        # TODO: Consider logging a warning that TX hasn't been mined after 30sec.
+            initial_price = self.fixed_gas if self.fixed_gas else 10 * self.GWEI
+        # otherwise, use the API's fast price, adjusted by a coefficient, as our starting point
         else:
-            # CAUTION: Since this is stateless, fast_price may have dropped, which means the reactive multiplier
-            #  cannot guarantee a replacement will occur.
-            return GeometricGasPrice(initial_price=fast_price,
-                                     every_secs=30,
-                                     coefficient=self.reactive_multiplier,
-                                     max_price=self.gas_maximum).get_gas_price(time_elapsed)
+            initial_price = int(round(fast_price * self.initial_multiplier))
 
-    # default gas pricing when remote feed is down or not configured
-    def default_gas_pricing(self, time_elapsed: int):
-        return GeometricGasPrice(initial_price=10*self.GWEI,
+        return GeometricGasPrice(initial_price=initial_price,
                                  every_secs=30,
                                  coefficient=self.reactive_multiplier,
                                  max_price=self.gas_maximum).get_gas_price(time_elapsed)
