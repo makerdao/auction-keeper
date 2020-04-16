@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from pprint import pformat
 from typing import Optional
 
 from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
@@ -72,3 +73,18 @@ class DynamicGasPrice(GasPrice):
                                  every_secs=30,
                                  coefficient=self.reactive_multiplier,
                                  max_price=self.gas_maximum).get_gas_price(time_elapsed)
+
+    def __str__(self):
+        retval = ""
+        if self.gas_station:
+            retval = f"{type(self.gas_station)} fast gas price with initial multiplier {self.initial_multiplier} "
+        elif self.fixed_gas:
+            retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
+        else:
+            retval = f"Default gas 10 Gwei "
+
+        retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of {self.gas_maximum}"
+        return retval
+
+    def __repr__(self):
+        return f"DynamicGasPrice({pformat(vars(self))})"

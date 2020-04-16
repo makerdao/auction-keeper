@@ -189,7 +189,6 @@ class AuctionKeeper:
 
         # Create gas strategy used for non-bids and bids which do not supply gas price
         self.gas_price = DynamicGasPrice(self.arguments)
-        # TODO: Log a message explaining the gas configuration
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
@@ -289,6 +288,8 @@ class AuctionKeeper:
             logging.info("*** When Keeper is kicking, the recurring query of Vaults will likely take > 30 minutes each loop without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
+
+        logging.info(f"Keeper will use {self.gas_price} for transactions and bids unless model instructs otherwise")
 
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
@@ -575,23 +576,23 @@ class AuctionKeeper:
                     if isinstance(auction.gas_price, UpdatableGasPrice):
                         fixed_gas_price_changed = output.gas_price != auction.gas_price.gas_price
                     else:
-                        self.logger.info(f"Model supplied gas price {output.gas_price}, switching to UpdatableGasPrice "
+                        self.logger.debug(f"Model supplied gas price {output.gas_price}, switching to UpdatableGasPrice "
                                          f"for auction {id}")
                         new_gas_strategy = UpdatableGasPrice(output.gas_price)
                 # ...and the model stopped supplying gas price
                 elif not output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
-                    self.logger.info(f"Model did not supply gas price; switching to our gas strategy for auction {id}")
+                    self.logger.debug(f"Model did not supply gas price; switching to our gas strategy for auction {id}")
                     new_gas_strategy = self.gas_price
             # ...else create the gas strategy relevant to the model
             else:
                 # model is supplying gas price
                 if output.gas_price:
-                    self.logger.info(f"Model supplied gas price {output.gas_price}, creating UpdatableGasPrice "
+                    self.logger.debug(f"Model supplied gas price {output.gas_price}, creating UpdatableGasPrice "
                                      f"for auction {id}")
                     new_gas_strategy = UpdatableGasPrice(output.gas_price)
                 # use the keeper's configured gas strategy for the auction
                 else:
-                    self.logger.info("Model did not supply gas price; using our gas strategy")
+                    self.logger.debug("Model did not supply gas price; using our gas strategy")
                     new_gas_strategy = self.gas_price
 
             # if no transaction in progress, send a new one
