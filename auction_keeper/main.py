@@ -527,6 +527,8 @@ class AuctionKeeper:
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
                 self.rebalance_dai()
+            else:
+                logging.debug(f"Not dealing {id} with guy={input.guy}")
 
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
@@ -567,33 +569,7 @@ class AuctionKeeper:
 
         if bid_price is not None and bid_transact is not None:
             # Ensure this auction has a gas strategy assigned
-            new_gas_strategy = None
-            fixed_gas_price_changed = False
-            # if the auction already has a gas strategy...
-            if auction.gas_price:
-                # ...and the model just started supplying gas price
-                if output.gas_price:
-                    if isinstance(auction.gas_price, UpdatableGasPrice):
-                        fixed_gas_price_changed = output.gas_price != auction.gas_price.gas_price
-                    else:
-                        self.logger.debug(f"Model supplied gas price {output.gas_price}, switching to UpdatableGasPrice "
-                                         f"for auction {id}")
-                        new_gas_strategy = UpdatableGasPrice(output.gas_price)
-                # ...and the model stopped supplying gas price
-                elif not output.gas_price and isinstance(auction.gas_price, UpdatableGasPrice):
-                    self.logger.debug(f"Model did not supply gas price; switching to our gas strategy for auction {id}")
-                    new_gas_strategy = self.gas_price
-            # ...else create the gas strategy relevant to the model
-            else:
-                # model is supplying gas price
-                if output.gas_price:
-                    self.logger.debug(f"Model supplied gas price {output.gas_price}, creating UpdatableGasPrice "
-                                     f"for auction {id}")
-                    new_gas_strategy = UpdatableGasPrice(output.gas_price)
-                # use the keeper's configured gas strategy for the auction
-                else:
-                    self.logger.debug("Model did not supply gas price; using our gas strategy")
-                    new_gas_strategy = self.gas_price
+            (new_gas_strategy, fixed_gas_price_changed) = auction.determine_gas_strategy_for_bid(output, self.gas_price)
 
             # if no transaction in progress, send a new one
             transaction_in_progress = auction.transaction_in_progress()

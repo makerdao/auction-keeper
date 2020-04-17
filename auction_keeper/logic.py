@@ -18,11 +18,14 @@
 import logging
 from typing import Optional
 
+from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.model import Stance, Parameters, Status, Model, ModelFactory
 from pymaker import Address, TransactStatus, Transact
 
 
 class Auction:
+    logger = logging.getLogger()
+
     def __init__(self, id: int, model: Model):
         assert isinstance(id, int)
 
@@ -52,6 +55,38 @@ class Auction:
 
     def model_output(self) -> Optional[Stance]:
         return self.model.get_stance()
+
+    def determine_gas_strategy_for_bid(self, model_output, keeper_gas_price):
+        # Ensure this auction has a gas strategy assigned
+        new_gas_strategy = None
+        fixed_gas_price_changed = False
+        # if the auction already has a gas strategy...
+        if self.gas_price:
+            # ...and the model just started supplying gas price
+            if model_output.gas_price:
+                if isinstance(self.gas_price, UpdatableGasPrice):
+                    fixed_gas_price_changed = model_output.gas_price != self.gas_price.gas_price
+                else:
+                    self.logger.debug(f"Model supplied gas price {model_output.gas_price}, "
+                                      f"switching to UpdatableGasPrice for auction {id}")
+                    new_gas_strategy = UpdatableGasPrice(model_output.gas_price)
+            # ...and the model stopped supplying gas price
+            elif not model_output.gas_price and isinstance(self.gas_price, UpdatableGasPrice):
+                self.logger.debug(f"Model did not supply gas price; switching to keeper gas strategy for auction {id}")
+                new_gas_strategy = keeper_gas_price
+        # ...else create the gas strategy relevant to the model
+        else:
+            # model is supplying gas price
+            if model_output.gas_price:
+                self.logger.debug(f"Model supplied gas price {model_output.gas_price}, creating UpdatableGasPrice "
+                                  f"for auction {id}")
+                new_gas_strategy = UpdatableGasPrice(model_output.gas_price)
+            # use the keeper's configured gas strategy for the auction
+            else:
+                self.logger.debug("Model did not supply gas price; using keeper gas strategy")
+                new_gas_strategy = keeper_gas_price
+
+        return new_gas_strategy, fixed_gas_price_changed
 
 
 class Auctions:
