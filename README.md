@@ -202,8 +202,11 @@ initial gas source is configured, or the gas price API produces no result, then 
 10 Gwei.
 
 Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a 
-transaction's gas price will be multiplied by `--gas-initial-multiplier` (default `2.25`, or 225%) until it is mined or 
-`--gas-maximum` (default 100000 Gwei) is reached.
+transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `2.25`, or 225%) until it is mined or 
+`--gas-maximum` (default 100000 Gwei) is reached.  Note that 
+[Parity](https://wiki.parity.io/Transactions-Queue#dropping-conditions), as of this writing, requires a minimum 
+gas increase of `1.125` (112.5%) to propogate transaction replacement; this should be treated as a minimum value unless 
+you want replacements to happen less frequently than 30 seconds (2+ blocks). 
 
 This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only 
 when the model does not provide a gas price.  Unless your price model is aware of your transaction status, it is 
