@@ -27,7 +27,7 @@ from tests.helper import args
 
 GWEI = 1000000000
 default_initial_gas = 10
-default_max_gas = 100000
+default_max_gas = 5000
 
 class TestGasStrategy:
 

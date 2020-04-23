@@ -554,6 +554,49 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flapper.ttl() + 1)
         assert self.flapper.deal(kick).transact()
 
+    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
+
+        # when
+        first_bid = Wad.from_number(0.0000009)
+        simulate_model_output(model=model, price=first_bid, gas_price=2000)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 2000
+
+        # when
+        second_bid = Wad.from_number(0.0000006)
+        simulate_model_output(model=model, price=second_bid)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(kick).bid == Wad(lot / Rad(second_bid))
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.default_gas_price
+
+        # when
+        third_bid = Wad.from_number(0.0000003)
+        new_gas_price = int(self.default_gas_price*1.25)
+        simulate_model_output(model=model, price=third_bid, gas_price=new_gas_price)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(kick).bid == Wad(lot / Rad(third_bid))
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
+
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
     @classmethod
     def teardown_class(cls):
         cls.mcd = mcd(web3())

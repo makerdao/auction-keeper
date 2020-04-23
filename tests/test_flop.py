@@ -607,6 +607,48 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flopper.ttl() + 1)
         assert self.flopper.deal(kick).transact()
 
+    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+
+        # when
+        first_bid = Wad.from_number(90)
+        simulate_model_output(model=model, price=first_bid, gas_price=2000)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 2000
+
+        # when
+        second_bid = Wad.from_number(100)
+        simulate_model_output(model=model, price=second_bid)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert round(Rad(self.flopper.bids(kick).lot), 2) == round(self.sump / Rad(second_bid), 2)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.default_gas_price
+
+        # when
+        third_bid = Wad.from_number(110)
+        new_gas_price = int(self.default_gas_price*1.25)
+        simulate_model_output(model=model, price=third_bid, gas_price=new_gas_price)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert round(Rad(self.flopper.bids(kick).lot), 2) == round(self.sump / Rad(third_bid), 2)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
+
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
     @classmethod
     def teardown_class(cls):
         cls.cleanup_debt(web3(), mcd(web3()), other_address(web3()))

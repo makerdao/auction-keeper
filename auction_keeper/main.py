@@ -115,7 +115,7 @@ class AuctionKeeper:
                             help="Adjusts the initial API-provided 'fast' gas price, default 1.0")
         parser.add_argument("--gas-reactive-multiplier", type=float, default=2.25,
                             help="Increases gas price when transactions haven't been mined after some time")
-        parser.add_argument("--gas-maximum", type=float, default=100000,
+        parser.add_argument("--gas-maximum", type=float, default=5000,
                             help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
 
         parser.add_argument("--debug", dest='debug', action='store_true',

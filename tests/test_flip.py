@@ -785,6 +785,49 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
+    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+        # given
+        flipper = self.collateral.flipper
+        (model, model_factory) = models(self.keeper, kick)
+
+        # when
+        first_bid = Wad.from_number(3)
+        self.simulate_model_bid(self.mcd, self.collateral, model=model, price=first_bid, gas_price=2000)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 2000
+
+        # when
+        second_bid = Wad.from_number(6)
+        self.simulate_model_bid(self.mcd, self.collateral, model=model, price=second_bid)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert flipper.bids(kick).bid == Rad(second_bid * tend_lot)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.default_gas_price
+
+        # when
+        third_bid = Wad.from_number(9)
+        new_gas_price = int(self.default_gas_price*1.25)
+        self.simulate_model_bid(self.mcd, self.collateral, model=model, price=third_bid, gas_price=new_gas_price)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert flipper.bids(kick).bid == Rad(third_bid * tend_lot)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
+
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        assert flipper.deal(kick).transact()
+
     @classmethod
     def teardown_class(cls):
         flog_and_heal(web3(), mcd(web3()), past_blocks=1200, require_heal=False)
