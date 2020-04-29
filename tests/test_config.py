@@ -19,6 +19,7 @@ import asyncio
 import time
 import pytest
 
+from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address, Transact, Wad
 from pymaker.auctions import Flipper, Flapper, Flopper

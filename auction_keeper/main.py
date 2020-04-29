@@ -28,9 +28,7 @@ from requests.exceptions import RequestException
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
-from pymaker.approval import hope_directly
 from pymaker.deployment import DssDeployment
-from pymaker.gas import DefaultGasPrice
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
 from pymaker.numeric import Wad, Ray, Rad
@@ -104,12 +102,21 @@ class AuctionKeeper:
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
-        parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
-        parser.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
-                            help="Use etherchain.org gas price")
-        parser.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
-                            help="Use POANetwork gas price")
+        gas_group = parser.add_mutually_exclusive_group()
+        gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
+        gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
+                               help="Use etherchain.org gas price")
+        gas_group.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
+                               help="Use POANetwork gas price")
+        gas_group.add_argument('--fixed-gas-price', type=float, default=None,
+                               help="Uses a fixed value (in Gwei) instead of an external API to determine initial gas")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
+        parser.add_argument("--gas-initial-multiplier", type=float, default=1.0,
+                            help="Adjusts the initial API-provided 'fast' gas price, default 1.0")
+        parser.add_argument("--gas-reactive-multiplier", type=float, default=2.25,
+                            help="Increases gas price when transactions haven't been mined after some time")
+        parser.add_argument("--gas-maximum", type=float, default=5000,
+                            help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
@@ -177,14 +184,14 @@ class AuctionKeeper:
         self.dead_auctions = set()
         self.lifecycle = None
 
-        # Create gas strategy used for non-bids
+        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
+                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
+
+        # Create gas strategy used for non-bids and bids which do not supply gas price
         self.gas_price = DynamicGasPrice(self.arguments)
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
-
-        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
-                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Configure account(s) for which we'll deal auctions
         self.deal_all = False
@@ -204,6 +211,7 @@ class AuctionKeeper:
         logging.getLogger("web3").setLevel(logging.INFO)
         logging.getLogger("asyncio").setLevel(logging.INFO)
         logging.getLogger("requests").setLevel(logging.INFO)
+
 
     def main(self):
         def seq_func(check_func: callable):
@@ -268,7 +276,7 @@ class AuctionKeeper:
         elif len(self.deal_for) == 1:
             notice_string.append(f"--> Check all auctions and deal for {list(self.deal_for)[0].address}")
         elif len(self.deal_for) > 0:
-            notice_string.append(f"--> Check all auctions and deal for {self.deal_for} addresses")
+            notice_string.append(f"--> Check all auctions and deal for {[a.address for a in self.deal_for]} addresses")
         else:
             logging.info("Keeper will not deal auctions")
 
@@ -280,6 +288,8 @@ class AuctionKeeper:
             logging.info("*** When Keeper is kicking, the recurring query of Vaults will likely take > 30 minutes each loop without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
+
+        logging.info(f"Keeper will use {self.gas_price} for transactions and bids unless model instructs otherwise")
 
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
@@ -517,6 +527,8 @@ class AuctionKeeper:
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
                 self.rebalance_dai()
+            else:
+                logging.debug(f"Not dealing {id} with guy={input.guy}")
 
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
@@ -556,40 +568,56 @@ class AuctionKeeper:
                 return
 
         if bid_price is not None and bid_transact is not None:
+            # Ensure this auction has a gas strategy assigned
+            (new_gas_strategy, fixed_gas_price_changed) = auction.determine_gas_strategy_for_bid(output, self.gas_price)
+
             # if no transaction in progress, send a new one
             transaction_in_progress = auction.transaction_in_progress()
 
+            # if transaction has not been submitted...
             if transaction_in_progress is None:
-                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price})")
-
+                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price}) for auction {id}")
                 auction.price = bid_price
-                auction.gas_price = UpdatableGasPrice(output.gas_price)
+                auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
                 auction.register_transaction(bid_transact)
 
+                # ...submit a new transaction and wait the delay period (if so configured)
                 self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
                 if self.arguments.bid_delay:
                     logging.debug(f"Waiting {self.arguments.bid_delay}s")
                     time.sleep(self.arguments.bid_delay)
 
-            # if transaction in progress and gas price went up...
-            elif output.gas_price and output.gas_price > auction.gas_price.gas_price:
-
-                # ...replace the entire bid if the price has changed...
-                if bid_price != auction.price:
-                    self.logger.info(
-                        f"Overriding pending bid with new bid @{output.price} (gas_price={output.gas_price})")
-
-                    auction.price = bid_price
-                    auction.gas_price = UpdatableGasPrice(output.gas_price)
-                    auction.register_transaction(bid_transact)
-
-                    self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
-                                                                 gas_price=auction.gas_price))
-                # ...or just replace gas_price if price stays the same
-                else:
-                    self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price})")
-
+            # if transaction in progress and the bid price changed...
+            elif bid_price != auction.price:
+                self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
+                auction.price = bid_price
+                if new_gas_strategy:  # gas strategy changed
+                    auction.gas_price = new_gas_strategy
+                elif fixed_gas_price_changed:  # gas price updated
+                    assert isinstance(auction.gas_price, UpdatableGasPrice)
                     auction.gas_price.update_gas_price(output.gas_price)
+                auction.register_transaction(bid_transact)
+
+                # ...ask pymaker to replace the transaction
+                self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                             gas_price=auction.gas_price))
+
+            # if model has been providing a gas price, and only that changed...
+            elif fixed_gas_price_changed:
+                assert isinstance(auction.gas_price, UpdatableGasPrice)
+                self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price}) for auction {id}")
+                auction.gas_price.update_gas_price(output.gas_price)
+
+            # if transaction in progress, bid price unchanged, but gas strategy changed...
+            elif new_gas_strategy:
+                self.logger.info(f"Changing gas strategy for pending bid @{output.price} for auction {id}")
+                auction.price = bid_price
+                auction.gas_price = new_gas_strategy
+                auction.register_transaction(bid_transact)
+
+                # ...ask pymaker to replace the transaction
+                self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                             gas_price=auction.gas_price))
 
     def check_bid_cost(self, cost: Rad) -> bool:
         assert isinstance(cost, Rad)

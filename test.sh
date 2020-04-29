@@ -21,4 +21,3 @@ docker-compose down
 popd
 
 exit $TEST_RESULT
-

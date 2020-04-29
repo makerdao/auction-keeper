@@ -18,6 +18,7 @@
 import math
 import pytest
 
+from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from pymaker.approval import directly, hope_directly
@@ -58,12 +59,15 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flap "
                                               f"--from-block 1 "
-                                              f"--bid-check-interval 0.05 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
         mint_mkr(self.mcd.mkr, self.keeper_address, Wad.from_number(50000))
         mint_mkr(self.mcd.mkr, self.other_address, Wad.from_number(50000))
+
+        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
+        # Since no args were assigned, gas strategy should return a GeometricGasPrice starting at 10 Gwei
+        self.default_gas_price = 10 * DynamicGasPrice.GWEI
 
     def test_should_detect_flap(self, web3, mcd, c, gal_address, keeper_address):
         # given some MKR is available to the keeper and a count of flap auctions
@@ -542,7 +546,52 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert auction.guy == self.keeper_address
         assert auction.bid > Wad(0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
-               self.web3.eth.gasPrice
+               self.default_gas_price
+
+        print(f"tx gas price is {self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice}, web3.eth.gasPrice is {self.web3.eth.gasPrice}")
+
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
+    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+        lot = self.flapper.bids(kick).lot
+
+        # when
+        first_bid = Wad.from_number(0.0000009)
+        simulate_model_output(model=model, price=first_bid, gas_price=2000)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 2000
+
+        # when
+        second_bid = Wad.from_number(0.0000006)
+        simulate_model_output(model=model, price=second_bid)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(kick).bid == Wad(lot / Rad(second_bid))
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.default_gas_price
+
+        # when
+        third_bid = Wad.from_number(0.0000003)
+        new_gas_price = int(self.default_gas_price*1.25)
+        simulate_model_output(model=model, price=third_bid, gas_price=new_gas_price)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.flapper.bids(kick).bid == Wad(lot / Rad(third_bid))
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
 
         # cleanup
         time_travel_by(self.web3, self.flapper.ttl() + 1)

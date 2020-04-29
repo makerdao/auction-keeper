@@ -18,6 +18,7 @@
 import pytest
 import time
 
+from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from auction_keeper.strategy import FlopperStrategy
@@ -81,9 +82,11 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
                                               f"--from-block 1 "
-                                              f"--bid-check-interval 0.05 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
+
+        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
+        self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
 
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.keeper_address, Wad.from_number(200.00000))
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
@@ -598,7 +601,49 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         # then
         assert self.flopper.bids(kick).guy == self.keeper_address
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
-               self.web3.eth.gasPrice
+               self.default_gas_price
+
+        # cleanup
+        time_travel_by(self.web3, self.flopper.ttl() + 1)
+        assert self.flopper.deal(kick).transact()
+
+    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+
+        # when
+        first_bid = Wad.from_number(90)
+        simulate_model_output(model=model, price=first_bid, gas_price=2000)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 2000
+
+        # when
+        second_bid = Wad.from_number(100)
+        simulate_model_output(model=model, price=second_bid)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert round(Rad(self.flopper.bids(kick).lot), 2) == round(self.sump / Rad(second_bid), 2)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
+               self.default_gas_price
+
+        # when
+        third_bid = Wad.from_number(110)
+        new_gas_price = int(self.default_gas_price*1.25)
+        simulate_model_output(model=model, price=third_bid, gas_price=new_gas_price)
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        assert round(Rad(self.flopper.bids(kick).lot), 2) == round(self.sump / Rad(third_bid), 2)
+        assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
 
         # cleanup
         time_travel_by(self.web3, self.flopper.ttl() + 1)
