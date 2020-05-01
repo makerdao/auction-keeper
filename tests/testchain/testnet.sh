@@ -1,8 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-export SERVER_ETH_RPC_HOST=http://0.0.0.0
-export SERVER_ETH_RPC_PORT=8545
+export ETH_RPC_URL=http://0.0.0.0:8545
 
 export LOGS_DIR=../logs
 mkdir -p ${LOGS_DIR}

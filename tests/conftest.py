@@ -29,6 +29,7 @@ from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
 from pymaker.feed import DSValue
 from pymaker.keys import register_keys
+from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken, DSToken
 
@@ -154,6 +155,11 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
         print("max_dart is avoiding total debt ceiling")
         dart = Wad(debt - Rad(urn.art))
 
+    # ensure we've met the dust cutoff
+    if Rad(urn.art + dart) < ilk.dust:
+        print(f"max_dart is being bumped from {urn.art + dart} to {ilk.dust} to reach dust cutoff")
+        dart = Wad(ilk.dust)
+
     assert dart > Wad(0)
     return dart
 
@@ -216,16 +222,32 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
 
     # Add collateral to gal CDP if necessary
     c.approve(gal_address)
+    token = Token(c.ilk.name, c.gem.address, c.adapter.dec())
+    print(f"collateral_amount={collateral_amount} ink={urn.ink}")
     dink = collateral_amount - urn.ink
     if dink > Wad(0):
-        balance = c.gem.balance_of(gal_address)
-        if balance < dink:
-            wrap_eth(mcd, gal_address, dink - balance)
-            assert c.adapter.join(gal_address, dink - balance).transact(from_address=gal_address)
+        vat_balance = mcd.vat.gem(c.ilk, gal_address)
+        balance = token.normalize_amount(c.gem.balance_of(gal_address))
+        print(f"before join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
+        if vat_balance < dink:
+            vat_gap = dink - vat_balance
+            if balance < vat_gap:
+                if c.ilk.name.startswith("ETH"):
+                    wrap_eth(mcd, gal_address, vat_gap)
+                else:
+                    raise RuntimeError("Insufficient collateral balance")
+            amount_to_join = token.unnormalize_amount(vat_gap)
+            if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
+                amount_to_join += token.normalize_amount(Wad(1))
+            assert c.adapter.join(gal_address, amount_to_join).transact(from_address=gal_address)
+        vat_balance = mcd.vat.gem(c.ilk, gal_address)
+        print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
+        assert vat_balance >= dink
         assert mcd.vat.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
 
     # Put gal CDP at max possible debt
     dart = max_dart(mcd, c, gal_address) - Wad(1)
+    print(f"Attempting to frob with dart={dart}")
     assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
     # Draw our Dai, simulating the usual behavior
