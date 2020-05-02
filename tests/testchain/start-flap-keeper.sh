@@ -11,14 +11,12 @@ MODEL=$1
 ID=$2
 
 ../../bin/auction-keeper \
-    --rpc-host ${SERVER_ETH_RPC_HOST:?} \
-    --rpc-port ${SERVER_ETH_RPC_PORT?:} \
+    --rpc-host ${ETH_RPC_URL:?} \
     --rpc-timeout 30 \
     --eth-from ${ACCOUNT_ADDRESS?:} \
     --eth-key ${ACCOUNT_KEY?:} \
-    --type flop \
-    --network testnet \
-    --vat-dai-target 5000000 \
+    --type flap \
+    --vat-dai-target 300 \
     --keep-dai-in-vat-on-exit \
     --model ${dir}/${MODEL} \
     2> >(tee -a ${LOGS_DIR?:}/auction-keeper-${ID}.log >&2)

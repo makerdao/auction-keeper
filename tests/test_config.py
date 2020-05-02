@@ -146,12 +146,12 @@ class TestConfig:
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
                                          f"--from-block 1 "
-                                         f"--ilk ZRX-A "
+                                         f"--ilk USDC-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.flipper, Flipper)
         assert keeper.collateral.flipper == keeper.flipper
-        assert keeper.collateral.ilk.name == 'ZRX-A'
+        assert keeper.collateral.ilk.name == 'USDC-A'
         assert keeper.flapper is None
         assert keeper.flopper is None
         assert isinstance(keeper.cat, Cat)

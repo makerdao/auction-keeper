@@ -83,7 +83,8 @@ class DynamicGasPrice(GasPrice):
         else:
             retval = f"Default gas 10 Gwei "
 
-        retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of {self.gas_maximum}"
+        retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of " \
+                  f"{round(self.gas_maximum / self.GWEI, 1)} Gwei"
         return retval
 
     def __repr__(self):
