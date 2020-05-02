@@ -38,6 +38,8 @@ from auction_keeper.logic import Auction, Auctions
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 from auction_keeper.urn_history import UrnHistory
+from auction_keeper.balance_manager import Balance_Manager
+
 
 
 class AuctionKeeper:
@@ -101,7 +103,18 @@ class AuctionKeeper:
 
         parser.add_argument("--model", type=str, required=True, nargs='+',
                             help="Commandline to use in order to start the bidding model")
-
+        parser.add_argument("--max-eth-balance", type=float, required=True,
+                            help="Max ETH balance to store in keeper account before selling for DAI") 
+        parser.add_argument("--max-eth-sale", type=float, required=True, 
+                            help="Max ETH to sell in a single transaction in order to reduce risk of slippage")
+        parser.add_argument("--profit-margin", type=float, default=0.01, 
+                            help="Minimum percent discount from feed price for bidding")
+        parser.add_argument("--tab-discount", type=float, nargs=4, 
+                            help="Enables adaptive profit margins based on the amount of total Dai currently being auctioned. Useful for detecting when large CDPs or rapid declines in ETH price have occurred. Profit margins will be added to base profit margin.  Usage = tab level 1 in dai, discount 1, tab level 2 in dai, discount 2", default=[100000, .15, 25000, .01])
+        parser.add_argument("--bid-start-time", type=float, default=30, 
+                            help="Number of minutes before auction end time to start bidding")
+        parser.add_argument("--force-premium", dest='force_premium',
+                            action='store_true', help="Use to enable bidding with negative margins (i.e. above the market feed rate)")
         gas_group = parser.add_mutually_exclusive_group()
         gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
         gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
@@ -141,6 +154,12 @@ class AuctionKeeper:
         if self.arguments.type == 'flop' and self.arguments.create_auctions \
                 and self.arguments.from_block is None:
             raise RuntimeError("--from-block must be specified to kick off flop auctions")
+
+        if self.arguments.type != 'flip' and self.arguments.ilk != 'ETH-A':
+            raise RuntimeError("Thrifty Keeper only works with ETH-A Flip auctions")
+        
+        if self.arguments.profit_margin < 0 and not self.arguments.force_premium:
+            raise RuntimeError("Negative profit margins will place bids above market price.  Run with '--force-premium' to override")
 
         # Configure core and token contracts
         self.mcd = DssDeployment.from_node(web3=self.web3)
@@ -192,6 +211,12 @@ class AuctionKeeper:
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
+
+        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
+                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
+        
+        ###Thrifty Keeper
+        self.balance_manager = Balance_Manager(self.our_address, self.web3, self.mcd, self.ilk, self.gem_join, self.vat_dai_target, self.arguments.max_eth_balance, self.arguments.max_eth_sale, self.arguments.profit_margin, self.arguments.tab_discount, self.arguments.bid_start_time)
 
         # Configure account(s) for which we'll deal auctions
         self.deal_all = False
@@ -255,8 +280,10 @@ class AuctionKeeper:
                   f" {self.arguments.type} auctions once reached"
 
     def startup(self):
-        self.approve()
-        self.rebalance_dai()
+        #self.approve()
+        #### Thrifty Keeper Start-up
+        self.balance_manager.startup(self.gas_price)
+
         if self.flapper:
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
@@ -298,11 +325,15 @@ class AuctionKeeper:
             self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
+        if len(self.auctions.auctions)==0:
+           self.balance_manager.threader('save', self.gas_price)
+        else:
+            self.logger.info(f"Auctions still running so leaving Dai in Vat at close")
         with self.auctions_lock:
             del self.auctions
-        self.exit_dai_on_shutdown()
+        #self.exit_dai_on_shutdown()
         self.exit_collateral_on_shutdown()
-
+        
     def is_shutting_down(self) -> bool:
         return self.lifecycle and self.lifecycle.terminated_externally
 
@@ -314,6 +345,7 @@ class AuctionKeeper:
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
             assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
+
 
     def exit_collateral_on_shutdown(self):
         if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
@@ -357,7 +389,7 @@ class AuctionKeeper:
 
                 self._run_future(self.cat.bite(ilk, urn).transact_async(gas_price=self.gas_price))
 
-        self.logger.info(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
+        self.logger.debug(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
 
     def check_flap(self):
@@ -481,7 +513,7 @@ class AuctionKeeper:
                 else:
                     logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
 
-        self.logger.info(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
+        self.logger.debug(f"Checked {self.strategy.kicks()} auctions in {(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
         with self.auctions_lock:
@@ -498,6 +530,7 @@ class AuctionKeeper:
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
     #     intend to lock on auction id but not create `Auction` object for it (as the auction is already finished
     #     for example).
+
     def check_auction(self, id: int) -> bool:
         assert isinstance(id, int)
 
@@ -521,19 +554,19 @@ class AuctionKeeper:
         # Check if the auction is finished.  If so configured, `deal` the auction.
         elif auction_finished:
             if self.deal_all or input.guy in self.deal_for:
-                # Always using default gas price for `deal`
-                self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
-
-                # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
-                # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
-                self.rebalance_dai()
-            else:
-                logging.debug(f"Not dealing {id} with guy={input.guy}")
+                ### deal auction, exit and convert weth, sell eth for dai
+                self.strategy.deal(id).transact(gas_price=self.gas_price)
+                time.sleep(2)
+                self.balance_manager.threader('unload', self.gas_price)
 
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
             self.dead_auctions.add(id)
+            self.balance_manager.remove_auction(id)
+            ### If no auctions running,remove Dai from Vat to put in the DSR
+            if len(self.auctions.auctions)==0:
+                self.balance_manager.threader('save', self.gas_price)
             return False
 
         else:
@@ -551,18 +584,34 @@ class AuctionKeeper:
         # Feed the model with current state
         auction.feed_model(input)
 
+        ###record total amount of all auctions
+        self.balance_manager.register_tab(input.id, input.tab)
+
     def handle_bid(self, id: int, auction: Auction):
         assert isinstance(id, int)
         assert isinstance(auction, Auction)
-
-        output = auction.model_output()
+        
+        input = self.strategy.get_input(id) #get auction params from chain
+        output = auction.model_output() #get params from own price model
 
         if output is None:
             return
 
-        bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+        managed_price = self.balance_manager.analyze_profit(self.gas_price, output.price, input.lot, input.end, input.price, input.beg, id) 
+
+        if managed_price is None:
+            return
+
+        withdrew = self.balance_manager.dsr_withdraw(self.gas_price, id)
+        if withdrew:
+            self.rebalance_dai()
+            time.sleep(1)
+            logging.info(f"Withdrawing to bid @ {managed_price}")
+
+        bid_price, bid_transact, cost = self.strategy.bid(id, managed_price)
         # If we can't afford the bid, log a warning/error and back out.
         # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
+
         if cost is not None:
             if not self.check_bid_cost(cost):
                 return
@@ -576,7 +625,8 @@ class AuctionKeeper:
 
             # if transaction has not been submitted...
             if transaction_in_progress is None:
-                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price}) for auction {id}")
+                self.logger.info(f"Sending new bid @{managed_price} (gas_price={output.gas_price})")
+
                 auction.price = bid_price
                 auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
                 auction.register_transaction(bid_transact)
@@ -589,7 +639,7 @@ class AuctionKeeper:
 
             # if transaction in progress and the bid price changed...
             elif bid_price != auction.price:
-                self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
+                self.logger.info(f"Attempting to override pending bid with new bid @{managed_price} for auction {id}")
                 auction.price = bid_price
                 if new_gas_strategy:  # gas strategy changed
                     auction.gas_price = new_gas_strategy
@@ -621,7 +671,6 @@ class AuctionKeeper:
 
     def check_bid_cost(self, cost: Rad) -> bool:
         assert isinstance(cost, Rad)
-
         # If this is an auction where we bid with Dai...
         if self.flipper or self.flopper:
             vat_dai = self.vat.dai(self.our_address)
@@ -661,6 +710,7 @@ class AuctionKeeper:
             # Exit dai from the vat
             self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
             assert self.dai_join.exit(self.our_address, difference).transact(gas_price=self.gas_price)
+
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
 
