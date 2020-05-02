@@ -141,7 +141,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     dart = urn.ink * ilk.spot - Wad(Ray(urn.art) * ilk.rate)
 
     # change in debt must also take the rate into account
-    dart = dart * Wad(Ray.from_number(1) / ilk.rate)
+    dart = Wad(Ray(dart) * Ray.from_number(1) / ilk.rate)
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
@@ -210,8 +210,8 @@ def is_cdp_safe(ilk: Ilk, urn: Urn) -> bool:
     return (Ray(urn.art) * ilk.rate) <= Ray(urn.ink) * ilk.spot
 
 
-def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
-                      draw_dai=True) -> Urn:
+def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
+                     draw_dai=True) -> Urn:
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
@@ -238,7 +238,7 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
                     raise RuntimeError("Insufficient collateral balance")
             amount_to_join = token.unnormalize_amount(vat_gap)
             if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
-                amount_to_join += token.normalize_amount(Wad(1))
+                amount_to_join += token.min_amount
             assert c.adapter.join(gal_address, amount_to_join).transact(from_address=gal_address)
         vat_balance = mcd.vat.gem(c.ilk, gal_address)
         print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
@@ -247,8 +247,9 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
 
     # Put gal CDP at max possible debt
     dart = max_dart(mcd, c, gal_address) - Wad(1)
-    print(f"Attempting to frob with dart={dart}")
-    assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
+    if dart > Wad(0):
+        print(f"Attempting to frob with dart={dart}")
+        assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
     # Draw our Dai, simulating the usual behavior
     urn = mcd.vat.urn(c.ilk, gal_address)
@@ -256,6 +257,16 @@ def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad,
         mcd.approve_dai(gal_address)
         assert mcd.dai_adapter.exit(gal_address, urn.art).transact(from_address=gal_address)
         print(f"Exited {urn.art} Dai from urn")
+
+
+def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
+                      draw_dai=True) -> Urn:
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(c, Collateral)
+    assert isinstance(gal_address, Address)
+
+    create_risky_cdp(mcd, c, collateral_amount, gal_address, draw_dai)
+    urn = mcd.vat.urn(c.ilk, gal_address)
 
     # Manipulate price to make gal CDP underwater
     to_price = Wad(c.pip.read_as_int()) - Wad.from_number(1)

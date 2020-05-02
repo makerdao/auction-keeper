@@ -61,8 +61,10 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
 
     @classmethod
     def eliminate_queued_debt(cls, web3, mcd, keeper_address):
+        if mcd.vat.sin(mcd.vow.address) == Rad(0):
+            return
+
         # given the existence of queued debt
-        assert mcd.vat.sin(mcd.vow.address) > Rad(0)
         c = mcd.collaterals['ETH-A']
         kick = c.flipper.kicks()
         last_bite = mcd.cat.past_bites(10)[0]
