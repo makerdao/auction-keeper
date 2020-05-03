@@ -321,6 +321,7 @@ class AuctionKeeper:
         if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
             return
 
+        self.collateral.approve(self.our_address, gas_price=self.gas_price)
         token = Token(self.collateral.ilk.name.split('-')[0], self.collateral.gem.address, self.collateral.adapter.dec())
         vat_balance = self.vat.gem(self.ilk, self.our_address)
         if vat_balance > token.min_amount:
