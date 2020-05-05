@@ -31,7 +31,7 @@ class Balance_Manager():
         self.profit_margin = profit_margin
         self.bid_start_time = bid_start_time
         self.start_time = time.time()
-        self.round_trip_gas = 1117000 #total gas to witdraw, bid, sell, redeposit DAI from DSR
+        self.round_trip_gas = 950000 #total gas to witdraw, bid, sell, redeposit DAI from DSR
         self.user_proxy = None
         self.dsr_balance = None
         self.vat_balance = None
@@ -117,8 +117,6 @@ class Balance_Manager():
         high_threshold = "{:,}".format(int(self.high_threshold))
         low_threshold = "{:,}".format(int(self.low_threshold))
         logging.info(f"Base bid profit margin = {round(self.profit_margin*100, 3)}%")
-        logging.info(f"For example, if the market ETH/DAI price is 500 and projected gas costs for winning and selling the auction are 1.5 DAI,")
-        logging.info(f"you will place a bid at {round(498.5*(1-self.profit_margin), 3)} ETH/DAI, if you have the Dai and the price is above the minimum bid increment.")
         logging.info(f"Bid profit margin = {round((self.profit_margin + self.low_discount)*100, 3)}% when the sum of all active auction tabs is > {low_threshold} DAI")
         logging.info(f"Bid profit margin = {round((self.profit_margin + self.high_discount)*100, 3)}% when the sum of all active auction tabs is > {high_threshold} DAI")
         logging.info(f"If you win an auction, the ETH collateral will be sold until there is {self.max_eth_balance} ETH remaining in your keeper account ")
@@ -183,14 +181,15 @@ class Balance_Manager():
     
     def analyze_profit(self, gas_price, feed_price, lot, end, current_price, beg, auction_id):
         #gas estimates:
-        #dsr_withdraw = 175000
+        #dsr_withdraw = 160000
         #vat_deposit = 50500
         #bid = 93000
         #deal = 52000
         #exit_weth = 59500
         #unwrap = 25000
         #sell_eth = 250000 x 2
-        #dsr_deposit = 162000
+        #vat withdraw = 80000
+        #dsr_deposit = 160000
 
         def log_auction_stats():
             tot_tab = self.add_tab()
@@ -201,7 +200,7 @@ class Balance_Manager():
             self.logger.info(f"Auction id: {auction_id}")
             logging.info(f"Time left: {int(time_left/60)}m")
             logging.info(f"Auction tab: {round(self.auction_tab[auction_id].__float__(),3)} DAI")
-            logging.info(f"Total of {num_auctions} active auctions for {round(tot_tab.__float__(), 3)} DAI. Tab discount: {tab_discount}%")
+            logging.info(f"Total of {num_auctions} active auctions for {round(tot_tab.__float__(), 3)} DAI. Tab discount: {tab_discount*100}%")
             logging.info(f"Lot size: {round(lot,4)} ETH")
             self.logger.info(f"Gas cost: {round(gas_cost_dai, 3)} DAI")
             self.logger.info (f"Market feed price: {round(feed_price, 2)} ETH/DAI")
@@ -232,17 +231,25 @@ class Balance_Manager():
             
             #Determine profit margin to discount feed_price
             tab_discount = self.get_tab_discount() #additional discount when large CDPs are being auctioned
-            discount = (1 - (self.profit_margin + tab_discount))
+            target_margin = self.profit_margin + tab_discount
             
-            #Net sale of dai at market price
+            #Gross revenue from sale of dai at market price
             sell_amt_dai = (lot * feed_price)
-            #Price per ETH after applying profit discount 
-            profit_price_daieth = sell_amt_dai * discount / lot 
-            #Net sale of dai at currently bid price
-            bid_dai = (lot * current_price) - gas_cost_dai
-            #Profit margin of bid price vs. market price
+            #Auction cost in dai at currently bid price
+            bid_dai = (lot * current_price) + gas_cost_dai
+            #Profit margin of current bid
             margin =  (sell_amt_dai - bid_dai)/bid_dai * 100
-            if profit_price_daieth > current_price*beg:
+
+            #Price per ETH that provides target profit margin after gas costs 
+            profit_price_daieth = (sell_amt_dai-((1+target_margin)*gas_cost_dai))/((1+target_margin)*lot)
+
+            #Check if bid price can be protected by beg
+            discount = ((beg - 1)/2) + 1
+            best_bid = profit_price_daieth / discount
+            if (best_bid > current_price * beg):
+                profit_price_daieth = best_bid
+            
+            if profit_price_daieth > current_price * beg:
                 bidable = True
             else:
                 bidable = False
@@ -271,6 +278,10 @@ class Balance_Manager():
 
             (profit_price_daieth, margin, gas_cost_dai, bidable) = calc_margin()
 
+            if new_bid:
+                logging.info(f"New bid detected")
+                log_auction_stats()
+
             if time_left > (self.bid_start_time * 60):
                 if auction_id not in self.time_log.keys():
                     logging.info(f"Initial auction stats")
@@ -288,15 +299,11 @@ class Balance_Manager():
                 self.log5[auction_id] = True
                 log_auction_stats()
             
-            if new_bid:
-                logging.info(f"New bid detected")
-                log_auction_stats()
-            
             if bidable:
                 logging.info(f"Bidable")
                 log_auction_stats()
             
-            if profit_price_daieth > current_price:
+            if profit_price_daieth > current_price and bidable:
                 return Wad.from_number(profit_price_daieth)
             else:
                 return None

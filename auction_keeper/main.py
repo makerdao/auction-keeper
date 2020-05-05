@@ -606,7 +606,6 @@ class AuctionKeeper:
         if withdrew:
             self.rebalance_dai()
             time.sleep(1)
-            logging.info(f"Withdrawing to bid @ {managed_price}")
 
         bid_price, bid_transact, cost = self.strategy.bid(id, managed_price)
         # If we can't afford the bid, log a warning/error and back out.
@@ -660,7 +659,7 @@ class AuctionKeeper:
 
             # if transaction in progress, bid price unchanged, but gas strategy changed...
             elif new_gas_strategy:
-                self.logger.info(f"Changing gas strategy for pending bid @{output.price} for auction {id}")
+                self.logger.info(f"Changing gas strategy for pending bid @{managed_price} for auction {id}")
                 auction.price = bid_price
                 auction.gas_price = new_gas_strategy
                 auction.register_transaction(bid_transact)

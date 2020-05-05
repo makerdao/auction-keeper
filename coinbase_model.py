@@ -5,16 +5,21 @@ import requests
 import sys
 import os
 import logging
-import signal
+import argparse
+
 
 
 class Bid_Price():
     logger = logging.getLogger()
 
-    def __init__(self):
+    def __init__(self, args: list, **kwargs):
+        if args[0] == 'egs':
+            self.model_gas_strat = True
+        else:
+            self.model_gas_strat = False
         self.our_price = 0
         self.ETHUSD = None
-        self.DAIUSDC = None
+        self.DAIUSD = None
         self.logname = "logger" + str(os.getpid()) + ".txt"
 
     @staticmethod   
@@ -25,16 +30,15 @@ class Bid_Price():
                 response = response.json()
             else:
                 response = False
-        except Exception as e:
+        except:
             response = False
-            print(e)
         return (response)
 
     def get_coinbase(self):
         '''get selected coinbase quotes'''
         base = "https://api.pro.coinbase.com"
-        parameters = ['/products/ETH-USD/ticker', '/products/DAI-USDC/ticker']
-        attrs = ['ETHUSD', 'DAIUSDC']
+        parameters = ['/products/ETH-USD/ticker', '/products/DAI-USD/ticker']
+        attrs = ['ETHUSD', 'DAIUSD']
         for num, param in enumerate(parameters):
             url = base+param
             response = self.get_quote(url)
@@ -64,7 +68,7 @@ class Bid_Price():
 
     def calc_bid(self):
         try:
-            eth_price_in_dai = self.ETHUSD / self.DAIUSDC
+            eth_price_in_dai = self.ETHUSD / self.DAIUSD
             self.our_price = eth_price_in_dai
             return True
         except Exception as e:
@@ -101,15 +105,18 @@ class Bid_Price():
         
         return out
 
-def main():
-    bid = Bid_Price()
+def main(args):
+    bid = Bid_Price(args)
     while True:
         try:
             bid.get_auction_status()
             make_bid = bid.get_coinbase()
             if make_bid:
                 make_bid = bid.calc_bid()
-            gp = bid.check_gasprice()
+            if bid.model_gas_strat:
+                gp = bid.check_gasprice()
+            else:
+                gp = None
             out_dict = bid.make_output(make_bid, gp)
             if out_dict:
                 print(json.dumps(out_dict))
@@ -127,4 +134,4 @@ def main():
             sys.exit()
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
