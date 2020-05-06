@@ -40,7 +40,7 @@ vulcanize_key = sys.argv[3]
 mcd = DssDeployment.from_node(web3)
 collateral_type = sys.argv[4] if len(sys.argv) > 4 else "ETH-A"
 ilk = mcd.collaterals[collateral_type].ilk
-from_block = int(sys.argv[5]) if len(sys.argv) > 5 else 9989448  # 8928152 example for mainnet, 9989448 for WBTC
+from_block = int(sys.argv[5]) if len(sys.argv) > 5 else 8928152  # 8928152 example for mainnet, 9989448 for WBTC
 
 
 # Retrieve data from chain
@@ -59,14 +59,13 @@ urns_vdb = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
 
-# # Retrieve data from old Vulcanize
-# started = datetime.now()
-# print("Connecting to old VDB")
-# uh = UrnHistoryOldVdb(web3, mcd, ilk)
-# urns_vdb_old = uh.get_urns()
-# elapsed: timedelta = datetime.now() - started
-# print(f"Found {len(urns_vdb_old)} urns from old Vulcanize in {elapsed.seconds} seconds")
-urns_vdb_old = {}
+# Retrieve data from old Vulcanize
+started = datetime.now()
+print("Connecting to old VDB")
+uh = UrnHistoryOldVdb(web3, mcd, ilk)
+urns_vdb_old = uh.get_urns()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(urns_vdb_old)} urns from old Vulcanize in {elapsed.seconds} seconds")
 
 
 # Reconcile the data
