@@ -242,12 +242,6 @@ class Balance_Manager():
 
             #Price per ETH that provides target profit margin after gas costs 
             profit_price_daieth = (sell_amt_dai-((1+target_margin)*gas_cost_dai))/((1+target_margin)*lot)
-
-            #Check if bid price can be protected by beg
-            discount = ((beg - 1)/2) + 1
-            best_bid = profit_price_daieth / discount
-            if (best_bid > current_price * beg):
-                profit_price_daieth = best_bid
             
             if profit_price_daieth > current_price * beg:
                 bidable = True
