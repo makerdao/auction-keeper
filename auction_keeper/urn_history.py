@@ -82,28 +82,7 @@ class UrnHistory:
                 urn = self.urn_from_vdb_node(item)
                 urns[urn.address] = urn
         self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB in {(datetime.now() - start).seconds} seconds")
-
-        # self.adjust_urns_for_forks(urns)
-        # self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB in {(datetime.now()-start).seconds} seconds")
         return urns
-
-    # def adjust_urns_for_forks(self, urns: Dict[Address, Urn]):
-    #     assert isinstance(urns, dict)
-    #
-    #     variables = {"ilkId": self.ilk_ids[self.ilk.name]}
-    #     response = self.run_query(self.query_vat_forks, variables)
-    #
-    #     raw = json.loads(response.text)['data']['allVatForks']['nodes']
-    #     self.logger.debug(f"Found {len(raw)} vat forks")
-    #     for fork in raw:
-    #         src = Address(fork['src'])
-    #         dst = Address(fork['dst'])
-    #         if src in urns:
-    #             urns[src].ink -= Wad(int(fork['dink']))
-    #             urns[src].art -= Wad(int(fork['dart']))
-    #         if dst in urns:
-    #             urns[dst].ink += Wad(int(fork['dink']))
-    #             urns[dst].art += Wad(int(fork['dart']))
 
     def run_query(self, query: str, variables=None):
         assert isinstance(query, str)
@@ -126,9 +105,6 @@ class UrnHistory:
         address = Address(node['urnIdentifier'])
         ink = Wad(int(node['ink']))
         art = Wad(int(node['art']))
-        # for bite in node['bites']['nodes']:
-        #     ink -= Wad(int(bite['ink']))
-        #     art -= Wad(int(bite['art']))
 
         return Urn(address, self.ilk, ink, art)
 
@@ -145,24 +121,7 @@ class UrnHistory:
           ilkIdentifier
           ink
           art
-          bites {
-            nodes {
-              ink
-              art
-            }          
-          }
         }
       }
     }
     """
-
-    query_vat_forks = """query($ilkId:Int) {
-      allVatForks(condition: {ilkId: $ilkId}) {
-        nodes {
-          dart
-          dink
-          src
-          dst
-        }
-      }
-    }"""
