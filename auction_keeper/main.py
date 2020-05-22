@@ -298,7 +298,10 @@ class AuctionKeeper:
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(2)
         if self.dai_join:
-            self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
+            if self.mcd.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
+                return
+            else:
+                self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
