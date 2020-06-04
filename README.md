@@ -297,7 +297,8 @@ the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your ac
 This keeper connects to the Ethereum network using [Web3.py](https://github.com/ethereum/web3.py) and interacts with
 the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pymaker).  A connection to an Ethereum node
 (`--rpc-host`) is required.  [Parity](https://www.parity.io/ethereum/) and [Geth](https://geth.ethereum.org/) nodes are
-supported over HTTP. Websocket endpoints are not supported by `pymaker`.
+supported over HTTP. Websocket endpoints are not supported by `pymaker`.  A _full_ or _archive_ node is required; 
+_light_ nodes are not supported.
 
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
 with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because

@@ -93,7 +93,7 @@ class UrnHistory:
         else:
             body = {'query': query}
         headers = {'Authorization': 'Basic ' + self.vulcanize_key}
-        response = requests.post(self.vulcanize_endpoint, json=body, headers=headers)
+        response = requests.post(self.vulcanize_endpoint, json=body, headers=headers, timeout=30)
         if not response.ok:
             error_msg = f"{response.status_code} {response.reason} ({response.text})"
             raise RuntimeError(f"Vulcanize query failed: {error_msg}")
