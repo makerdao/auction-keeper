@@ -29,6 +29,7 @@ from pymaker.dss import Ilk, Urn
 
 class UrnHistory:
     logger = logging.getLogger()
+    cache_lookback = 10  # for handling block reorgs
 
     def __init__(self, web3: Web3, mcd: DssDeployment, ilk: Ilk, from_block: Optional[int],
                  vulcanize_endpoint: Optional[str], vulcanize_key: Optional[str]):
@@ -47,11 +48,15 @@ class UrnHistory:
         self.from_block = from_block
         self.vulcanize_endpoint = vulcanize_endpoint
         self.vulcanize_key = vulcanize_key
+        self.cache_block = from_block
+        self.cache = {}
 
     def get_urns(self) -> Dict[Address, Urn]:
         """Returns a list of urns indexed by address"""
         if self.vulcanize_endpoint:
-            return self.get_urns_from_vulcanize()
+            if not self.cache:
+                self.seed_cache_from_vulcanize()
+            return self.get_urns_from_past_frobs()
         else:
             return self.get_urns_from_past_frobs()
 
@@ -59,7 +64,9 @@ class UrnHistory:
         start = datetime.now()
         urn_addresses = set()
 
-        frobs = self.mcd.vat.past_frobs(from_block=self.from_block, ilk=self.ilk)
+        from_block = self.cache_block - self.cache_lookback
+        to_block = self.web3.eth.blockNumber
+        frobs = self.mcd.vat.past_frobs(from_block=from_block, to_block=to_block, ilk=self.ilk)
         for frob in frobs:
             urn_addresses.add(frob.urn)
 
@@ -67,22 +74,27 @@ class UrnHistory:
         for address in urn_addresses:
             if address not in urns:
                 urns[address] = (self.mcd.vat.urn(self.ilk, address))
-        self.logger.debug(f"Found {len(urns)} urns among {len(frobs)} frobs since block {self.from_block} in "
+                self.cache[address] = urns[address]
+
+        self.logger.debug(f"Found {len(urns)} urns among {len(frobs)} frobs since block {self.cache_block} in "
                           f"{(datetime.now()-start).seconds} seconds")
-        return urns
+        self.cache_block = to_block
+        return self.cache
 
-    def get_urns_from_vulcanize(self) -> Dict[Address, Urn]:
+    def seed_cache_from_vulcanize(self) -> Dict[Address, Urn]:
         start = datetime.now()
-        response = self.run_query(self.query)
 
-        urns = {}
+        response = self.run_query(self.lag_query)
+        self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
+
+        response = self.run_query(self.query)
         raw = json.loads(response.text)['data']['allUrns']['nodes']
         for item in raw:
             if item['ilkIdentifier'] == self.ilk.name:
                 urn = self.urn_from_vdb_node(item)
-                urns[urn.address] = urn
-        self.logger.debug(f"Found {len(urns)} urns from VulcanizeDB in {(datetime.now() - start).seconds} seconds")
-        return urns
+                self.cache[urn.address] = urn
+        self.logger.debug(f"Cached {len(self.cache)} urns from VulcanizeDB up to block {self.cache_block} " 
+                          f"in {(datetime.now() - start).seconds} seconds")
 
     def run_query(self, query: str, variables=None):
         assert isinstance(query, str)
@@ -123,5 +135,35 @@ class UrnHistory:
           art
         }
       }
-    }
-    """
+    }"""
+
+    lag_query = """query {
+      lastStorageDiffProcessed: allStorageDiffs(last: 1, condition: {checked: true}) {
+        nodes {
+          blockHeight
+        }
+      }
+    }"""
+
+    stateless_query = """query($ilkId: Int, $fromBlock: Int) {
+      allRawUrns(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}},
+        condition: {ilkId: $ilkId}) {
+        edges {
+          node {
+            vatFrobsByUrnId {
+              nodes {
+                dink
+                dart
+              }
+            }
+            identifier
+            rawBitesByUrnId {
+              nodes {
+                art
+                ink
+              }
+            }
+          }
+        }
+      }
+    }"""

@@ -18,6 +18,7 @@
 
 import logging
 import sys
+import time
 from datetime import datetime, timedelta
 from pprint import pprint
 from web3 import Web3, HTTPProvider
@@ -51,13 +52,24 @@ urns_logs = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
 
-# Retrieve data from Vulcanize
-started = datetime.now()
-print(f"Connecting to {vulcanize_endpoint}...")
-uh = UrnHistory(web3, mcd, ilk, None, vulcanize_endpoint, vulcanize_key)
-urns_vdb = uh.get_urns()
-elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+# Wait several blocks
+blocks_to_wait = 0
+while blocks_to_wait > 0:
+    print(f"Testing cache for another {blocks_to_wait} blocks")
+    time.sleep(13.4)
+    uh.get_urns()
+    blocks_to_wait -= 1
+
+
+# FIXME: Cannot test due to 504 gateway timeout!
+# # Retrieve data from Vulcanize
+# started = datetime.now()
+# print(f"Connecting to {vulcanize_endpoint}...")
+# uh = UrnHistory(web3, mcd, ilk, None, vulcanize_endpoint, vulcanize_key)
+# urns_vdb = uh.get_urns()
+# elapsed: timedelta = datetime.now() - started
+# print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+
 
 # Retrieve data from old Vulcanize
 started = datetime.now()
@@ -66,7 +78,9 @@ uh = UrnHistoryOldVdb(web3, mcd, ilk)
 urns_vdb_old = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_vdb_old)} urns from old Vulcanize in {elapsed.seconds} seconds")
-# urns_vdb_old = {}
+urns_vdb = urns_vdb_old
+urns_vdb_old = {}
+
 
 
 # Reconcile the data
