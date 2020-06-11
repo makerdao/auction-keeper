@@ -24,7 +24,6 @@ from pprint import pprint
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.urn_history import UrnHistory
-from auction_keeper.urn_history_old_vdb import UrnHistoryOldVdb
 from pymaker import Wad
 from pymaker.deployment import DssDeployment
 
@@ -59,7 +58,7 @@ uh = UrnHistory(web3, mcd, ilk, from_block, None, None)
 urns_logs = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-wait(1500, uh)
+# wait(1500, uh)
 
 
 # Retrieve data from Vulcanize
@@ -71,41 +70,22 @@ elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
 
 
-# Retrieve data from old Vulcanize
-started = datetime.now()
-print("Connecting to old VDB")
-uh = UrnHistoryOldVdb(web3, mcd, ilk)
-urns_vdb_old = uh.get_urns()
-elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_vdb_old)} urns from old Vulcanize in {elapsed.seconds} seconds")
-# urns_vdb_old = {}
-
-
 # Reconcile the data
 mismatches = 0
 missing = 0
 total_art_logs = 0
 total_art_vdb = 0
 csv = "Urn,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt"
-csv += ",OldVdbInk,OldVdbArt\n" if len(urns_vdb_old) > 0 else '\n'
 
 for key, value in urns_logs.items():
     assert value.ilk.name == ilk.name
     if key in urns_vdb:
         if value.ink != urns_vdb[key].ink or value.art != urns_vdb[key].art:
-            csv += f"{key.address},{value.ink},{value.art},{urns_vdb[key].ink},{urns_vdb[key].art}"
-            if key in urns_vdb_old:
-                csv += f",{urns_vdb_old[key].ink},{urns_vdb_old[key].art}"
-            else:
-                csv += ",,"
-            csv += "\n"
+            csv += f"{key.address},{value.ink},{value.art},{urns_vdb[key].ink},{urns_vdb[key].art}\n"
             mismatches += 1
     else:
         print(f"vdb is missing urn {key}")
-        if key in urns_vdb_old:
-            csv += f"{key.address},{value.ink},{value.art},{urns_vdb_old[key].ink},{urns_vdb_old[key].art}\n"
-        else:
-            csv += f"{key.address},{value.ink},{value.art},,\n"
+        csv += f"{key.address},{value.ink},{value.art},,\n"
         missing += 1
     total_art_logs += float(value.art)
 

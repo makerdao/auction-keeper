@@ -144,26 +144,3 @@ class UrnHistory:
         }
       }
     }"""
-
-    stateless_query = """query($ilkId: Int, $fromBlock: Int) {
-      allRawUrns(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}},
-        condition: {ilkId: $ilkId}) {
-        edges {
-          node {
-            vatFrobsByUrnId {
-              nodes {
-                dink
-                dart
-              }
-            }
-            identifier
-            rawBitesByUrnId {
-              nodes {
-                art
-                ink
-              }
-            }
-          }
-        }
-      }
-    }"""
