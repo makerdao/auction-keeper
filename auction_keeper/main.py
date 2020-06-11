@@ -88,8 +88,10 @@ class AuctionKeeper:
                             help="Number of shards; should be one greater than your highest --shard-id")
 
         parser.add_argument("--vulcanize-endpoint", type=str,
-                            help="When specified, frob history will be queried from a VulcanizeDB lite node, "
+                            help="When specified, urn history will be initialized from a VulcanizeDB node, "
                                  "reducing load on the Ethereum node for flip auctions")
+        parser.add_argument("--vulcanize-key", type=str,
+                            help="API key for the Vulcanize endpoint")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to find vaults to bite or debt to queue "
                                  "(set to block where MCD was deployed)")
@@ -169,7 +171,7 @@ class AuctionKeeper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
             self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
-                                          self.arguments.vulcanize_endpoint)
+                                          self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
