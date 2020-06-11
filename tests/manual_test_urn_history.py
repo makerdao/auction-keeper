@@ -44,6 +44,14 @@ ilk = mcd.collaterals[collateral_type].ilk
 from_block = int(sys.argv[5]) if len(sys.argv) > 5 else 8928152  # 8928152 example for mainnet, 9989448 for WBTC
 
 
+def wait(blocks_to_wait: int, uh: UrnHistory):
+    while blocks_to_wait > 0:
+        print(f"Testing cache for another {blocks_to_wait} blocks")
+        time.sleep(13.4)
+        uh.get_urns()
+        blocks_to_wait -= 1
+
+
 # Retrieve data from chain
 started = datetime.now()
 print(f"Connecting to {sys.argv[1]}...")
@@ -51,24 +59,16 @@ uh = UrnHistory(web3, mcd, ilk, from_block, None, None)
 urns_logs = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-
-# Wait several blocks
-blocks_to_wait = 0
-while blocks_to_wait > 0:
-    print(f"Testing cache for another {blocks_to_wait} blocks")
-    time.sleep(13.4)
-    uh.get_urns()
-    blocks_to_wait -= 1
+wait(1500, uh)
 
 
-# FIXME: Cannot test due to 504 gateway timeout!
-# # Retrieve data from Vulcanize
-# started = datetime.now()
-# print(f"Connecting to {vulcanize_endpoint}...")
-# uh = UrnHistory(web3, mcd, ilk, None, vulcanize_endpoint, vulcanize_key)
-# urns_vdb = uh.get_urns()
-# elapsed: timedelta = datetime.now() - started
-# print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+# Retrieve data from Vulcanize
+started = datetime.now()
+print(f"Connecting to {vulcanize_endpoint}...")
+uh = UrnHistory(web3, mcd, ilk, None, vulcanize_endpoint, vulcanize_key)
+urns_vdb = uh.get_urns()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
 
 
 # Retrieve data from old Vulcanize
@@ -78,9 +78,7 @@ uh = UrnHistoryOldVdb(web3, mcd, ilk)
 urns_vdb_old = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_vdb_old)} urns from old Vulcanize in {elapsed.seconds} seconds")
-urns_vdb = urns_vdb_old
-urns_vdb_old = {}
-
+# urns_vdb_old = {}
 
 
 # Reconcile the data
