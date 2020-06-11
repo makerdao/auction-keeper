@@ -119,12 +119,6 @@ class UrnHistory:
 
         return Urn(address, self.ilk, ink, art)
 
-    ilk_ids = {
-        "ETH-A": 1,
-        "BAT-A": 5,
-        "WBTC-A": 866590
-    }
-
     query = """query {
       allUrns {
         nodes {
