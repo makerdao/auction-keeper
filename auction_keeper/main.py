@@ -43,6 +43,7 @@ from auction_keeper.urn_history import UrnHistory
 
 class AuctionKeeper:
     logger = logging.getLogger()
+    dead_after = 10  # Assume block reorgs cannot resurrect an auction id after this many blocks
 
     def __init__(self, args: list, **kwargs):
         parser = argparse.ArgumentParser(prog='auction-keeper')
@@ -182,7 +183,7 @@ class AuctionKeeper:
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(' '.join(self.arguments.model)))
         self.auctions_lock = threading.Lock()
-        self.dead_auctions = set()
+        self.dead_since = {}
         self.lifecycle = None
 
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
@@ -297,7 +298,10 @@ class AuctionKeeper:
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(2)
         if self.dai_join:
-            self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
+            if self.mcd.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
+                return
+            else:
+                self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
@@ -505,9 +509,11 @@ class AuctionKeeper:
     #     for example).
     def check_auction(self, id: int) -> bool:
         assert isinstance(id, int)
+        current_block = self.web3.eth.blockNumber
+        assert isinstance(current_block, int)
 
         # Improves performance by avoiding an onchain call to check auctions we know have completed.
-        if id in self.dead_auctions:
+        if id in self.dead_since and current_block - self.dead_since[id] > 10:
             return False
 
         # Read auction information from the chain
@@ -520,7 +526,7 @@ class AuctionKeeper:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
-            self.dead_auctions.add(id)
+            self.dead_since[id] = current_block
             return False
 
         # Check if the auction is finished.  If so configured, `deal` the auction.
@@ -538,7 +544,7 @@ class AuctionKeeper:
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
-            self.dead_auctions.add(id)
+            self.dead_since[id] = current_block
             return False
 
         else:
