@@ -250,13 +250,12 @@ directly deposited to your token balance.
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are two
-ways it can build this:
- * **Set `--from-block` to the block where the first urn was created** to instruct the keeper to use logs published by
-    the `vat` contract to bulid a list of urns, and then check the status of each urn.  Setting this too low will
-    overburden your node.
- * **Deploy a [VulcanizeDB lite instance](https://github.com/makerdao/vdb-lite-mcd-transformers) to maintain your own
-    copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  This list is 
+built by initializing an in-memory cache with urn history, and then querying recent events upon each block.  There are 
+two ways to initialize the cache:
+ * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events. 
+ * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
+    copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.
 
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically

@@ -38,9 +38,8 @@ class UrnHistory:
         assert isinstance(ilk, Ilk)
         assert isinstance(from_block, int) or from_block is None
         assert isinstance(vulcanize_endpoint, str) or vulcanize_endpoint is None
+        assert isinstance(vulcanize_key, str) or vulcanize_key is None
         assert from_block or vulcanize_endpoint
-        if vulcanize_endpoint:
-            assert isinstance(vulcanize_key, str)
 
         self.web3 = web3
         self.mcd = mcd
@@ -104,7 +103,7 @@ class UrnHistory:
             body = {'query': query, 'variables': json.dumps(variables)}
         else:
             body = {'query': query}
-        headers = {'Authorization': 'Basic ' + self.vulcanize_key}
+        headers = {'Authorization': 'Basic ' + self.vulcanize_key} if self.vulcanize_key else None
         response = requests.post(self.vulcanize_endpoint, json=body, headers=headers, timeout=30)
         if not response.ok:
             error_msg = f"{response.status_code} {response.reason} ({response.text})"
