@@ -250,14 +250,14 @@ directly deposited to your token balance.
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are two
-ways it can build this:
- * **Set `--from-block` to the block where the first urn was created** to instruct the keeper to use logs published by
-    the `vat` contract to bulid a list of urns, and then check the status of each urn.  Setting this too low will
-    overburden your node.
- * **Deploy a [VulcanizeDB lite instance](https://github.com/makerdao/vdb-lite-mcd-transformers) to maintain your own
-    copy of urn state in PostgresQL, and then set `--vulcanize-endpoint` to your instance**.  This will conserve
-    resources on your node and keeper.
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  This list is 
+built by initializing an in-memory cache with urn history, and then querying recent events upon each block.  There are 
+two ways to initialize the cache:
+ * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events. 
+ * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
+    copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
+    resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for 
+    basic authentication with the `--vulcanize-key` argument. 
 
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first bite which has not been `flog`ged.
@@ -297,7 +297,8 @@ the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your ac
 This keeper connects to the Ethereum network using [Web3.py](https://github.com/ethereum/web3.py) and interacts with
 the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pymaker).  A connection to an Ethereum node
 (`--rpc-host`) is required.  [Parity](https://www.parity.io/ethereum/) and [Geth](https://geth.ethereum.org/) nodes are
-supported over HTTP. Websocket endpoints are not supported by `pymaker`.
+supported over HTTP. Websocket endpoints are not supported by `pymaker`.  A _full_ or _archive_ node is required; 
+_light_ nodes are not supported.
 
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
 with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because
