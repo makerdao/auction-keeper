@@ -146,12 +146,19 @@ the following actions:
   * submitting approvals
   * adjusting the balance of surplus to debt
   * queuing debt for auction
-  * biting a CDP or starting a flap or flop auction
-* The keeper does not check model prices until an auction exists.  As such, it will `kick`, `flap`, or `flop` in
-response to opportunities regardless of whether or not your Dai or MKR balance is sufficient to participate.  This too
-imposes a gas fee.
+  * biting a vault or starting a flap or flop auction
+* The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will 
+`bite`, `flap`, or `flop` in response to opportunities regardless of whether or not your Dai or MKR balance is 
+sufficient to participate.  This too imposes a gas fee.
 * When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add
 Dai to the Vat.
+* Biting vaults to kick off new collateral auctions is an expensive operation.  To do so without a VulcanizeDB 
+subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then 
+continuously refresh urn state to detect undercollateralized urns.
+   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the urn state 
+   cache in a reasonable amount of time.  As such, Geth is not recommended for biting vaults.
+   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--kick-only`) 
+   and bid (`--bid-only`).
 
 
 ## Installation
@@ -222,7 +229,7 @@ More explicitly:
 
 By default, all Dai and collateral in your `eth-from` account is `exit`ed from the Vat and added to your token balance
 when the keeper is shut down.  This feature may be disabled using the `--keep-dai-in-vat-on-exit` and
-`--keep-gem-in-vat-on-exit` switches respectively.  **Using an `eth-from` account with an open CDP is discouraged**,
+`--keep-gem-in-vat-on-exit` switches respectively.  **Using an `eth-from` account with an open vault is discouraged**,
 as debt will hinder the auction contracts' ability to access your Dai, and `auction-keeper`'s ability to `exit` Dai
 from the `Vat`.
 
@@ -303,14 +310,6 @@ _light_ nodes are not supported.
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
 with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because
 it does not support the `eth_sendTransaction` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/69c7b6d869bb3bc9c4cca7b82cc6e8d435966d4b/pymaker/__init__.py#L431) pymaker.
-
-### Limitations
-When a keeper, without VulcanizeDB subscription, is allowed to `kick`, it first gathers all historically active urns by
-making a single log query. The following limitation arises in this scenario:
-* A Geth node will likely cause issues (in the form of a `ValueError: {'code': -32000, 'message': 'Filter not found'}`),
-owing to a lack of support for large, complex filtered log queries. If a growing chain state begins to inhibit log
-requests with Parity nodes, then future releases of pymaker could include log query batching.
-
 
 
 ## Testing
