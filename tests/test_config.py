@@ -263,3 +263,17 @@ class TestConfig:
                                            f"--deal-for ALL "
                                            f"--model ./bogus-model.sh"), web3=web3)
         assert deal_all.deal_all
+
+    def test_shouldnt_need_urn_history_when_only_bidding(self, web3, keeper_address: Address):
+        with pytest.raises(RuntimeError) as e:
+            AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                    f"--type flip "
+                                    f"--ilk ETH-A "
+                                    f"--model ./bogus-model.sh"), web3=web3)
+
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type flip "
+                                         f"--ilk ETH-A "
+                                         f"--bid-only "
+                                         f"--model ./bogus-model.sh"), web3=web3)
+        assert keeper.urn_history is None

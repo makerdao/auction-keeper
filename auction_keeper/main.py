@@ -170,8 +170,9 @@ class AuctionKeeper:
         if self.flipper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
-            self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
-                                          self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
+            if self.arguments.create_auctions:
+                self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
+                                              self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
