@@ -217,7 +217,6 @@ class AuctionKeeper:
         logging.getLogger("asyncio").setLevel(logging.INFO)
         logging.getLogger("requests").setLevel(logging.INFO)
 
-
     def main(self):
         def seq_func(check_func: callable):
             assert callable(check_func)
@@ -351,7 +350,7 @@ class AuctionKeeper:
 
         # Look for unsafe CDPs and bite them
         urns = self.urn_history.get_urns()
-        logging.debug(f"Initial query of {len(urns)} {self.ilk} urns to be evaluated and bitten if any are unsafe")
+        logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
