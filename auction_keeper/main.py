@@ -170,8 +170,9 @@ class AuctionKeeper:
         if self.flipper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
-            self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
-                                          self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
+            if self.arguments.create_auctions:
+                self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
+                                              self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
@@ -215,7 +216,6 @@ class AuctionKeeper:
         logging.getLogger("web3").setLevel(logging.INFO)
         logging.getLogger("asyncio").setLevel(logging.INFO)
         logging.getLogger("requests").setLevel(logging.INFO)
-
 
     def main(self):
         def seq_func(check_func: callable):
@@ -350,7 +350,7 @@ class AuctionKeeper:
 
         # Look for unsafe CDPs and bite them
         urns = self.urn_history.get_urns()
-        logging.debug(f"Initial query of {len(urns)} {self.ilk} urns to be evaluated and bitten if any are unsafe")
+        logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate

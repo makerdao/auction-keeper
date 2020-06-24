@@ -63,20 +63,23 @@ class UrnHistory:
         start = datetime.now()
         urn_addresses = set()
 
+        # Get a unique list of urn addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
         frobs = self.mcd.vat.past_frobs(from_block=from_block, to_block=to_block, ilk=self.ilk)
         for frob in frobs:
             urn_addresses.add(frob.urn)
 
-        urns = {}
-        for address in urn_addresses:
-            if address not in urns:
-                urns[address] = (self.mcd.vat.urn(self.ilk, address))
-                self.cache[address] = urns[address]
+        # Update state of already-cached urns
+        for address, urn in self.cache.items():
+            self.cache[address] = self.mcd.vat.urn(self.ilk, address)
 
-        self.logger.debug(f"Found {len(urns)} urns among {len(frobs)} frobs since block {self.cache_block} in "
-                          f"{(datetime.now()-start).seconds} seconds")
+        # Cache state of newly discovered urns
+        for address in urn_addresses:
+            if address not in self.cache:
+                self.cache[address] = self.mcd.vat.urn(self.ilk, address)
+
+        self.logger.debug(f"Updated {len(self.cache)} urns in {(datetime.now()-start).seconds} seconds")
         self.cache_block = to_block
         return self.cache
 
