@@ -64,7 +64,7 @@ def create_risky_vault():
 
 
 def handle_returned_collateral():
-    # Handle collateral returned to the urn
+    # Handle collateral returned to the urn after a liquidation is dealt
     available_to_generate = (urn.ink * ilk.spot) - Wad(Ray(urn.art) * ilk.rate)
     print(f"urn {urn.address} can generate {available_to_generate} Dai")
     if available_to_generate > Wad(1):
