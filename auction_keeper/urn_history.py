@@ -53,9 +53,7 @@ class UrnHistory:
     def get_urns(self) -> Dict[Address, Urn]:
         """Returns a list of urns indexed by address"""
         if self.vulcanize_endpoint:
-            if not self.cache:
-                self.seed_cache_from_vulcanize()
-            return self.get_urns_from_past_frobs()
+            return self.get_urns_from_vulcanize()
         else:
             return self.get_urns_from_past_frobs()
 
@@ -83,20 +81,45 @@ class UrnHistory:
         self.cache_block = to_block
         return self.cache
 
-    def seed_cache_from_vulcanize(self) -> Dict[Address, Urn]:
+    def get_urns_from_vulcanize(self) -> Dict[Address, Urn]:
         start = datetime.now()
 
         response = self.run_query(self.lag_query)
         self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
 
-        response = self.run_query(self.query)
+        response = self.run_query(self.init_query)
         raw = json.loads(response.text)['data']['allUrns']['nodes']
         for item in raw:
             if item['ilkIdentifier'] == self.ilk.name:
                 urn = self.urn_from_vdb_node(item)
                 self.cache[urn.address] = urn
-        self.logger.debug(f"Cached {len(self.cache)} urns from VulcanizeDB up to block {self.cache_block} " 
+        self.logger.debug(f"Found {len(self.cache)} urns from VulcanizeDB up to block {self.cache_block} " 
                           f"in {(datetime.now() - start).seconds} seconds")
+
+        start = datetime.now()
+        from_block = max(0, self.cache_block - self.cache_lookback)
+        # DEBUG: set fromBlock=9700000 to test with forks
+        response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
+        parsed_data = json.loads(response.text)['data']
+
+        # TODO: filter actions by ilk identifier
+        recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in parsed_data['allVatFrobs']['nodes']]
+        recent_bites = [item['rawUrnByUrnId']['identifier'] for item in parsed_data['allRawBites']['nodes']]
+        recent_forks = [item['src'] for item in parsed_data['allVatForks']['nodes']] + \
+                       [item['dst'] for item in parsed_data['allVatForks']['nodes']]
+        assert isinstance(recent_frobs, list)
+        assert isinstance(recent_bites, list)
+        assert isinstance(recent_forks, list)
+        recent_changes = set(recent_frobs + recent_bites + recent_forks)
+        for urn in recent_changes:
+            address = Address(urn)
+            self.cache[address] = self.mcd.vat.urn(self.ilk, address)
+
+        current_block = int(parsed_data['lastBlock']['nodes'][0]['blockNumber'])
+        self.logger.debug(f"Updated {len(recent_changes)} urns from block {from_block} to {current_block} "
+                          f"in {(datetime.now() - start).seconds} seconds")
+        self.cache_block = current_block
+        return self.cache
 
     def run_query(self, query: str, variables=None):
         assert isinstance(query, str)
@@ -122,7 +145,7 @@ class UrnHistory:
 
         return Urn(address, self.ilk, ink, art)
 
-    query = """query {
+    init_query = """query {
       allUrns {
         nodes {
           urnIdentifier
@@ -137,6 +160,46 @@ class UrnHistory:
       lastStorageDiffProcessed: allStorageDiffs(last: 1, condition: {checked: true}) {
         nodes {
           blockHeight
+        }
+      }
+    }"""
+
+    recent_changes_query = """query($fromBlock: BigInt) {
+      allVatFrobs(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      {
+        nodes {
+          rawUrnByUrnId {
+            rawIlkByIlkId {
+              identifier
+            }
+            identifier
+          }
+        }
+      }
+      allRawBites(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      {
+        nodes {
+          rawUrnByUrnId {
+            rawIlkByIlkId {
+              identifier
+            }
+            identifier
+          }
+        }
+      }
+      allVatForks(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      {
+        nodes {
+          rawIlkByIlkId {
+              identifier
+          }
+          src
+          dst
+        }
+      }
+      lastBlock: allHeaders(last: 1) {
+        nodes {
+          blockNumber
         }
       }
     }"""

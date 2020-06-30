@@ -58,8 +58,7 @@ uh = UrnHistory(web3, mcd, ilk, from_block, None, None)
 urns_logs = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-# wait(1500, uh)
-
+wait(100, uh)
 
 # Retrieve data from Vulcanize
 started = datetime.now()
