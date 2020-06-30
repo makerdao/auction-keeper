@@ -179,7 +179,7 @@ class TestConfig:
         assert isinstance(keeper.vow, Vow)
 
     def test_flap_keeper_negative(self, web3, keeper_address: Address):
-        with pytest.raises(SystemExit) as e:
+        with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type flap"), web3=web3)
 
