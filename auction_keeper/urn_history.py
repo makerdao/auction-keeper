@@ -98,15 +98,18 @@ class UrnHistory:
 
         start = datetime.now()
         from_block = max(0, self.cache_block - self.cache_lookback)
-        # DEBUG: set fromBlock=9700000 to test with forks
         response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
         parsed_data = json.loads(response.text)['data']
 
-        # TODO: filter actions by ilk identifier
-        recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in parsed_data['allVatFrobs']['nodes']]
-        recent_bites = [item['rawUrnByUrnId']['identifier'] for item in parsed_data['allRawBites']['nodes']]
-        recent_forks = [item['src'] for item in parsed_data['allVatForks']['nodes']] + \
-                       [item['dst'] for item in parsed_data['allVatForks']['nodes']]
+        frobs_for_ilk = self.filter_urn_nodes_by_ilk(parsed_data['allVatFrobs']['nodes'])
+        print(f"  {len(parsed_data['allVatFrobs']['nodes'])} frobs, {len(frobs_for_ilk)} for ilk")
+        recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in frobs_for_ilk]
+        bites_for_ilk = self.filter_urn_nodes_by_ilk(parsed_data['allRawBites']['nodes'])
+        print(f"  {len(parsed_data['allRawBites']['nodes'])} bites, {len(bites_for_ilk)} for ilk")
+        recent_bites = [item['rawUrnByUrnId']['identifier'] for item in bites_for_ilk]
+        forks_for_ilk = self.filter_nodes_by_ilk(parsed_data['allVatForks']['nodes'])
+        print(f"  {len(parsed_data['allVatForks']['nodes'])} forks, {len(forks_for_ilk)} for ilk")
+        recent_forks = [item['src'] for item in forks_for_ilk] + [item['dst'] for item in forks_for_ilk]
         assert isinstance(recent_frobs, list)
         assert isinstance(recent_bites, list)
         assert isinstance(recent_forks, list)
@@ -135,6 +138,14 @@ class UrnHistory:
             error_msg = f"{response.status_code} {response.reason} ({response.text})"
             raise RuntimeError(f"Vulcanize query failed: {error_msg}")
         return response
+
+    def filter_urn_nodes_by_ilk(self, nodes: list):
+        assert isinstance(nodes, list)
+        return list(filter(lambda item: item['rawUrnByUrnId']['rawIlkByIlkId']['identifier'] == self.ilk.name, nodes))
+
+    def filter_nodes_by_ilk(self, nodes: list):
+        assert isinstance(nodes, list)
+        return list(filter(lambda item: item['rawIlkByIlkId']['identifier'] == self.ilk.name, nodes))
 
     def urn_from_vdb_node(self, node: dict) -> Urn:
         assert isinstance(node, dict)
