@@ -102,13 +102,10 @@ class UrnHistory:
         parsed_data = json.loads(response.text)['data']
 
         frobs_for_ilk = self.filter_urn_nodes_by_ilk(parsed_data['allVatFrobs']['nodes'])
-        print(f"  {len(parsed_data['allVatFrobs']['nodes'])} frobs, {len(frobs_for_ilk)} for ilk")
         recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in frobs_for_ilk]
         bites_for_ilk = self.filter_urn_nodes_by_ilk(parsed_data['allRawBites']['nodes'])
-        print(f"  {len(parsed_data['allRawBites']['nodes'])} bites, {len(bites_for_ilk)} for ilk")
         recent_bites = [item['rawUrnByUrnId']['identifier'] for item in bites_for_ilk]
         forks_for_ilk = self.filter_nodes_by_ilk(parsed_data['allVatForks']['nodes'])
-        print(f"  {len(parsed_data['allVatForks']['nodes'])} forks, {len(forks_for_ilk)} for ilk")
         recent_forks = [item['src'] for item in forks_for_ilk] + [item['dst'] for item in forks_for_ilk]
         assert isinstance(recent_frobs, list)
         assert isinstance(recent_bites, list)
