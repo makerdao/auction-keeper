@@ -260,8 +260,8 @@ directly deposited to your token balance.
 To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are 
 two ways to retrieve the list of urns:
  * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events.  
-    The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward,   
-    events will be queried back to the last cached block to detect new urns.  The state of all urns will be queried 
+    The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events 
+    will be queried back to the last cached block to detect new urns.  The state of all urns will be queried 
     continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join` 
     contract was deployed for some collateral types and chains.
     
