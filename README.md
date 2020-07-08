@@ -262,7 +262,10 @@ two ways to retrieve the list of urns:
  * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events.  
     The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward,   
     events will be queried back to the last cached block to detect new urns.  The state of all urns will be queried 
-    continuously (>6 minutes for ETH-A).
+    continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join` 
+    contract was deployed for some collateral types and chains.
+    
+    ![example from blocks](README-from-block.png)
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for 
