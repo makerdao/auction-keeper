@@ -103,7 +103,7 @@ class AuctionKeeper:
         parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
                             help="Retain collateral in the Vat on exit")
 
-        parser.add_argument("--model", type=str, required=True, nargs='+',
+        parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
         gas_group = parser.add_mutually_exclusive_group()
@@ -181,10 +181,17 @@ class AuctionKeeper:
             raise RuntimeError("Please specify auction type")
 
         # Create the collection used to manage auctions relevant to this keeper
+        if self.arguments.model:
+            model_command = ' '.join(self.arguments.model)
+        else:
+            if self.arguments.bid_on_auctions:
+                raise RuntimeError("--model must be specified to bid on auctions")
+            else:
+                model_command = ":"
         self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
                                  flapper=self.flapper.address if self.flapper else None,
                                  flopper=self.flopper.address if self.flopper else None,
-                                 model_factory=ModelFactory(' '.join(self.arguments.model)))
+                                 model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
         self.dead_since = {}
         self.lifecycle = None

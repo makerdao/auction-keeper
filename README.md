@@ -257,14 +257,19 @@ directly deposited to your token balance.
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  This list is 
-built by initializing an in-memory cache with urn history, and then querying recent events upon each block.  There are 
-two ways to initialize the cache:
- * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events. 
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are 
+two ways to retrieve the list of urns:
+ * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events.  
+    The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events 
+    will be queried back to the last cached block to detect new urns.  The state of all urns will be queried 
+    continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join` 
+    contract was deployed for some collateral types and chains.
+    
+    ![example from blocks](README-from-block.png)
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for 
-    basic authentication with the `--vulcanize-key` argument. 
+    basic authentication with the `--vulcanize-key` argument.  This reduces urn check time (<10 seconds for ETH-A).
 
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first bite which has not been `flog`ged.
