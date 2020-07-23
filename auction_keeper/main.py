@@ -476,6 +476,8 @@ class AuctionKeeper:
 
     def check_all_auctions(self):
         started = datetime.now()
+        ignored_auctions = []
+
         for id in range(self.arguments.min_auction, self.strategy.kicks() + 1):
             if not self.auction_handled_by_this_shard(id):
                 continue
@@ -495,8 +497,11 @@ class AuctionKeeper:
                 # Prevent growing the auctions collection beyond the configured size
                 if len(self.auctions.auctions) < self.arguments.max_auctions:
                     self.feed_model(id)
-                else:
-                    logging.warning(f"Processing {len(self.auctions.auctions)} auctions; ignoring auction {id}")
+                elif id not in self.auctions.auctions.keys():
+                    ignored_auctions.append(id)
+
+        if len(ignored_auctions) > 0:
+            logging.warning(f"Processing auctions {list(self.auctions.auctions.keys())}; ignoring {ignored_auctions}")
 
         self.logger.info(f"Checked auctions {self.arguments.min_auction} to {self.strategy.kicks()} in " 
                          f"{(datetime.now() - started).seconds} seconds")
