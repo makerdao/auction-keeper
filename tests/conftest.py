@@ -141,7 +141,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     dart = urn.ink * ilk.spot - Wad(Ray(urn.art) * ilk.rate)
 
     # change in debt must also take the rate into account
-    dart = Wad(Ray(dart) * Ray.from_number(1) / ilk.rate)
+    dart = Wad(Ray(dart) / ilk.rate)
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
@@ -150,9 +150,9 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
 
     # prevent the change in debt from exceeding the total debt ceiling
     debt = mcd.vat.debt() + Rad(ilk.rate * dart)
-    line = Rad(ilk.line)
+    line = Rad(mcd.vat.line())
     if (debt + Rad(dart)) >= line:
-        print("max_dart is avoiding total debt ceiling")
+        print(f"debt {debt} + dart {dart} >= {line}; max_dart is avoiding total debt ceiling")
         dart = Wad(debt - Rad(urn.art))
 
     # ensure we've met the dust cutoff
