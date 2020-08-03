@@ -38,8 +38,8 @@ class UpdatableGasPrice(GasPrice):
 
 
 class DynamicGasPrice(GasPrice):
-
     GWEI = 1000000000
+    failsafe_default_gas = 40
 
     def __init__(self, arguments):
         self.gas_station = None
@@ -64,7 +64,7 @@ class DynamicGasPrice(GasPrice):
 
         # if API produces no price, or remote feed not configured, start with a fixed price
         if fast_price is None:
-            initial_price = self.fixed_gas if self.fixed_gas else 10 * self.GWEI
+            initial_price = self.fixed_gas if self.fixed_gas else self.failsafe_default_gas * self.GWEI
         # otherwise, use the API's fast price, adjusted by a coefficient, as our starting point
         else:
             initial_price = int(round(fast_price * self.initial_multiplier))
@@ -81,7 +81,7 @@ class DynamicGasPrice(GasPrice):
         elif self.fixed_gas:
             retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
         else:
-            retval = f"Default gas 10 Gwei "
+            retval = f"Default gas {self.failsafe_default_gas} Gwei "
 
         retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of " \
                   f"{round(self.gas_maximum / self.GWEI, 1)} Gwei"

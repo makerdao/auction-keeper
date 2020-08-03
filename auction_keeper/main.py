@@ -613,7 +613,10 @@ class AuctionKeeper:
                     time.sleep(self.arguments.bid_delay)
 
             # if transaction in progress and the bid price changed...
-            elif bid_price != auction.price:
+            elif not auction.price or bid_price != auction.price:
+                if not auction.price:
+                    self.logger.warning("Auction state unexpectedly missing")
+                    assert False
                 self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
                 auction.price = bid_price
                 if new_gas_strategy:  # gas strategy changed
