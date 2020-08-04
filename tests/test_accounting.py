@@ -145,12 +145,12 @@ class TestVatDaiTarget(TestVatDai):
 
 
 class TestEmptyVatOnExit(TestVatDai):
-    def create_keeper(self, exit_dai_on_shutdown: bool, exit_gem_on_shutdown: bool):
+    def create_keeper(self, exit_dai_on_shutdown: bool, exit_gem_behavior):
         assert isinstance(exit_dai_on_shutdown, bool)
-        assert isinstance(exit_gem_on_shutdown, bool)
+        assert isinstance(exit_gem_behavior, str) or exit_gem_behavior is None
 
         vat_dai_behavior = "" if exit_dai_on_shutdown else "--keep-dai-in-vat-on-exit"
-        vat_gem_behavior = "" if exit_gem_on_shutdown else "--keep-gem-in-vat-on-exit"
+        vat_gem_behavior = "" if exit_gem_behavior else f"--return-gem-behavior {exit_gem_behavior}"
 
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flop "
@@ -165,7 +165,7 @@ class TestEmptyVatOnExit(TestVatDai):
 
     def test_do_not_empty(self):
         # given dai and gem in the vat
-        keeper = self.create_keeper(False, False)
+        keeper = self.create_keeper(False, "NONE")
         purchase_dai(Wad.from_number(153), self.keeper_address)
         assert self.get_dai_token_balance() >= Wad.from_number(153)
         assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(153)).transact(
@@ -194,7 +194,7 @@ class TestEmptyVatOnExit(TestVatDai):
         gem_vat_balance_before = self.get_gem_vat_balance()
 
         # when creating and shutting down the keeper
-        keeper = self.create_keeper(True, False)
+        keeper = self.create_keeper(True, "none")
         keeper.shutdown()
 
         # then ensure the dai was emptied
@@ -216,7 +216,7 @@ class TestEmptyVatOnExit(TestVatDai):
         dai_token_balance_before = self.get_dai_token_balance()
         dai_vat_balance_before = self.get_dai_vat_balance()
         # and creating and shutting down the keeper
-        keeper = self.create_keeper(False, True)
+        keeper = self.create_keeper(False, "onexit")
         keeper.shutdown()
 
         # then ensure dai was not emptied
@@ -228,7 +228,7 @@ class TestEmptyVatOnExit(TestVatDai):
 
     def test_empty_both(self):
         # when creating and shutting down the keeper
-        keeper = self.create_keeper(True, False)
+        keeper = self.create_keeper(True, "ONEXIT")
         keeper.shutdown()
 
         # then ensure the vat is empty
@@ -253,13 +253,16 @@ class TestPeriodicRebalance(TestVatDai):
     @pytest.mark.timeout(20)
     def test_balance_added_after_startup(self, mocker):
         # given gem balances after starting keeper
-        keeper = self.create_keeper(mocker)
         token_balance_before = self.get_dai_token_balance()
+        keeper = self.create_keeper(mocker)
+        time.sleep(6)  # wait for keeper to join everything on startup
         vat_balance_before = self.get_dai_vat_balance()
+        assert self.get_dai_token_balance() == Wad(0)
+        assert vat_balance_before == token_balance_before
 
         # when adding dai
         purchase_dai(Wad.from_number(87), self.keeper_address)
-        assert self.get_dai_token_balance() == token_balance_before + Wad.from_number(87)
+        assert self.get_dai_token_balance() == Wad.from_number(87)
 
         # then wait and ensure dai was joined
         time.sleep(4)
@@ -267,3 +270,9 @@ class TestPeriodicRebalance(TestVatDai):
         assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(87)
 
         keeper.shutdown()
+
+    # TODO: Add a test where keeper is configured to join a target amount, confirm it maintains it
+
+    # TODO: Test to ensure it doesn't join amounts below dust cutoff
+
+    # TODO: Test emptying collateral joined after keeper startup

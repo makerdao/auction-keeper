@@ -97,11 +97,11 @@ class AuctionKeeper:
                                  "(set to block where MCD was deployed)")
 
         parser.add_argument('--vat-dai-target', type=str,
-                            help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
+                            help="Amount of Dai to keep in the Vat contract or ALL to join entire token balance")
         parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
-        parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
-                            help="Retain collateral in the Vat on exit")
+        parser.add_argument('--return-gem-behavior', type=str, default="onexit",
+                            help="Determines when to exit won collateral: ONEXIT (default), NONE, ONREBALANCE")
         parser.add_argument('--rebalance-interval', type=int, default=0,
                             help="Check whether Dai and collateral needs to be joined/exited every n seconds; "
                                  "set to 0 to disable (default)")
@@ -333,7 +333,7 @@ class AuctionKeeper:
             assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
 
     def exit_collateral_on_shutdown(self):
-        if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
+        if self.arguments.return_gem_behavior.upper() != "ONEXIT" or not self.gem_join:
             return
 
         self.collateral.approve(self.our_address, gas_price=self.gas_price)
@@ -681,7 +681,7 @@ class AuctionKeeper:
         dai_to_join = Wad(0)
         dai_to_exit = Wad(0)
         try:
-            if self.arguments.vat_dai_target.lower() == "all":
+            if self.arguments.vat_dai_target.upper() == "ALL":
                 dai_to_join = token_balance
             else:
                 dai_target = Wad.from_number(float(self.arguments.vat_dai_target))
