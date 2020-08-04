@@ -55,7 +55,16 @@ class TestVatDaiTarget(TestVatDai):
                                          f"--vat-dai-target {dai} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
-        assert keeper.vat_dai_target == Wad.from_number(dai)
+        keeper.startup()
+        return keeper
+
+    def create_keeper_join_all(self):
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                         f"--type flop "
+                                         f"--from-block 1 "
+                                         f"--vat-dai-target all "
+                                         f"--model ./bogus-model.sh"), web3=self.web3)
+        assert self.web3.eth.defaultAccount == self.keeper_address.address
         keeper.startup()
         return keeper
 
@@ -76,7 +85,6 @@ class TestVatDaiTarget(TestVatDai):
         purchase_dai(Wad.from_number(237), keeper_address)
         token_balance_before = self.get_dai_token_balance()
         assert token_balance_before == Wad.from_number(237)
-        vat_balance_before = self.get_dai_vat_balance()
 
         # when rebalancing with a smaller amount than we have
         self.create_keeper(153.0)
@@ -120,6 +128,18 @@ class TestVatDaiTarget(TestVatDai):
         # then ensure all dai has been exited
         assert self.get_dai_token_balance() == Wad.from_number(237)
         assert self.get_dai_vat_balance() == Wad(0)
+
+    def test_join_all(self):
+        # given dai we just exited
+        token_balance_before = self.get_dai_token_balance()
+        assert token_balance_before == Wad.from_number(237)
+
+        # when keeper is started with a token balance
+        self.create_keeper_join_all()
+
+        # then ensure all available tokens were joined
+        assert self.get_dai_token_balance() == Wad(0)
+        assert self.get_dai_vat_balance() == Wad.from_number(237)
 
 
 class TestEmptyVatOnExit(TestVatDai):

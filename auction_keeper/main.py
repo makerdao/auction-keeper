@@ -96,7 +96,7 @@ class AuctionKeeper:
                             help="Starting block from which to find vaults to bite or debt to queue "
                                  "(set to block where MCD was deployed)")
 
-        parser.add_argument('--vat-dai-target', type=float,
+        parser.add_argument('--vat-dai-target', type=str,
                             help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
         parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
@@ -201,9 +201,6 @@ class AuctionKeeper:
 
         # Create gas strategy used for non-bids and bids which do not supply gas price
         self.gas_price = DynamicGasPrice(self.arguments)
-
-        self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
-            self.arguments.vat_dai_target is not None else None
 
         # Configure account(s) for which we'll deal auctions
         self.deal_all = False
@@ -668,27 +665,44 @@ class AuctionKeeper:
 
     def rebalance_dai(self):
         logging.info(f"Checking if internal Dai balance needs to be rebalanced")
-        if self.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
+        if self.arguments.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
             return
 
         dai = self.dai_join.dai()
         token_balance = dai.balance_of(self.our_address)  # Wad
-        difference = Wad(self.vat.dai(self.our_address)) - self.vat_dai_target  # Wad
-        if difference < Wad(0):
+        # Prevent spending gas on small rebalances
+        dust = Wad(self.mcd.vat.ilk(self.ilk.name).dust) if self.ilk else Wad.from_number(20)
+
+        dai_to_join = Wad(0)
+        dai_to_exit = Wad(0)
+        try:
+            if self.arguments.vat_dai_target.lower() == "all":
+                dai_to_join = token_balance
+            else:
+                dai_target = Wad.from_number(float(self.arguments.vat_dai_target))
+                vat_balance = Wad(self.vat.dai(self.our_address))
+                if vat_balance < dai_target:
+                    dai_to_join = dai_target - vat_balance
+                elif vat_balance > dai_target:
+                    dai_to_exit = vat_balance - dai_target
+        except ValueError:
+            raise ValueError("Unsupported --vat-dai-target")
+
+        if dai_to_join > dust:
             # Join tokens to the vat
-            if token_balance >= difference * -1:
-                self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
-                assert self.dai_join.join(self.our_address, difference * -1).transact(gas_price=self.gas_price)
+            if token_balance >= dai_to_join:
+                self.logger.info(f"Joining {str(dai_to_join)} Dai to the Vat")
+                assert self.dai_join.join(self.our_address, dai_to_join).transact(gas_price=self.gas_price)
             elif token_balance > Wad(0):
                 self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
                                     "Dai to the Vat")
                 assert self.dai_join.join(self.our_address, token_balance).transact(gas_price=self.gas_price)
             else:
                 self.logger.warning("No Dai is available to join to Vat; cannot maintain Dai target")
-        elif difference > Wad(0):
+        elif dai_to_exit > dust:
             # Exit dai from the vat
-            self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
-            assert self.dai_join.exit(self.our_address, difference).transact(gas_price=self.gas_price)
+            self.logger.info(f"Exiting {str(dai_to_exit)} Dai from the Vat")
+            assert self.dai_join.exit(self.our_address, dai_to_exit).transact(gas_price=self.gas_price)
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
 
