@@ -62,7 +62,7 @@ class AuctionKeeper:
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
                             help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
-                                 "available collateral types can be found at the left side of the CDP Portal")
+                                 "available collateral types can be found at the left side of the Oasis Borrow")
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
@@ -102,6 +102,9 @@ class AuctionKeeper:
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
         parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
                             help="Retain collateral in the Vat on exit")
+        parser.add_argument('--rebalance-interval', type=int, default=0,
+                            help="Check whether Dai and collateral needs to be joined/exited every n seconds; "
+                                 "set to 0 to disable (default)")
 
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
@@ -243,7 +246,7 @@ class AuctionKeeper:
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
-                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_cdps))
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_vaults))
             elif self.flapper and self.vow:
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
             elif self.flopper and self.vow:
@@ -253,6 +256,8 @@ class AuctionKeeper:
 
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
+            if self.arguments.rebalance_interval:
+                lifecycle.every(self.arguments.rebalance_interval, self.rebalance_dai)
 
     def auction_notice(self) -> str:
         if self.arguments.type == 'flip':
@@ -346,13 +351,13 @@ class AuctionKeeper:
             logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
             return False
 
-    def check_cdps(self):
+    def check_vaults(self):
         started = datetime.now()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
         dai_to_bid = self.vat.dai(self.our_address)
 
-        # Look for unsafe CDPs and bite them
+        # Look for unsafe vaults and bite them
         urns = self.urn_history.get_urns()
         logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 

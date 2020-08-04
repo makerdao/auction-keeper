@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import threading
+import time
 
 from auction_keeper.main import AuctionKeeper
 from pymaker.numeric import Wad, Ray, Rad
@@ -232,3 +234,36 @@ class TestEmptyVatOnExit(TestVatDai):
         # then ensure the vat is empty
         assert self.get_dai_vat_balance() == Wad(0)
         assert self.get_gem_vat_balance() == Wad(0)
+
+
+class TestPeriodicRebalance(TestVatDai):
+    def create_keeper(self, mocker):
+        mocker.patch("web3.net.Net.peer_count", return_value=1)
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                         f"--type flip --ilk ETH-A "
+                                         f"--bid-only "
+                                         f"--vat-dai-target all "
+                                         f"--rebalance-interval 3 "
+                                         f"--model ./bogus-model.sh"), web3=self.web3)
+        assert self.web3.eth.defaultAccount == self.keeper_address.address
+        thread = threading.Thread(target=keeper.main, daemon=True)
+        thread.start()
+        return keeper
+
+    @pytest.mark.timeout(20)
+    def test_balance_added_after_startup(self, mocker):
+        # given gem balances after starting keeper
+        keeper = self.create_keeper(mocker)
+        token_balance_before = self.get_dai_token_balance()
+        vat_balance_before = self.get_dai_vat_balance()
+
+        # when adding dai
+        purchase_dai(Wad.from_number(87), self.keeper_address)
+        assert self.get_dai_token_balance() == token_balance_before + Wad.from_number(87)
+
+        # then wait and ensure dai was joined
+        time.sleep(4)
+        assert self.get_dai_token_balance() == Wad(0)
+        assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(87)
+
+        keeper.shutdown()

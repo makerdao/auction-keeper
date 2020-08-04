@@ -43,7 +43,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         assert mcd.dai_adapter.join(keeper_address, Wad(20)).transact(from_address=keeper_address)
 
         # when
-        keeper.check_cdps()
+        keeper.check_vaults()
         wait_for_other_threads()
 
         # then
