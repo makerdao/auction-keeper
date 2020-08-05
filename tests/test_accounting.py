@@ -237,42 +237,97 @@ class TestEmptyVatOnExit(TestVatDai):
 
 
 class TestPeriodicRebalance(TestVatDai):
-    def create_keeper(self, mocker):
+    def create_keeper(self, mocker, dai_target="all"):
         mocker.patch("web3.net.Net.peer_count", return_value=1)
-        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flip --ilk ETH-A "
+        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                         f"--type flip --ilk ETH-C "
                                          f"--bid-only "
-                                         f"--vat-dai-target all "
+                                         f"--vat-dai-target {dai_target} "
+                                         f"--return-gem-behavior onrebalance "
                                          f"--rebalance-interval 3 "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
-        thread = threading.Thread(target=keeper.main, daemon=True)
-        thread.start()
-        return keeper
+        assert self.keeper.auctions
+        self.thread = threading.Thread(target=self.keeper.main, daemon=True)
+        self.thread.start()
+        return self.keeper
+
+    def shutdown_keeper(self):
+        self.keeper.lifecycle._sigint_sigterm_handler(None, None)
+        self.thread.join()
+        del self.keeper
 
     @pytest.mark.timeout(20)
     def test_balance_added_after_startup(self, mocker):
-        # given gem balances after starting keeper
-        token_balance_before = self.get_dai_token_balance()
-        keeper = self.create_keeper(mocker)
-        time.sleep(6)  # wait for keeper to join everything on startup
-        vat_balance_before = self.get_dai_vat_balance()
-        assert self.get_dai_token_balance() == Wad(0)
-        assert vat_balance_before == token_balance_before
+        try:
+            # given gem balances after starting keeper
+            token_balance_before = self.get_dai_token_balance()
+            self.create_keeper(mocker)
+            time.sleep(6)  # wait for keeper to join everything on startup
+            vat_balance_before = self.get_dai_vat_balance()
+            assert self.get_dai_token_balance() == Wad(0)
+            assert vat_balance_before == token_balance_before
 
-        # when adding dai
-        purchase_dai(Wad.from_number(87), self.keeper_address)
-        assert self.get_dai_token_balance() == Wad.from_number(87)
+            # when adding dai
+            purchase_dai(Wad.from_number(87), self.keeper_address)
+            assert self.get_dai_token_balance() == Wad.from_number(87)
 
-        # then wait and ensure dai was joined
-        time.sleep(4)
-        assert self.get_dai_token_balance() == Wad(0)
-        assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(87)
+            # then wait and ensure dai was joined
+            time.sleep(4)
+            assert self.get_dai_token_balance() == Wad(0)
+            assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(87)
 
-        keeper.shutdown()
+        finally:
+            self.shutdown_keeper()
 
-    # TODO: Add a test where keeper is configured to join a target amount, confirm it maintains it
+    @pytest.mark.timeout(28)
+    def test_fixed_dai_target(self, mocker):
+        try:
+            target = Wad.from_number(100)
+            self.create_keeper(mocker, target)
+            time.sleep(6)  # wait for keeper to join 100 on startup
+            assert self.get_dai_vat_balance() == target
 
-    # TODO: Test to ensure it doesn't join amounts below dust cutoff
+            # when spending Dai
+            assert self.keeper.dai_join.exit(self.keeper_address, Wad.from_number(22)).transact()
+            assert self.get_dai_vat_balance() == Wad.from_number(78)
+
+            # then wait and ensure dai was joined up to the target
+            time.sleep(4)
+            assert self.get_dai_vat_balance() == target
+
+            # then wait some more and ensure it didn't overjoin on the next iteration
+            time.sleep(4)
+            assert self.get_dai_vat_balance() == target
+
+        finally:
+            self.shutdown_keeper()
+
+    @pytest.mark.timeout(28)
+    def test_dust(self, mocker):
+        try:
+            self.create_keeper(mocker)
+            time.sleep(6)  # wait for keeper to join everything on startup
+            assert self.get_dai_token_balance() == Wad(0)
+            vat_balance_before = self.get_dai_vat_balance()
+
+            # when a small amount of Dai was sent to the account
+            purchase_dai(Wad.from_number(0.001), self.keeper_address)
+            assert self.get_dai_token_balance() == Wad.from_number(0.001)
+
+            # then wait and ensure dai was not joined
+            time.sleep(4)
+            assert self.get_dai_vat_balance() == vat_balance_before
+
+            # when spending a tiny amount of dai
+            assert self.keeper.dai_join.exit(self.keeper_address, Wad.from_number(16)).transact()
+            assert self.get_dai_token_balance() == Wad.from_number(Wad.from_number(16.001))
+
+            # then wait and ensure dai was not rebalanced
+            time.sleep(4)
+            assert self.get_dai_vat_balance() == vat_balance_before - Wad.from_number(16)
+
+        finally:
+            self.shutdown_keeper()
 
     # TODO: Test emptying collateral joined after keeper startup
