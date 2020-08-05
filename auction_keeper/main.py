@@ -78,7 +78,7 @@ class AuctionKeeper:
                                  "used to manage OS and hardware limitations")
         parser.add_argument('--min-flip-lot', type=float, default=0,
                             help="Minimum lot size to create or bid upon a flip auction")
-        parser.add_argument('--bid-check-interval', type=float, default=2.0,
+        parser.add_argument('--bid-check-interval', type=float, default=4.0,
                             help="Period of timer [in seconds] used to check bidding models for changes")
         parser.add_argument('--bid-delay', type=float, default=0.0,
                             help="Seconds to wait between bids, used to manage OS and hardware limitations")
@@ -534,13 +534,13 @@ class AuctionKeeper:
         input = self.strategy.get_input(id)
         auction_missing = (input.end == 0)
         auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
-        logging.debug(f"Auction {id} missing={auction_missing}, finished={auction_finished}")
 
         if auction_missing:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
             self.dead_since[id] = current_block
+            logging.debug(f"Stopped tracking auction {id}")
             return False
 
         # Check if the auction is finished.  If so configured, `deal` the auction.
@@ -559,6 +559,7 @@ class AuctionKeeper:
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
             self.dead_since[id] = current_block
+            logging.debug(f"Auction {id} finished")
             return False
 
         else:
@@ -599,9 +600,12 @@ class AuctionKeeper:
             # if no transaction in progress, send a new one
             transaction_in_progress = auction.transaction_in_progress()
 
+            logging.debug(f"Handling bid for auction {id}: tx in progress={transaction_in_progress is not None}, " 
+                          f"auction.price={auction.price}, bid_price={bid_price}")
+
             # if transaction has not been submitted...
             if transaction_in_progress is None:
-                self.logger.info(f"Sending new bid @{output.price} (gas_price={output.gas_price}) for auction {id}")
+                self.logger.info(f"Sending new bid @{output.price} for auction {id}")
                 auction.price = bid_price
                 auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
                 auction.register_transaction(bid_transact)
@@ -613,10 +617,7 @@ class AuctionKeeper:
                     time.sleep(self.arguments.bid_delay)
 
             # if transaction in progress and the bid price changed...
-            elif not auction.price or bid_price != auction.price:
-                if not auction.price:
-                    self.logger.warning("Auction state unexpectedly missing")
-                    assert False
+            elif auction.price and bid_price != auction.price:
                 self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
                 auction.price = bid_price
                 if new_gas_strategy:  # gas strategy changed
