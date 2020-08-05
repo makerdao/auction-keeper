@@ -26,7 +26,7 @@ from tests.helper import args
 
 
 GWEI = 1000000000
-default_initial_gas = 10
+default_initial_gas = DynamicGasPrice.failsafe_default_gas
 default_max_gas = 5000
 
 class TestGasStrategy:
