@@ -67,7 +67,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         assert isinstance(self.keeper.gas_price, DynamicGasPrice)
         # Since no args were assigned, gas strategy should return a GeometricGasPrice starting at 10 Gwei
-        self.default_gas_price = 10 * DynamicGasPrice.GWEI
+        self.default_gas_price = DynamicGasPrice.failsafe_default_gas * DynamicGasPrice.GWEI
 
     def test_should_detect_flap(self, web3, mcd, c, gal_address, keeper_address):
         # given some MKR is available to the keeper and a count of flap auctions
