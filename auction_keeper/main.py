@@ -257,7 +257,7 @@ class AuctionKeeper:
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
             if self.arguments.rebalance_interval:
-                lifecycle.every(self.arguments.rebalance_interval, self.rebalance_dai)
+                lifecycle.every(self.arguments.rebalance_interval, self.rebalance)
 
     def auction_notice(self) -> str:
         if self.arguments.type == 'flip':
@@ -307,41 +307,32 @@ class AuctionKeeper:
 
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
-        time.sleep(2)
+        time.sleep(1)
         if self.dai_join:
             if self.mcd.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
                 return
             else:
                 self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
+        time.sleep(1)
+        if self.collateral:
+            self.collateral.approve(self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
             del self.auctions
-        self.exit_dai_on_shutdown()
-        self.exit_collateral_on_shutdown()
+        if self.arguments.exit_dai_on_shutdown:
+            self.exit_dai_on_shutdown()
+        if self.arguments.return_gem_behavior.upper() == "ONEXIT":
+            self.exit_gem()
 
     def is_shutting_down(self) -> bool:
         return self.lifecycle and self.lifecycle.terminated_externally
 
     def exit_dai_on_shutdown(self):
-        if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
-            return
-
         vat_balance = Wad(self.vat.dai(self.our_address))
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
             assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
-
-    def exit_collateral_on_shutdown(self):
-        if self.arguments.return_gem_behavior.upper() != "ONEXIT" or not self.gem_join:
-            return
-
-        self.collateral.approve(self.our_address, gas_price=self.gas_price)
-        token = Token(self.collateral.ilk.name.split('-')[0], self.collateral.gem.address, self.collateral.adapter.dec())
-        vat_balance = self.vat.gem(self.ilk, self.our_address)
-        if vat_balance > token.min_amount:
-            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat before shutdown")
-            assert self.gem_join.exit(self.our_address, token.unnormalize_amount(vat_balance)).transact(gas_price=self.gas_price)
 
     def auction_handled_by_this_shard(self, id: int) -> bool:
         assert isinstance(id, int)
@@ -669,9 +660,14 @@ class AuctionKeeper:
                 return False
         return True
 
+    def rebalance(self):
+        self.rebalance_dai()
+        if self.arguments.return_gem_behavior.upper() == "ONREBALANCE":
+            self.exit_gem()
+
     def rebalance_dai(self):
         logging.info(f"Checking if internal Dai balance needs to be rebalanced")
-        if self.arguments.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
+        if self.arguments.vat_dai_target is None or (not self.flipper and not self.flopper):
             return
 
         dai = self.dai_join.dai()
@@ -711,6 +707,16 @@ class AuctionKeeper:
             assert self.dai_join.exit(self.our_address, dai_to_exit).transact(gas_price=self.gas_price)
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
+
+    def exit_gem(self):
+        if not self.collateral:
+            return
+
+        token = Token(self.collateral.ilk.name.split('-')[0], self.collateral.gem.address, self.collateral.adapter.dec())
+        vat_balance = self.vat.gem(self.ilk, self.our_address)
+        if vat_balance > token.min_amount:
+            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat")
+            assert self.gem_join.exit(self.our_address, token.unnormalize_amount(vat_balance)).transact(gas_price=self.gas_price)
 
     @staticmethod
     def _run_future(future):

@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2019 EdNoepel
+# Copyright (C) 2019-2020 EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -153,7 +153,7 @@ class TestEmptyVatOnExit(TestVatDai):
         vat_gem_behavior = "" if exit_gem_behavior else f"--return-gem-behavior {exit_gem_behavior}"
 
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flop "
+                                         f"--type flip --ilk {self.collateral.ilk.name} "
                                          f"--from-block 1 "
                                          f"{vat_dai_behavior} "
                                          f"{vat_gem_behavior} "
@@ -248,16 +248,32 @@ class TestPeriodicRebalance(TestVatDai):
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
         assert self.keeper.auctions
+        # Changed the collateral to ETH-C because our testchain didn't have dust set for ETH-A or ETH-B
+        self.collateral = self.keeper.collateral
+        self.collateral.approve(self.keeper_address)
         self.thread = threading.Thread(target=self.keeper.main, daemon=True)
         self.thread.start()
         return self.keeper
 
     def shutdown_keeper(self):
-        self.keeper.lifecycle._sigint_sigterm_handler(None, None)
+        # self.keeper.lifecycle._sigint_sigterm_handler(None, None)
+        self.keeper.lifecycle.terminate("unit test completed")
         self.thread.join()
-        del self.keeper
 
-    @pytest.mark.timeout(20)
+        # HACK: Lifecycle leaks threads; this needs to be fixed in pymaker
+        import ctypes
+        while threading.active_count() > 1:
+            for thread in threading.enumerate():
+                if thread is not threading.current_thread():
+                    print(f"Attempting to kill thread {thread}")
+                    sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
+                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
+                    time.sleep(1)
+
+        # Ensure we don't leak threads, which would break wait_for_other_threads() later on
+        assert threading.active_count() == 1
+
+    @pytest.mark.timeout(40)
     def test_balance_added_after_startup(self, mocker):
         try:
             # given gem balances after starting keeper
@@ -269,21 +285,23 @@ class TestPeriodicRebalance(TestVatDai):
             assert vat_balance_before == token_balance_before
 
             # when adding dai
-            purchase_dai(Wad.from_number(87), self.keeper_address)
-            assert self.get_dai_token_balance() == Wad.from_number(87)
+            purchase_dai(Wad.from_number(77), self.keeper_address)
+            assert self.get_dai_token_balance() == Wad.from_number(77)
 
             # then wait and ensure dai was joined
             time.sleep(4)
             assert self.get_dai_token_balance() == Wad(0)
-            assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(87)
+            assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(77)
 
         finally:
             self.shutdown_keeper()
 
-    @pytest.mark.timeout(28)
+    @pytest.mark.timeout(56)
     def test_fixed_dai_target(self, mocker):
         try:
+            # given a keeper configured to maintained a fixed amount of Dai
             target = Wad.from_number(100)
+            purchase_dai(target, self.keeper_address)
             self.create_keeper(mocker, target)
             time.sleep(6)  # wait for keeper to join 100 on startup
             assert self.get_dai_vat_balance() == target
@@ -303,9 +321,10 @@ class TestPeriodicRebalance(TestVatDai):
         finally:
             self.shutdown_keeper()
 
-    @pytest.mark.timeout(28)
+    @pytest.mark.timeout(56)
     def test_dust(self, mocker):
         try:
+            # given vat balances after keeper started up
             self.create_keeper(mocker)
             time.sleep(6)  # wait for keeper to join everything on startup
             assert self.get_dai_token_balance() == Wad(0)
@@ -330,4 +349,28 @@ class TestPeriodicRebalance(TestVatDai):
         finally:
             self.shutdown_keeper()
 
-    # TODO: Test emptying collateral joined after keeper startup
+    @pytest.mark.timeout(40)
+    def test_collateral_removal(self, mocker):
+        try:
+            # given a keeper configured to return all collateral upon rebalance
+            token_balance_before = self.get_gem_token_balance()
+            vat_balance_before = self.get_gem_vat_balance()
+            self.create_keeper(mocker)
+            time.sleep(6)  # wait for keeper to startup
+            assert self.get_gem_token_balance() == token_balance_before
+            assert self.get_gem_vat_balance() == vat_balance_before
+
+            # when some ETH was wrapped and joined
+            wrap_eth(self.mcd, self.keeper_address, Wad.from_number(1.53))
+            token_balance = self.get_gem_token_balance()
+            assert token_balance > Wad(0)
+            self.collateral.adapter.join(self.keeper_address, token_balance).transact()
+            assert self.get_gem_vat_balance() == vat_balance_before + token_balance
+
+            # then wait to ensure collateral was exited automatically
+            time.sleep(4)
+            assert self.get_gem_vat_balance() == Wad(0)
+            assert self.get_gem_token_balance() == token_balance_before + Wad.from_number(1.53)
+
+        finally:
+            self.shutdown_keeper()

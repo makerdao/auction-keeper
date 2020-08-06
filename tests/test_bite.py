@@ -39,8 +39,8 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1.2), gal_address)
         assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
         # Keeper won't bid with a 0 Dai balance
-        purchase_dai(Wad(20), keeper_address)
-        assert mcd.dai_adapter.join(keeper_address, Wad(20)).transact(from_address=keeper_address)
+        purchase_dai(Wad.from_number(20), keeper_address)
+        assert mcd.dai_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
 
         # when
         keeper.check_vaults()
