@@ -205,8 +205,8 @@ Auction keeper can use one of several sources for the initial gas price of a tra
  
 When using an API source for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the initial 
 value provided by the API.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no 
-initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price of 
-10 Gwei.
+initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price 
+determined by your node.
 
 Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a 
 transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `2.25`, or 225%) until it is mined or 

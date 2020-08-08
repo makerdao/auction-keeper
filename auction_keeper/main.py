@@ -200,7 +200,7 @@ class AuctionKeeper:
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Create gas strategy used for non-bids and bids which do not supply gas price
-        self.gas_price = DynamicGasPrice(self.arguments)
+        self.gas_price = DynamicGasPrice(self.arguments, self.web3)
 
         self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
             self.arguments.vat_dai_target is not None else None
