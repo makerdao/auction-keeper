@@ -17,6 +17,7 @@
 
 from pprint import pformat
 from typing import Optional
+from web3 import Web3
 
 from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
 from pymaker.gas import GasPrice, GeometricGasPrice
@@ -39,11 +40,12 @@ class UpdatableGasPrice(GasPrice):
 
 class DynamicGasPrice(GasPrice):
     GWEI = 1000000000
-    failsafe_default_gas = 40
 
-    def __init__(self, arguments):
+    def __init__(self, arguments, web3: Web3):
+        assert isinstance(web3, Web3)
         self.gas_station = None
         self.fixed_gas = None
+        self.web3 = web3
         if arguments.ethgasstation_api_key:
             self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=arguments.ethgasstation_api_key)
         elif arguments.etherchain_gas:
@@ -64,7 +66,10 @@ class DynamicGasPrice(GasPrice):
 
         # if API produces no price, or remote feed not configured, start with a fixed price
         if fast_price is None:
-            initial_price = self.fixed_gas if self.fixed_gas else self.failsafe_default_gas * self.GWEI
+            if self.fixed_gas:
+                initial_price = self.fixed_gas
+            else:
+                initial_price = max(self.web3.manager.request_blocking("eth_gasPrice", []), 1 * self.GWEI)
         # otherwise, use the API's fast price, adjusted by a coefficient, as our starting point
         else:
             initial_price = int(round(fast_price * self.initial_multiplier))
@@ -81,7 +86,7 @@ class DynamicGasPrice(GasPrice):
         elif self.fixed_gas:
             retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
         else:
-            retval = f"Default gas {self.failsafe_default_gas} Gwei "
+            retval = f"Node gas price "
 
         retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of " \
                   f"{round(self.gas_maximum / self.GWEI, 1)} Gwei"
