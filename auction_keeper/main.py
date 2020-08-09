@@ -667,7 +667,7 @@ class AuctionKeeper:
 
     def rebalance_dai(self):
         logging.info(f"Checking if internal Dai balance needs to be rebalanced")
-        if self.arguments.vat_dai_target is None or (not self.flipper and not self.flopper):
+        if self.arguments.vat_dai_target is None:
             return
 
         dai = self.dai_join.dai()

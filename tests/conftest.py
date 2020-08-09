@@ -216,11 +216,11 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
 
-    # Ensure CDP isn't already unsafe (if so, this shouldn't be called)
+    # Ensure vault isn't already unsafe (if so, this shouldn't be called)
     urn = mcd.vat.urn(c.ilk, gal_address)
     assert is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
 
-    # Add collateral to gal CDP if necessary
+    # Add collateral to gal vault if necessary
     c.approve(gal_address)
     token = Token(c.ilk.name, c.gem.address, c.adapter.dec())
     print(f"collateral_amount={collateral_amount} ink={urn.ink}")
@@ -238,7 +238,7 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
                     raise RuntimeError("Insufficient collateral balance")
             amount_to_join = token.unnormalize_amount(vat_gap)
             if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
-                amount_to_join += token.min_amount
+                amount_to_join += token.unnormalize_amount(token.min_amount)
             assert c.adapter.join(gal_address, amount_to_join).transact(from_address=gal_address)
         vat_balance = mcd.vat.gem(c.ilk, gal_address)
         print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
