@@ -96,8 +96,7 @@ def handle_returned_collateral():
         logging.info(f"Attempting to exit {dai_balance} Dai")
         mcd.dai_adapter.exit(our_address, dai_balance).transact()
 
-
-create_risky_vault()
+# create_risky_vault()
 
 
 while True:
