@@ -25,7 +25,7 @@ from pymaker.approval import directly, hope_directly
 from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import c, mcd, mint_mkr, reserve_dai, set_collateral_price, web3, \
-    our_address, keeper_address, other_address, gal_address, \
+    our_address, keeper_address, other_address, gal_address, get_node_gas_price, \
     max_dart, is_cdp_safe, bite, create_cdp_with_surplus, simulate_model_output, models
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
@@ -67,7 +67,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         assert isinstance(self.keeper.gas_price, DynamicGasPrice)
         # Since no args were assigned, gas strategy should return a GeometricGasPrice starting at the node gas price
-        self.default_gas_price = max(self.web3.manager.request_blocking("eth_gasPrice", []), 1 * DynamicGasPrice.GWEI)
+        self.default_gas_price = get_node_gas_price(self.web3)
 
     def test_should_detect_flap(self, web3, mcd, c, gal_address, keeper_address):
         # given some MKR is available to the keeper and a count of flap auctions

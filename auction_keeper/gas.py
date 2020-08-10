@@ -20,7 +20,7 @@ from typing import Optional
 from web3 import Web3
 
 from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
-from pymaker.gas import GasPrice, GeometricGasPrice
+from pymaker.gas import GasPrice, GeometricGasPrice, NodeAwareGasPrice
 
 
 class UpdatableGasPrice(GasPrice):
@@ -38,9 +38,7 @@ class UpdatableGasPrice(GasPrice):
         return self.gas_price
 
 
-class DynamicGasPrice(GasPrice):
-    GWEI = 1000000000
-
+class DynamicGasPrice(NodeAwareGasPrice):
     def __init__(self, arguments, web3: Web3):
         assert isinstance(web3, Web3)
         self.gas_station = None
@@ -69,7 +67,7 @@ class DynamicGasPrice(GasPrice):
             if self.fixed_gas:
                 initial_price = self.fixed_gas
             else:
-                initial_price = max(self.web3.manager.request_blocking("eth_gasPrice", []), 1 * self.GWEI)
+                initial_price = self.get_node_gas_price()
         # otherwise, use the API's fast price, adjusted by a coefficient, as our starting point
         else:
             initial_price = int(round(fast_price * self.initial_multiplier))

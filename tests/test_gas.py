@@ -18,10 +18,10 @@
 import pytest
 
 from auction_keeper.main import AuctionKeeper
-from pymaker.gas import DefaultGasPrice
 from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg
 
 from auction_keeper.gas import DynamicGasPrice
+from tests.conftest import get_node_gas_price
 from tests.helper import args
 
 
@@ -29,10 +29,6 @@ GWEI = 1000000000
 default_max_gas = 5000
 
 class TestGasStrategy:
-    @staticmethod
-    def get_node_gas_price(web3):
-        return max(web3.manager.request_blocking("eth_gasPrice", []), 1 * GWEI)
-
     def test_ethgasstation(self, mcd, keeper_address):
         # given
         c = mcd.collaterals['ETH-A']
@@ -89,7 +85,7 @@ class TestGasStrategy:
         assert keeper.gas_price.reactive_multiplier == 2.25
         assert keeper.gas_price.gas_maximum == default_max_gas * GWEI
 
-        default_initial_gas = self.get_node_gas_price(web3)
+        default_initial_gas = get_node_gas_price(web3)
         assert keeper.gas_price.get_gas_price(0) == default_initial_gas
         assert keeper.gas_price.get_gas_price(31) == default_initial_gas * 2.25
         assert keeper.gas_price.get_gas_price(61) == default_initial_gas * 2.25 ** 2
@@ -107,7 +103,7 @@ class TestGasStrategy:
                                          f"--ilk {c.ilk.name} "
                                          f"--gas-reactive-multiplier {reactive_multipler} "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
-        initial_amount = self.get_node_gas_price(mcd.web3)
+        initial_amount = get_node_gas_price(mcd.web3)
         assert keeper.gas_price.get_gas_price(0) == initial_amount
         assert keeper.gas_price.get_gas_price(31) == initial_amount * reactive_multipler
         assert keeper.gas_price.get_gas_price(61) == initial_amount * reactive_multipler ** 2
