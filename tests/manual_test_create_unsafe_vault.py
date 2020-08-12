@@ -67,12 +67,16 @@ def close_repaid_urn():
         assert collateral.adapter.exit(our_address, gem_balance).transact()
 
 
+# This accounts for several seconds of rate accumulation between time of calculation and the transaction being mined
+flub_amount = Wad(1000)
+
+
 def create_risky_vault():
     # Create a vault close to the liquidation ratio
     if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
         logging.info("Vault is already unsafe; no action taken")
     else:
-        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + Wad(1000)
+        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + flub_amount
         logging.info(f"Opening/adjusting vault with {collateral_amount} {ilk.name}")
         create_risky_cdp(mcd, collateral, collateral_amount, our_address, False)
         logging.info("Created risky vault")
@@ -81,7 +85,7 @@ def create_risky_vault():
 def handle_returned_collateral():
     # Handle collateral returned to the urn after a liquidation is dealt
     available_to_generate = (urn.ink * ilk.spot) - Wad(Ray(urn.art) * ilk.rate)
-    if available_to_generate > token.min_amount:
+    if available_to_generate > token.min_amount + flub_amount:
         logging.info(f"Attempting to generate {available_to_generate} Dai")
         mcd.vat.frob(ilk, our_address, Wad(0), available_to_generate).transact()
     dai_balance = Wad(mcd.vat.dai(our_address)) - Wad(1)
