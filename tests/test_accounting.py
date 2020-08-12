@@ -150,12 +150,12 @@ class TestVatDaiTarget(TestVatDai):
 
 
 class TestEmptyVatOnExit(TestVatDai):
-    def create_keeper(self, exit_dai_on_shutdown: bool, exit_gem_behavior):
+    def create_keeper(self, exit_dai_on_shutdown: bool, exit_gem_on_shutdown: bool):
         assert isinstance(exit_dai_on_shutdown, bool)
-        assert isinstance(exit_gem_behavior, str) or exit_gem_behavior is None
+        assert isinstance(exit_gem_on_shutdown, bool)
 
         vat_dai_behavior = "" if exit_dai_on_shutdown else "--keep-dai-in-vat-on-exit"
-        vat_gem_behavior = "" if exit_gem_behavior else f"--return-gem-behavior {exit_gem_behavior}"
+        vat_gem_behavior = "" if exit_gem_on_shutdown else "--keep-gem-in-vat-on-exit"
 
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flip --ilk {self.collateral.ilk.name} "
@@ -173,7 +173,7 @@ class TestEmptyVatOnExit(TestVatDai):
 
     def test_do_not_empty(self):
         # given dai and gem in the vat
-        keeper = self.create_keeper(False, "NONE")
+        keeper = self.create_keeper(False, False)
         purchase_dai(Wad.from_number(153), self.keeper_address)
         assert self.get_dai_token_balance() >= Wad.from_number(153)
         assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(153)).transact(
@@ -202,7 +202,7 @@ class TestEmptyVatOnExit(TestVatDai):
         gem_vat_balance_before = self.get_gem_vat_balance()
 
         # when creating and shutting down the keeper
-        keeper = self.create_keeper(True, "none")
+        keeper = self.create_keeper(True, False)
         keeper.shutdown()
 
         # then ensure the dai was emptied
@@ -224,7 +224,7 @@ class TestEmptyVatOnExit(TestVatDai):
         dai_token_balance_before = self.get_dai_token_balance()
         dai_vat_balance_before = self.get_dai_vat_balance()
         # and creating and shutting down the keeper
-        keeper = self.create_keeper(False, "onexit")
+        keeper = self.create_keeper(False, True)
         keeper.shutdown()
 
         # then ensure dai was not emptied
