@@ -17,9 +17,10 @@
 
 from pprint import pformat
 from typing import Optional
+from web3 import Web3
 
 from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
-from pymaker.gas import GasPrice, GeometricGasPrice
+from pymaker.gas import GasPrice, GeometricGasPrice, NodeAwareGasPrice
 
 
 class UpdatableGasPrice(GasPrice):
@@ -37,13 +38,12 @@ class UpdatableGasPrice(GasPrice):
         return self.gas_price
 
 
-class DynamicGasPrice(GasPrice):
-
-    GWEI = 1000000000
-
-    def __init__(self, arguments):
+class DynamicGasPrice(NodeAwareGasPrice):
+    def __init__(self, arguments, web3: Web3):
+        assert isinstance(web3, Web3)
         self.gas_station = None
         self.fixed_gas = None
+        self.web3 = web3
         if arguments.ethgasstation_api_key:
             self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=arguments.ethgasstation_api_key)
         elif arguments.etherchain_gas:
@@ -64,7 +64,10 @@ class DynamicGasPrice(GasPrice):
 
         # if API produces no price, or remote feed not configured, start with a fixed price
         if fast_price is None:
-            initial_price = self.fixed_gas if self.fixed_gas else 10 * self.GWEI
+            if self.fixed_gas:
+                initial_price = self.fixed_gas
+            else:
+                initial_price = self.get_node_gas_price()
         # otherwise, use the API's fast price, adjusted by a coefficient, as our starting point
         else:
             initial_price = int(round(fast_price * self.initial_multiplier))
@@ -75,13 +78,13 @@ class DynamicGasPrice(GasPrice):
                                  max_price=self.gas_maximum).get_gas_price(time_elapsed)
 
     def __str__(self):
-        retval = ""
         if self.gas_station:
             retval = f"{type(self.gas_station)} fast gas price with initial multiplier {self.initial_multiplier} "
         elif self.fixed_gas:
             retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
         else:
-            retval = f"Default gas 10 Gwei "
+            retval = f"Node gas price (currently {round(self.get_node_gas_price() / self.GWEI, 1)} Gwei, "\
+                     "changes over time) "
 
         retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of " \
                   f"{round(self.gas_maximum / self.GWEI, 1)} Gwei"

@@ -25,7 +25,7 @@ from pymaker import Address, Transact, Wad
 from pymaker.auctions import Flipper, Flapper, Flopper
 from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
 from pymaker.token import DSToken
-from tests.conftest import keeper_address, mcd, web3
+from tests.conftest import get_node_gas_price, keeper_address, mcd, web3
 from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -139,6 +139,12 @@ class TestTransactionMocking(TransactionIgnoringTest):
         wait_for_other_threads()
         balance_after = self.mcd.vat.gem(self.ilk, self.keeper_address)
         assert balance_before - amount == balance_after
+
+
+class TestConfTest:
+    @pytest.mark.timeout(2)
+    def test_get_node_gas_price(self, web3):
+        assert get_node_gas_price(web3) > 0
 
 
 class TestConfig:

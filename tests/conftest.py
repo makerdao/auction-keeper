@@ -28,6 +28,7 @@ from pymaker import Address
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
 from pymaker.feed import DSValue
+from pymaker.gas import NodeAwareGasPrice
 from pymaker.keys import register_keys
 from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
@@ -354,3 +355,13 @@ def simulate_model_output(model: object, price: Wad, gas_price: Optional[int] = 
     assert (isinstance(price, Wad))
     assert (isinstance(gas_price, int)) or gas_price is None
     model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
+
+
+def get_node_gas_price(web3: Web3):
+    class DummyGasStrategy(NodeAwareGasPrice):
+        def get_gas_price(self, time_elapsed: int) -> Optional[int]:
+            return self.get_node_gas_price()
+
+    assert isinstance(web3, Web3)
+    dummy = DummyGasStrategy(web3)
+    return dummy.get_node_gas_price()

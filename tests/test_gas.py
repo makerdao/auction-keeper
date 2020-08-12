@@ -18,19 +18,17 @@
 import pytest
 
 from auction_keeper.main import AuctionKeeper
-from pymaker.gas import DefaultGasPrice
 from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg
 
 from auction_keeper.gas import DynamicGasPrice
+from tests.conftest import get_node_gas_price
 from tests.helper import args
 
 
 GWEI = 1000000000
-default_initial_gas = 10
 default_max_gas = 5000
 
 class TestGasStrategy:
-
     def test_ethgasstation(self, mcd, keeper_address):
         # given
         c = mcd.collaterals['ETH-A']
@@ -87,10 +85,11 @@ class TestGasStrategy:
         assert keeper.gas_price.reactive_multiplier == 2.25
         assert keeper.gas_price.gas_maximum == default_max_gas * GWEI
 
-        assert keeper.gas_price.get_gas_price(0) == default_initial_gas * GWEI
-        assert keeper.gas_price.get_gas_price(31) == default_initial_gas * GWEI * 2.25
-        assert keeper.gas_price.get_gas_price(61) == default_initial_gas * GWEI * 2.25 ** 2
-        assert keeper.gas_price.get_gas_price(91) == default_initial_gas * GWEI * 2.25 ** 3
+        default_initial_gas = get_node_gas_price(web3)
+        assert keeper.gas_price.get_gas_price(0) == default_initial_gas
+        assert keeper.gas_price.get_gas_price(31) == default_initial_gas * 2.25
+        assert keeper.gas_price.get_gas_price(61) == default_initial_gas * 2.25 ** 2
+        assert keeper.gas_price.get_gas_price(91) == default_initial_gas * 2.25 ** 3
         assert keeper.gas_price.get_gas_price(30*80) == default_max_gas * GWEI
 
     def test_no_api_non_fixed(self, mcd, keeper_address):
@@ -104,7 +103,7 @@ class TestGasStrategy:
                                          f"--ilk {c.ilk.name} "
                                          f"--gas-reactive-multiplier {reactive_multipler} "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
-        initial_amount = default_initial_gas * GWEI
+        initial_amount = get_node_gas_price(mcd.web3)
         assert keeper.gas_price.get_gas_price(0) == initial_amount
         assert keeper.gas_price.get_gas_price(31) == initial_amount * reactive_multipler
         assert keeper.gas_price.get_gas_price(61) == initial_amount * reactive_multipler ** 2
