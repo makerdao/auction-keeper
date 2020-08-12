@@ -102,7 +102,7 @@ class TransactionIgnoringTest:
             return self.original_send_transaction(transaction_without_nonce)
 
         # Give the previous Transact a chance to enter its event loop
-        time.sleep(0.1)
+        time.sleep(0.05)
 
         if ensure_next_tx_is_replacement:
             self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)

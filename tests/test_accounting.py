@@ -47,6 +47,11 @@ class TestVatDai:
     def get_gem_vat_balance(self) -> Wad:
         return self.mcd.vat.gem(self.collateral.ilk, self.keeper_address)
 
+    def give_away_dai(self):
+        assert self.mcd.web3.eth.defaultAccount == self.keeper_address.address
+        assert self.mcd.dai_adapter.exit(self.keeper_address, self.get_dai_vat_balance())
+        assert self.mcd.dai.transfer(self.our_address, self.get_dai_token_balance()).transact()
+
 
 class TestVatDaiTarget(TestVatDai):
     def create_keeper(self, dai: float):
@@ -145,12 +150,12 @@ class TestVatDaiTarget(TestVatDai):
 
 
 class TestEmptyVatOnExit(TestVatDai):
-    def create_keeper(self, exit_dai_on_shutdown: bool, exit_gem_behavior):
+    def create_keeper(self, exit_dai_on_shutdown: bool, exit_gem_on_shutdown: bool):
         assert isinstance(exit_dai_on_shutdown, bool)
-        assert isinstance(exit_gem_behavior, str) or exit_gem_behavior is None
+        assert isinstance(exit_gem_on_shutdown, bool)
 
         vat_dai_behavior = "" if exit_dai_on_shutdown else "--keep-dai-in-vat-on-exit"
-        vat_gem_behavior = "" if exit_gem_behavior else f"--return-gem-behavior {exit_gem_behavior}"
+        vat_gem_behavior = "" if exit_gem_on_shutdown else "--keep-gem-in-vat-on-exit"
 
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type flip --ilk {self.collateral.ilk.name} "
@@ -158,14 +163,17 @@ class TestEmptyVatOnExit(TestVatDai):
                                          f"{vat_dai_behavior} "
                                          f"{vat_gem_behavior} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
+        self.web3 = keeper.web3
+        self.mcd = keeper.mcd
         assert self.web3.eth.defaultAccount == self.keeper_address.address
         assert keeper.arguments.exit_dai_on_shutdown == exit_dai_on_shutdown
+        assert keeper.arguments.exit_gem_on_shutdown == exit_gem_on_shutdown
         keeper.startup()
         return keeper
 
     def test_do_not_empty(self):
         # given dai and gem in the vat
-        keeper = self.create_keeper(False, "NONE")
+        keeper = self.create_keeper(False, False)
         purchase_dai(Wad.from_number(153), self.keeper_address)
         assert self.get_dai_token_balance() >= Wad.from_number(153)
         assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(153)).transact(
@@ -194,7 +202,7 @@ class TestEmptyVatOnExit(TestVatDai):
         gem_vat_balance_before = self.get_gem_vat_balance()
 
         # when creating and shutting down the keeper
-        keeper = self.create_keeper(True, "none")
+        keeper = self.create_keeper(True, False)
         keeper.shutdown()
 
         # then ensure the dai was emptied
@@ -216,7 +224,7 @@ class TestEmptyVatOnExit(TestVatDai):
         dai_token_balance_before = self.get_dai_token_balance()
         dai_vat_balance_before = self.get_dai_vat_balance()
         # and creating and shutting down the keeper
-        keeper = self.create_keeper(False, "onexit")
+        keeper = self.create_keeper(False, True)
         keeper.shutdown()
 
         # then ensure dai was not emptied
@@ -228,35 +236,40 @@ class TestEmptyVatOnExit(TestVatDai):
 
     def test_empty_both(self):
         # when creating and shutting down the keeper
-        keeper = self.create_keeper(True, "ONEXIT")
+        keeper = self.create_keeper(True, True)
         keeper.shutdown()
 
         # then ensure the vat is empty
         assert self.get_dai_vat_balance() == Wad(0)
         assert self.get_gem_vat_balance() == Wad(0)
 
+        # clean up
+        self.give_away_dai()
 
-class TestPeriodicRebalance(TestVatDai):
+
+class TestRebalance(TestVatDai):
     def create_keeper(self, mocker, dai_target="all"):
+        # Create a keeper
         mocker.patch("web3.net.Net.peer_count", return_value=1)
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flip --ilk ETH-C "
-                                         f"--bid-only "
+                                         f"--type flip --ilk ETH-C --bid-only "
                                          f"--vat-dai-target {dai_target} "
-                                         f"--return-gem-behavior onrebalance "
-                                         f"--rebalance-interval 3 "
+                                         f"--return-gem-interval 3 "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
+        self.web3 = self.keeper.web3
+        self.mcd = self.keeper.mcd
         assert self.keeper.auctions
         # Changed the collateral to ETH-C because our testchain didn't have dust set for ETH-A or ETH-B
         self.collateral = self.keeper.collateral
         self.collateral.approve(self.keeper_address)
+
         self.thread = threading.Thread(target=self.keeper.main, daemon=True)
         self.thread.start()
         return self.keeper
 
     def shutdown_keeper(self):
-        # self.keeper.lifecycle._sigint_sigterm_handler(None, None)
+        self.keeper.shutdown()  # HACK: Lifecycle doesn't invoke this as expected
         self.keeper.lifecycle.terminate("unit test completed")
         self.thread.join()
 
@@ -273,7 +286,9 @@ class TestPeriodicRebalance(TestVatDai):
         # Ensure we don't leak threads, which would break wait_for_other_threads() later on
         assert threading.active_count() == 1
 
-    @pytest.mark.timeout(40)
+        assert self.get_dai_vat_balance() == Wad(0)
+
+    @pytest.mark.timeout(60)
     def test_balance_added_after_startup(self, mocker):
         try:
             # given gem balances after starting keeper
@@ -282,74 +297,63 @@ class TestPeriodicRebalance(TestVatDai):
             time.sleep(6)  # wait for keeper to join everything on startup
             vat_balance_before = self.get_dai_vat_balance()
             assert self.get_dai_token_balance() == Wad(0)
-            assert vat_balance_before == token_balance_before
+            assert vat_balance_before == Wad(0)
 
-            # when adding dai
+            # when adding Dai
             purchase_dai(Wad.from_number(77), self.keeper_address)
             assert self.get_dai_token_balance() == Wad.from_number(77)
+            # and pretending there's a bid which requires Dai
+            assert self.keeper.check_bid_cost(Rad.from_number(20))
 
-            # then wait and ensure dai was joined
-            time.sleep(4)
+            # then ensure all Dai is joined
             assert self.get_dai_token_balance() == Wad(0)
-            assert self.get_dai_vat_balance() == vat_balance_before + Wad.from_number(77)
+            assert self.get_dai_vat_balance() == Wad.from_number(77)
+
+            # when adding more Dai and pretending there's a bid we cannot cover
+            purchase_dai(Wad.from_number(23), self.keeper_address)
+            assert self.get_dai_token_balance() == Wad.from_number(23)
+            assert not self.keeper.check_bid_cost(Rad(Wad.from_number(120)))
+
+            # then ensure the added Dai was joined anyway
+            assert self.get_dai_token_balance() == Wad(0)
+            assert self.get_dai_vat_balance() == Wad.from_number(100)
 
         finally:
             self.shutdown_keeper()
+            self.give_away_dai()
 
-    @pytest.mark.timeout(56)
+    @pytest.mark.timeout(600)
     def test_fixed_dai_target(self, mocker):
         try:
             # given a keeper configured to maintained a fixed amount of Dai
             target = Wad.from_number(100)
-            purchase_dai(target, self.keeper_address)
+            purchase_dai(target * 2, self.keeper_address)
+            assert self.get_dai_token_balance() == Wad.from_number(200)
+
             self.create_keeper(mocker, target)
             time.sleep(6)  # wait for keeper to join 100 on startup
-            assert self.get_dai_vat_balance() == target
+            vat_balance_before = self.get_dai_vat_balance()
+            assert vat_balance_before == target
 
             # when spending Dai
             assert self.keeper.dai_join.exit(self.keeper_address, Wad.from_number(22)).transact()
             assert self.get_dai_vat_balance() == Wad.from_number(78)
+            # and pretending there's a bid which requires more Dai
+            assert self.keeper.check_bid_cost(Rad.from_number(79))
 
-            # then wait and ensure dai was joined up to the target
-            time.sleep(4)
+            # then ensure Dai was joined up to the target
             assert self.get_dai_vat_balance() == target
 
-            # then wait some more and ensure it didn't overjoin on the next iteration
-            time.sleep(4)
+            # when pretending there's a bid which we have plenty of Dai to cover
+            assert self.keeper.check_bid_cost(Rad(Wad.from_number(1)))
+
+            # then ensure Dai levels haven't changed
             assert self.get_dai_vat_balance() == target
 
         finally:
             self.shutdown_keeper()
 
-    @pytest.mark.timeout(56)
-    def test_dust(self, mocker):
-        try:
-            # given vat balances after keeper started up
-            self.create_keeper(mocker)
-            time.sleep(6)  # wait for keeper to join everything on startup
-            assert self.get_dai_token_balance() == Wad(0)
-            vat_balance_before = self.get_dai_vat_balance()
-
-            # when a small amount of Dai was sent to the account
-            purchase_dai(Wad.from_number(0.001), self.keeper_address)
-            assert self.get_dai_token_balance() == Wad.from_number(0.001)
-
-            # then wait and ensure dai was not joined
-            time.sleep(4)
-            assert self.get_dai_vat_balance() == vat_balance_before
-
-            # when spending a tiny amount of dai
-            assert self.keeper.dai_join.exit(self.keeper_address, Wad.from_number(16)).transact()
-            assert self.get_dai_token_balance() == Wad.from_number(Wad.from_number(16.001))
-
-            # then wait and ensure dai was not rebalanced
-            time.sleep(4)
-            assert self.get_dai_vat_balance() == vat_balance_before - Wad.from_number(16)
-
-        finally:
-            self.shutdown_keeper()
-
-    @pytest.mark.timeout(40)
+    @pytest.mark.timeout(30)
     def test_collateral_removal(self, mocker):
         try:
             # given a keeper configured to return all collateral upon rebalance

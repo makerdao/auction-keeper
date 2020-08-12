@@ -227,8 +227,8 @@ Key points:
 - MKR for/from `flap`/`flop` auctions is managed directly through token balances and is never joined to the `Vat`.
 
 The keeper provides facilities for managing `Vat` balances, which may be turned off to manage manually. 
-To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit`, set `--return-gem-behavior NONE`, 
-and do not pass the `--vat-dai-target` switch.
+To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit`, 
+set `--return-gem-interval 0`, and do not pass `--vat-dai-target`.
 
 Warnings: **Do not use an `eth-from` account on multiple keepers** as it complicates Vat inventory management and 
 will likely cause nonce conflicts.  Using an `eth-from` account with an open vault is also discouraged.
@@ -236,25 +236,19 @@ will likely cause nonce conflicts.  Using an `eth-from` account with an open vau
 #### Dai
 All auction contracts exclusively interact with Dai (for all auctions) in the `Vat`.  `--vat-dai-target` may be set to 
 the amount you wish to maintain, or `all` to join your account's entire token balance.  Rebalances do not account for 
-Dai moved from the `Vat` to an auction contract for an active bid.  There are three places where Dai is or can be 
-rebalanced, all using `--vat-dai-target`:
-- Upon keeper startup
-- Periodically, if `--rebalance-interval` is set (see _Rebalancing_ section below)
-- When when an auction is dealt
+Dai moved from the `Vat` to an auction contract for an active bid.  Dai is rebalanced per `--vat-dai-target` when:
+- The keeper starts up
+- `Vat` balance is insufficient to place a bid
+- An auction is dealt
 
+To avoid transaction spamming, small "dusty" Dai balances will be ignored (until the keeper exits, if so configured).  
 By default, all Dai in your `eth-from` account is exited from the `Vat` and added to your token balance when the keeper 
-is shut down.  This feature may be disabled using `--keep-dai-in-vat-on-exit`.
+is terminated normally.  This feature may be disabled using `--keep-dai-in-vat-on-exit`.
 
 #### Collateral (flip auctions)
-`--return-gem-behavior` offers a few options for exiting won collateral to a token balance:
-- `ONEXIT` - (default) collateral is returned when the keeper exits normally
-- `ONREBALANCE` - collateral balances are withdrawn upon periodic rebalances (discussed below)
-- `NONE` - the keeper doesn't return collateral (user is responsible for withdrawing from `Vat` manually)
-
-#### Rebalancing
-Dai can be periodically joined or exited  by setting `--rebalance-interval` to the number of seconds between balance 
-checks.  To avoid transaction spamming, small "dusty" Dai balances will be ignored (until the keeper exits, if so 
-configured).  Collateral is exited at this interval if `--return-gem-behavior` is set to `ONREBALANCE`.
+Won collateral is periodically exited by setting `--return-gem-interval` to the number of seconds between balance 
+checks.  Collateral is exited from the `Vat` when the keeper is terminated normally unless `--keep-gem-in-vat-on-exit` 
+is specified.
 
 #### Other tools
 Alternatively, [mcd-cli](https://github.com/makerdao/mcd-cli) can be used to manually manage `Vat` balances.

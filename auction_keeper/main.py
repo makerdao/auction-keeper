@@ -25,6 +25,7 @@ import threading
 
 from datetime import datetime
 from requests.exceptions import RequestException
+from typing import Optional
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
@@ -100,11 +101,10 @@ class AuctionKeeper:
                             help="Amount of Dai to keep in the Vat contract or ALL to join entire token balance")
         parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
-        parser.add_argument('--return-gem-behavior', type=str, default="onexit",
-                            help="Determines when to exit won collateral: ONEXIT (default), NONE, ONREBALANCE")
-        parser.add_argument('--rebalance-interval', type=int, default=0,
-                            help="Check whether Dai and collateral needs to be joined/exited every n seconds; "
-                                 "set to 0 to disable (default)")
+        parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
+                            help="Retain collateral in the Vat on exit")
+        parser.add_argument('--return-gem-interval', type=int, default=300,
+                            help="Period of timer [in seconds] used to check and exit won collateral")
 
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
@@ -196,6 +196,8 @@ class AuctionKeeper:
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
+        # Since we don't want periodically-pollled bidding threads to back up, use a flag instead of a lock.
+        self.is_joining_dai = False
         self.dead_since = {}
         self.lifecycle = None
 
@@ -256,8 +258,8 @@ class AuctionKeeper:
 
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
-            if self.arguments.rebalance_interval:
-                lifecycle.every(self.arguments.rebalance_interval, self.rebalance)
+            if self.arguments.return_gem_interval:
+                lifecycle.every(self.arguments.return_gem_interval, self.exit_gem)
 
     def auction_notice(self) -> str:
         if self.arguments.type == 'flip':
@@ -322,13 +324,14 @@ class AuctionKeeper:
             del self.auctions
         if self.arguments.exit_dai_on_shutdown:
             self.exit_dai_on_shutdown()
-        if self.arguments.return_gem_behavior.upper() == "ONEXIT":
+        if not self.arguments.exit_gem_on_shutdown:
             self.exit_gem()
 
     def is_shutting_down(self) -> bool:
         return self.lifecycle and self.lifecycle.terminated_externally
 
     def exit_dai_on_shutdown(self):
+        # Unlike rebalance_dai(), this doesn't join, and intentionally doesn't check dust
         vat_balance = Wad(self.vat.dai(self.our_address))
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
@@ -641,13 +644,24 @@ class AuctionKeeper:
                 self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                              gas_price=auction.gas_price))
 
-    def check_bid_cost(self, cost: Rad) -> bool:
+    def check_bid_cost(self, cost: Rad, already_rebalanced=False) -> bool:
         assert isinstance(cost, Rad)
 
         # If this is an auction where we bid with Dai...
         if self.flipper or self.flopper:
             vat_dai = self.vat.dai(self.our_address)
             if cost > vat_dai:
+                if not already_rebalanced:
+                    # Try to synchronously join Dai the Vat
+                    if self.is_joining_dai:
+                        self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                                          "waiting for Dai to rebalance")
+                        return False
+                    else:
+                        rebalanced = self.rebalance_dai()
+                        if rebalanced and rebalanced > Wad(0):
+                            return self.check_bid_cost(cost, already_rebalanced=True)
+
                 self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
                                   "bid will not be submitted")
                 return False
@@ -660,15 +674,12 @@ class AuctionKeeper:
                 return False
         return True
 
-    def rebalance(self):
-        self.rebalance_dai()
-        if self.arguments.return_gem_behavior.upper() == "ONREBALANCE":
-            self.exit_gem()
+    def rebalance_dai(self) -> Optional[Wad]:
+        # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards vat_dai_target
 
-    def rebalance_dai(self):
         logging.info(f"Checking if internal Dai balance needs to be rebalanced")
         if self.arguments.vat_dai_target is None:
-            return
+            return None
 
         dai = self.dai_join.dai()
         token_balance = dai.balance_of(self.our_address)  # Wad
@@ -694,19 +705,31 @@ class AuctionKeeper:
             # Join tokens to the vat
             if token_balance >= dai_to_join:
                 self.logger.info(f"Joining {str(dai_to_join)} Dai to the Vat")
-                assert self.dai_join.join(self.our_address, dai_to_join).transact(gas_price=self.gas_price)
+                return self.join_dai(dai_to_join)
             elif token_balance > Wad(0):
                 self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
                                     "Dai to the Vat")
-                assert self.dai_join.join(self.our_address, token_balance).transact(gas_price=self.gas_price)
+                return self.join_dai(token_balance)
             else:
-                self.logger.warning("No Dai is available to join to Vat; cannot maintain Dai target")
+                self.logger.warning("Insufficient Dai is available to join to Vat; cannot maintain Dai target")
+                return Wad(0)
         elif dai_to_exit > dust:
             # Exit dai from the vat
             self.logger.info(f"Exiting {str(dai_to_exit)} Dai from the Vat")
             assert self.dai_join.exit(self.our_address, dai_to_exit).transact(gas_price=self.gas_price)
+            return dai_to_exit * -1
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
+
+    def join_dai(self, amount: Wad):
+        assert isinstance(amount, Wad)
+        assert not self.is_joining_dai
+        try:
+            self.is_joining_dai = True
+            assert self.dai_join.join(self.our_address, amount).transact(gas_price=self.gas_price)
+        finally:
+            self.is_joining_dai = False
+        return amount
 
     def exit_gem(self):
         if not self.collateral:
