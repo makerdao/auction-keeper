@@ -78,13 +78,13 @@ class DynamicGasPrice(NodeAwareGasPrice):
                                  max_price=self.gas_maximum).get_gas_price(time_elapsed)
 
     def __str__(self):
-        retval = ""
         if self.gas_station:
             retval = f"{type(self.gas_station)} fast gas price with initial multiplier {self.initial_multiplier} "
         elif self.fixed_gas:
             retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
         else:
-            retval = f"Node gas price "
+            retval = f"Node gas price (currently {round(self.get_node_gas_price() / self.GWEI, 1)} Gwei, "\
+                     "changes over time) "
 
         retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of " \
                   f"{round(self.gas_maximum / self.GWEI, 1)} Gwei"
