@@ -578,7 +578,6 @@ class AuctionKeeper:
         assert isinstance(auction, Auction)
 
         output = auction.model_output()
-
         if output is None:
             return
 
@@ -590,6 +589,7 @@ class AuctionKeeper:
                 return
 
         if bid_price is not None and bid_transact is not None:
+            assert isinstance(bid_price, Wad)
             # Ensure this auction has a gas strategy assigned
             (new_gas_strategy, fixed_gas_price_changed) = auction.determine_gas_strategy_for_bid(output, self.gas_price)
 
@@ -693,6 +693,9 @@ class AuctionKeeper:
                 dai_to_join = token_balance
             else:
                 dai_target = Wad.from_number(float(self.arguments.vat_dai_target))
+                if dai_target < dust:
+                    self.logger.warning(f"Dust cutoff of {dust} exceeds Dai target {dai_target}; "
+                                        "please adjust configuration accordingly")
                 vat_balance = Wad(self.vat.dai(self.our_address))
                 if vat_balance < dai_target:
                     dai_to_join = dai_target - vat_balance
@@ -701,7 +704,7 @@ class AuctionKeeper:
         except ValueError:
             raise ValueError("Unsupported --vat-dai-target")
 
-        if dai_to_join > dust:
+        if dai_to_join >= dust:
             # Join tokens to the vat
             if token_balance >= dai_to_join:
                 self.logger.info(f"Joining {str(dai_to_join)} Dai to the Vat")

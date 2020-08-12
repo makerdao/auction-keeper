@@ -72,9 +72,9 @@ def create_risky_vault():
     if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
         logging.info("Vault is already unsafe; no action taken")
     else:
-        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + Wad(100)
+        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + Wad(1000)
         logging.info(f"Opening/adjusting vault with {collateral_amount} {ilk.name}")
-        create_risky_cdp(mcd, collateral, collateral_amount, our_address, True)
+        create_risky_cdp(mcd, collateral, collateral_amount, our_address, False)
         logging.info("Created risky vault")
 
 
@@ -89,7 +89,9 @@ def handle_returned_collateral():
         logging.info(f"Attempting to exit {dai_balance} Dai")
         mcd.dai_adapter.exit(our_address, dai_balance).transact()
 
-# create_risky_vault()
+
+create_risky_vault()
+
 
 while True:
     time.sleep(6)

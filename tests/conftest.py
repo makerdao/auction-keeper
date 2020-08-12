@@ -160,7 +160,6 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
         print(f"max_dart is being bumped from {urn.art + dart} to {ilk.dust} to reach dust cutoff")
         dart = Wad(ilk.dust)
 
-    assert dart > Wad(0)
     return dart
 
 

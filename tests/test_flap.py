@@ -434,7 +434,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # and
         simulate_model_output(model=model, price=Wad.from_number(8.0), gas_price=15)
         # and
-        self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
