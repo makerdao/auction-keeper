@@ -40,6 +40,9 @@ logging.getLogger("web3").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)
 logging.getLogger("requests").setLevel(logging.INFO)
 
+# Usage:
+# python3 tests/manual_test_create_unsafe_vault [ADDRESS] [KEY] [COLLATERAL_TYPE] ([ACTION=create])
+
 mcd = DssDeployment.from_node(web3)
 our_address = Address(web3.eth.defaultAccount)
 collateral = mcd.collaterals[str(sys.argv[3])] if len(sys.argv) > 3 else mcd.collaterals['ETH-A']
@@ -49,6 +52,7 @@ urn = mcd.vat.urn(collateral.ilk, our_address)
 # mcd.approve_dai(our_address)
 # Transact.gas_estimate_for_bad_txs = 20000
 osm_price = collateral.pip.peek()
+action = sys.argv[4] if len(sys.argv) > 4 else "create"
 
 
 def r(value, decimals=1):

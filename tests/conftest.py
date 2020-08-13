@@ -20,11 +20,11 @@ import pytest
 
 from mock import MagicMock
 from typing import Optional
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
-from pymaker import Address
+from pymaker import Address, web3_via_http
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
 from pymaker.feed import DSValue
@@ -38,7 +38,7 @@ from pymaker.token import DSEthToken, DSToken
 @pytest.fixture(scope="session")
 def web3():
     # These details are specific to the MCD testchain used for pymaker unit tests.
-    web3 = Web3(HTTPProvider("http://0.0.0.0:8545"))
+    web3 = web3_via_http("http://0.0.0.0:8545", 3, 100)
     web3.eth.defaultAccount = "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
     register_keys(web3,
                   ["key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key1.json,pass_file=/dev/null",
