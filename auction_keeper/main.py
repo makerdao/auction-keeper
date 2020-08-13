@@ -120,9 +120,9 @@ class AuctionKeeper:
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
         parser.add_argument("--gas-initial-multiplier", type=float, default=1.0,
                             help="Adjusts the initial API-provided 'fast' gas price, default 1.0")
-        parser.add_argument("--gas-reactive-multiplier", type=float, default=2.25,
+        parser.add_argument("--gas-reactive-multiplier", type=float, default=1.125,
                             help="Increases gas price when transactions haven't been mined after some time")
-        parser.add_argument("--gas-maximum", type=float, default=5000,
+        parser.add_argument("--gas-maximum", type=float, default=2000,
                             help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
