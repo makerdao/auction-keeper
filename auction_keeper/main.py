@@ -349,7 +349,7 @@ class AuctionKeeper:
         started = datetime.now()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
-        dai_to_bid = self.vat.dai(self.our_address)
+        available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
 
         # Look for unsafe vaults and bite them
         urns = self.urn_history.get_urns()
@@ -358,7 +358,7 @@ class AuctionKeeper:
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
-                if self.arguments.bid_on_auctions and dai_to_bid == Rad(0):
+                if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")
                     break
@@ -433,7 +433,8 @@ class AuctionKeeper:
         if woe + sin >= sump:
             # We need to bring Joy to 0 and Woe to at least sump
 
-            if self.arguments.bid_on_auctions and self.vat.dai(self.our_address) == Rad(0):
+            available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
+            if self.arguments.bid_on_auctions and available_dai == Wad(0):
                 self.logger.warning("Skipping opportunity to kiss/flog/heal/flop because there is no Dai to bid")
                 return
 
@@ -677,10 +678,10 @@ class AuctionKeeper:
     def rebalance_dai(self) -> Optional[Wad]:
         # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards vat_dai_target
 
-        logging.info(f"Checking if internal Dai balance needs to be rebalanced")
         if self.arguments.vat_dai_target is None:
             return None
 
+        logging.info(f"Checking if internal Dai balance needs to be rebalanced")
         dai = self.dai_join.dai()
         token_balance = dai.balance_of(self.our_address)  # Wad
         # Prevent spending gas on small rebalances
