@@ -25,6 +25,7 @@ import threading
 
 from datetime import datetime
 from requests.exceptions import RequestException
+from typing import Optional
 from web3 import Web3, HTTPProvider
 
 from pymaker import Address
@@ -62,7 +63,7 @@ class AuctionKeeper:
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
                             help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
-                                 "available collateral types can be found at the left side of the CDP Portal")
+                                 "available collateral types can be found at the left side of the Oasis Borrow")
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
@@ -96,12 +97,14 @@ class AuctionKeeper:
                             help="Starting block from which to find vaults to bite or debt to queue "
                                  "(set to block where MCD was deployed)")
 
-        parser.add_argument('--vat-dai-target', type=float,
-                            help="Amount of Dai to keep in the Vat contract (e.g. 2000)")
+        parser.add_argument('--vat-dai-target', type=str,
+                            help="Amount of Dai to keep in the Vat contract or ALL to join entire token balance")
         parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
                             help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
         parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
                             help="Retain collateral in the Vat on exit")
+        parser.add_argument('--return-gem-interval', type=int, default=300,
+                            help="Period of timer [in seconds] used to check and exit won collateral")
 
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
@@ -193,6 +196,8 @@ class AuctionKeeper:
                                  flopper=self.flopper.address if self.flopper else None,
                                  model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
+        # Since we don't want periodically-pollled bidding threads to back up, use a flag instead of a lock.
+        self.is_joining_dai = False
         self.dead_since = {}
         self.lifecycle = None
 
@@ -201,9 +206,6 @@ class AuctionKeeper:
 
         # Create gas strategy used for non-bids and bids which do not supply gas price
         self.gas_price = DynamicGasPrice(self.arguments, self.web3)
-
-        self.vat_dai_target = Wad.from_number(self.arguments.vat_dai_target) if \
-            self.arguments.vat_dai_target is not None else None
 
         # Configure account(s) for which we'll deal auctions
         self.deal_all = False
@@ -246,7 +248,7 @@ class AuctionKeeper:
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
             if self.flipper and self.cat:
-                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_cdps))
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_vaults))
             elif self.flapper and self.vow:
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
             elif self.flopper and self.vow:
@@ -256,6 +258,8 @@ class AuctionKeeper:
 
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
+            if self.arguments.return_gem_interval:
+                lifecycle.every(self.arguments.return_gem_interval, self.exit_gem)
 
     def auction_notice(self) -> str:
         if self.arguments.type == 'flip':
@@ -305,41 +309,33 @@ class AuctionKeeper:
 
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
-        time.sleep(2)
+        time.sleep(1)
         if self.dai_join:
             if self.mcd.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
                 return
             else:
                 self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
+        time.sleep(1)
+        if self.collateral:
+            self.collateral.approve(self.our_address, gas_price=self.gas_price)
 
     def shutdown(self):
         with self.auctions_lock:
             del self.auctions
-        self.exit_dai_on_shutdown()
-        self.exit_collateral_on_shutdown()
+        if self.arguments.exit_dai_on_shutdown:
+            self.exit_dai_on_shutdown()
+        if not self.arguments.exit_gem_on_shutdown:
+            self.exit_gem()
 
     def is_shutting_down(self) -> bool:
         return self.lifecycle and self.lifecycle.terminated_externally
 
     def exit_dai_on_shutdown(self):
-        if not self.arguments.exit_dai_on_shutdown or not self.dai_join:
-            return
-
+        # Unlike rebalance_dai(), this doesn't join, and intentionally doesn't check dust
         vat_balance = Wad(self.vat.dai(self.our_address))
         if vat_balance > Wad(0):
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
             assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
-
-    def exit_collateral_on_shutdown(self):
-        if not self.arguments.exit_gem_on_shutdown or not self.gem_join:
-            return
-
-        self.collateral.approve(self.our_address, gas_price=self.gas_price)
-        token = Token(self.collateral.ilk.name.split('-')[0], self.collateral.gem.address, self.collateral.adapter.dec())
-        vat_balance = self.vat.gem(self.ilk, self.our_address)
-        if vat_balance > token.min_amount:
-            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat before shutdown")
-            assert self.gem_join.exit(self.our_address, token.unnormalize_amount(vat_balance)).transact(gas_price=self.gas_price)
 
     def auction_handled_by_this_shard(self, id: int) -> bool:
         assert isinstance(id, int)
@@ -349,20 +345,20 @@ class AuctionKeeper:
             logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
             return False
 
-    def check_cdps(self):
+    def check_vaults(self):
         started = datetime.now()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
-        dai_to_bid = self.vat.dai(self.our_address)
+        available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
 
-        # Look for unsafe CDPs and bite them
+        # Look for unsafe vaults and bite them
         urns = self.urn_history.get_urns()
         logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 
         for urn in urns.values():
             safe = urn.ink * ilk.spot >= urn.art * rate
             if not safe:
-                if self.arguments.bid_on_auctions and dai_to_bid == Rad(0):
+                if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")
                     break
@@ -437,7 +433,8 @@ class AuctionKeeper:
         if woe + sin >= sump:
             # We need to bring Joy to 0 and Woe to at least sump
 
-            if self.arguments.bid_on_auctions and self.vat.dai(self.our_address) == Rad(0):
+            available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
+            if self.arguments.bid_on_auctions and available_dai == Wad(0):
                 self.logger.warning("Skipping opportunity to kiss/flog/heal/flop because there is no Dai to bid")
                 return
 
@@ -582,7 +579,6 @@ class AuctionKeeper:
         assert isinstance(auction, Auction)
 
         output = auction.model_output()
-
         if output is None:
             return
 
@@ -594,6 +590,7 @@ class AuctionKeeper:
                 return
 
         if bid_price is not None and bid_transact is not None:
+            assert isinstance(bid_price, Wad)
             # Ensure this auction has a gas strategy assigned
             (new_gas_strategy, fixed_gas_price_changed) = auction.determine_gas_strategy_for_bid(output, self.gas_price)
 
@@ -648,13 +645,24 @@ class AuctionKeeper:
                 self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                              gas_price=auction.gas_price))
 
-    def check_bid_cost(self, cost: Rad) -> bool:
+    def check_bid_cost(self, cost: Rad, already_rebalanced=False) -> bool:
         assert isinstance(cost, Rad)
 
         # If this is an auction where we bid with Dai...
         if self.flipper or self.flopper:
             vat_dai = self.vat.dai(self.our_address)
             if cost > vat_dai:
+                if not already_rebalanced:
+                    # Try to synchronously join Dai the Vat
+                    if self.is_joining_dai:
+                        self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                                          "waiting for Dai to rebalance")
+                        return False
+                    else:
+                        rebalanced = self.rebalance_dai()
+                        if rebalanced and rebalanced > Wad(0):
+                            return self.check_bid_cost(cost, already_rebalanced=True)
+
                 self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
                                   "bid will not be submitted")
                 return False
@@ -667,31 +675,75 @@ class AuctionKeeper:
                 return False
         return True
 
-    def rebalance_dai(self):
-        logging.info(f"Checking if internal Dai balance needs to be rebalanced")
-        if self.vat_dai_target is None or not self.dai_join or (not self.flipper and not self.flopper):
-            return
+    def rebalance_dai(self) -> Optional[Wad]:
+        # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards vat_dai_target
 
+        if self.arguments.vat_dai_target is None:
+            return None
+
+        logging.info(f"Checking if internal Dai balance needs to be rebalanced")
         dai = self.dai_join.dai()
         token_balance = dai.balance_of(self.our_address)  # Wad
-        difference = Wad(self.vat.dai(self.our_address)) - self.vat_dai_target  # Wad
-        if difference < Wad(0):
+        # Prevent spending gas on small rebalances
+        dust = Wad(self.mcd.vat.ilk(self.ilk.name).dust) if self.ilk else Wad.from_number(20)
+
+        dai_to_join = Wad(0)
+        dai_to_exit = Wad(0)
+        try:
+            if self.arguments.vat_dai_target.upper() == "ALL":
+                dai_to_join = token_balance
+            else:
+                dai_target = Wad.from_number(float(self.arguments.vat_dai_target))
+                if dai_target < dust:
+                    self.logger.warning(f"Dust cutoff of {dust} exceeds Dai target {dai_target}; "
+                                        "please adjust configuration accordingly")
+                vat_balance = Wad(self.vat.dai(self.our_address))
+                if vat_balance < dai_target:
+                    dai_to_join = dai_target - vat_balance
+                elif vat_balance > dai_target:
+                    dai_to_exit = vat_balance - dai_target
+        except ValueError:
+            raise ValueError("Unsupported --vat-dai-target")
+
+        if dai_to_join >= dust:
             # Join tokens to the vat
-            if token_balance >= difference * -1:
-                self.logger.info(f"Joining {str(difference * -1)} Dai to the Vat")
-                assert self.dai_join.join(self.our_address, difference * -1).transact(gas_price=self.gas_price)
+            if token_balance >= dai_to_join:
+                self.logger.info(f"Joining {str(dai_to_join)} Dai to the Vat")
+                return self.join_dai(dai_to_join)
             elif token_balance > Wad(0):
                 self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
                                     "Dai to the Vat")
-                assert self.dai_join.join(self.our_address, token_balance).transact(gas_price=self.gas_price)
+                return self.join_dai(token_balance)
             else:
-                self.logger.warning("No Dai is available to join to Vat; cannot maintain Dai target")
-        elif difference > Wad(0):
+                self.logger.warning("Insufficient Dai is available to join to Vat; cannot maintain Dai target")
+                return Wad(0)
+        elif dai_to_exit > dust:
             # Exit dai from the vat
-            self.logger.info(f"Exiting {str(difference)} Dai from the Vat")
-            assert self.dai_join.exit(self.our_address, difference).transact(gas_price=self.gas_price)
+            self.logger.info(f"Exiting {str(dai_to_exit)} Dai from the Vat")
+            assert self.dai_join.exit(self.our_address, dai_to_exit).transact(gas_price=self.gas_price)
+            return dai_to_exit * -1
         self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
                          f"Vat balance: {self.vat.dai(self.our_address)}")
+
+    def join_dai(self, amount: Wad):
+        assert isinstance(amount, Wad)
+        assert not self.is_joining_dai
+        try:
+            self.is_joining_dai = True
+            assert self.dai_join.join(self.our_address, amount).transact(gas_price=self.gas_price)
+        finally:
+            self.is_joining_dai = False
+        return amount
+
+    def exit_gem(self):
+        if not self.collateral:
+            return
+
+        token = Token(self.collateral.ilk.name.split('-')[0], self.collateral.gem.address, self.collateral.adapter.dec())
+        vat_balance = self.vat.gem(self.ilk, self.our_address)
+        if vat_balance > token.min_amount:
+            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat")
+            assert self.gem_join.exit(self.our_address, token.unnormalize_amount(vat_balance)).transact(gas_price=self.gas_price)
 
     @staticmethod
     def _run_future(future):

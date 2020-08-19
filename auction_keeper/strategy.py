@@ -104,7 +104,7 @@ class FlipperStrategy(Strategy):
                 return None, None, None
 
             our_bid = Rad.min(Rad(bid.lot) * price, bid.tab)
-            our_price = price if our_bid < bid.tab else bid.bid / Rad(bid.lot)
+            our_price = price if our_bid < bid.tab else Wad(bid.bid) / bid.lot
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
                 return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
