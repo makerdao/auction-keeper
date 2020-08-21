@@ -21,6 +21,7 @@ from typing import Optional
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.model import Stance, Parameters, Status, Model, ModelFactory
 from pymaker import Address, TransactStatus, Transact
+from pymaker.numeric import Rad
 
 
 class Auction:
@@ -153,3 +154,26 @@ class Auctions:
                 pass
         del self.auctions
         self.logger.debug(f"Removed {count} auctions on shutdown")
+
+
+class Reservoir:
+    # Tracks expenditures on a single round of bid submissions, to prevent submitting bids which will fail because
+    # other bids used up the Dai/MKR balance (which doesn't update until the transaction is mined).
+    def __init__(self, level: Rad):
+        assert isinstance(level, Rad)
+        self.level = level
+
+    def check_bid_cost(self, id: int, consume: Rad):
+        # Lowers the level of the reservoir when Dai/MKR is consumed by bids
+        assert isinstance(id, int)
+        assert isinstance(consume, Rad)
+
+        if self.level > consume:
+            self.level -= consume
+            return True
+        else:
+            return False
+
+    def refill(self, produce: Rad):
+        # Increases Dai rebalanced during a cost check (not used for MKR)
+        self.level += produce
