@@ -100,7 +100,6 @@ def handle_returned_collateral():
 create_risky_vault()
 
 
-
 while True:
     time.sleep(6)
     urn = mcd.vat.urn(collateral.ilk, our_address)
