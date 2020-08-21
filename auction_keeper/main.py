@@ -504,6 +504,8 @@ class AuctionKeeper:
 
     def check_for_bids(self):
         # Initialize the reservoir with Dai/MKR balance for this round of bid submissions.
+        # This isn't a perfect solution as it omits the cost of bids submitted from the last round.
+        # Recreating the reservoir preserves the stateless design of this keeper.
         if self.flipper or self.flopper:
             reservoir = Reservoir(self.vat.dai(self.our_address))
         elif self.flapper:
@@ -663,7 +665,7 @@ class AuctionKeeper:
                 if not already_rebalanced:
                     # Try to synchronously join Dai the Vat
                     if self.is_joining_dai:
-                        self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
+                        self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                           "waiting for Dai to rebalance")
                         return False
                     else:
@@ -672,7 +674,7 @@ class AuctionKeeper:
                             reservoir.refill(Rad(rebalanced))
                             return self.check_bid_cost(id, cost, reservoir, already_rebalanced=True)
 
-                self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
+                self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                   "bid will not be submitted")
                 return False
         # If this is an auction where we bid with MKR...
