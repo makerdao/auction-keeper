@@ -539,16 +539,15 @@ class AuctionKeeper:
             logging.debug(f"Stopped tracking auction {id}")
             return False
 
-        # Check if the auction is finished.  If so configured, `deal` the auction.
+        # Check if the auction is finished.  If so configured, `tick` or `deal` the auction synchronously.
         elif auction_finished:
             if input.tic == 0:
-                logging.info(f"Auction {id} ended without bids; resurrecting auction")
-                # Calling this synchronously to avoid complexity tracking the pending transactions
-                self.strategy.tick(id).transact(gas_price=self.gas_price)
-                return True
+                if self.arguments.create_auctions:
+                    logging.info(f"Auction {id} ended without bids; resurrecting auction")
+                    self.strategy.tick(id).transact(gas_price=self.gas_price)
+                    return True
             elif self.deal_all or input.guy in self.deal_for:
-                # Always using default gas price for `deal`
-                self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
+                self.strategy.deal(id).transact_async(gas_price=self.gas_price)
 
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
