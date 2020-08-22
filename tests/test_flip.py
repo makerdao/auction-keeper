@@ -302,7 +302,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
-        assert flipper.deal(kick).transact()
 
     def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, kick, other_address):
         # given
