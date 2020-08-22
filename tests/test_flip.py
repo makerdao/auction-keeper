@@ -151,23 +151,24 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
         assert self.keeper.flipper.address == self.collateral.flipper.address
 
-    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
         # given
         (model, model_factory) = models(self.keeper, kick)
+        flipper = self.collateral.flipper
 
         # when
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         initial_bid = self.collateral.flipper.bids(kick)
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=self.collateral.flipper.address,
+        model_factory.create_model.assert_called_once_with(Parameters(flipper=flipper.address,
                                                                       flapper=None,
                                                                       flopper=None,
                                                                       id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper == self.collateral.flipper.address
+        assert status.flipper == flipper.address
         assert status.flapper is None
         assert status.flopper is None
         assert status.bid == Rad.from_number(0)
@@ -176,12 +177,16 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.beg > Wad.from_number(1)
         assert status.guy == self.mcd.cat.address
         assert status.era > 0
-        assert status.end < status.era + self.collateral.flipper.tau() + 1
+        assert status.end < status.era + flipper.tau() + 1
         assert status.tic == 0
         assert status.price == Wad(0)
 
         # cleanup
-        time_travel_by(self.web3, self.collateral.flipper.ttl() + 1)
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        self.keeper.check_all_auctions()
+        TestAuctionKeeperFlipper.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address,
+                                               Rad.from_number(80))
+        flipper.deal(kick).transact(from_address=other_address)
 
     def test_should_provide_model_with_updated_info_after_our_own_bid(self, kick):
         # given
@@ -268,7 +273,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert status.tic > status.era
         assert status.price == (Wad(new_bid_amount) / previous_bid.lot)
 
-    def test_should_terminate_model_if_auction_expired_due_to_tau(self, kick):
+    def test_should_tick_if_auction_expired_due_to_tau(self, kick):
         # given
         flipper = self.collateral.flipper
         (model, model_factory) = models(self.keeper, kick)
@@ -283,11 +288,21 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # when
         time_travel_by(self.web3, flipper.tau() + 1)
         # and
+        self.simulate_model_bid(self.mcd, self.collateral, model, Wad.from_number(15.0))
+        # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        model_factory.create_model.assert_called_once()
+        model.terminate.assert_not_called()
+        auction = flipper.bids(kick)
+        assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(15.0), 2)
+
+        # cleanup
+        time_travel_by(self.web3, flipper.ttl() + 1)
+        self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
+        assert flipper.deal(kick).transact()
 
     def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, kick, other_address):
         # given

@@ -114,7 +114,7 @@ class TransactionIgnoringTest:
         logging.debug("Finished ignoring async transactions")
 
     def start_ignoring_sync_transactions(self):
-        """ Mocks submission of a tx, prentending it happened """
+        """ Mocks submission of a tx, pretending it happened """
         self.original_tx_count = self.web3.eth.getTransactionCount
         self.original_get_receipt = Transact._get_receipt
         self.original_func = Transact._func

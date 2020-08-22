@@ -528,10 +528,10 @@ class AuctionKeeper:
 
         # Read auction information from the chain
         input = self.strategy.get_input(id)
-        auction_missing = (input.end == 0)
+        auction_deleted = (input.end == 0)
         auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
-        if auction_missing:
+        if auction_deleted:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
@@ -541,7 +541,12 @@ class AuctionKeeper:
 
         # Check if the auction is finished.  If so configured, `deal` the auction.
         elif auction_finished:
-            if self.deal_all or input.guy in self.deal_for:
+            if input.tic == 0:
+                logging.info(f"Auction {id} ended without bids; resurrecting auction")
+                # Calling this synchronously to avoid complexity tracking the pending transactions
+                self.strategy.tick(id).transact(gas_price=self.gas_price)
+                return True
+            elif self.deal_all or input.guy in self.deal_for:
                 # Always using default gas price for `deal`
                 self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
 
