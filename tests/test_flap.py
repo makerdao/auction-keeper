@@ -80,10 +80,13 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
 
         # then ensure another flap auction was kicked off
-        assert mcd.flapper.kicks() == kicks + 1
+        kick = mcd.flapper.kicks()
+        assert kick == kicks + 1
 
-        # clean up by letting the auction expire
-        time_travel_by(web3, mcd.flapper.tau() + 1)
+        # clean up by letting someone else bid and waiting until the auction ends
+        auction = self.flapper.bids(kick)
+        assert self.flapper.tend(kick, auction.lot, Wad.from_number(30)).transact(from_address=self.other_address)
+        time_travel_by(web3, mcd.flapper.ttl() + 1)
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
         # given
@@ -196,7 +199,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flapper.ttl() + 1)
         assert self.flapper.deal(kick).transact()
 
-    def test_should_terminate_model_if_auction_expired_due_to_tau(self, kick):
+    def test_should_tick_if_auction_expired_due_to_tau(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
 
@@ -210,10 +213,20 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # when
         time_travel_by(self.web3, self.flapper.tau() + 1)
         # and
+        simulate_model_output(model=model, price=Wad.from_number(9.0))
+        # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
+        model.terminate.assert_not_called()
+        auction = self.flapper.bids(kick)
+        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(9.0), 2)
+
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
         model_factory.create_model.assert_called_once()
+        self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
 
     def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, kick):
