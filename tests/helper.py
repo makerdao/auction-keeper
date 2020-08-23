@@ -23,7 +23,6 @@ import time
 from contextlib import contextmanager
 from io import StringIO
 from mock import MagicMock
-from pymaker import Wad
 from web3 import Web3
 
 

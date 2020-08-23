@@ -547,7 +547,7 @@ class AuctionKeeper:
                     self.strategy.tick(id).transact(gas_price=self.gas_price)
                     return True
             elif self.deal_all or input.guy in self.deal_for:
-                self.strategy.deal(id).transact_async(gas_price=self.gas_price)
+                self.strategy.deal(id).transact(gas_price=self.gas_price)
 
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
