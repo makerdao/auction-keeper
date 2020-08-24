@@ -26,9 +26,9 @@ import threading
 from datetime import datetime
 from requests.exceptions import RequestException
 from typing import Optional
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 
-from pymaker import Address
+from pymaker import Address, web3_via_http
 from pymaker.deployment import DssDeployment
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
@@ -120,9 +120,9 @@ class AuctionKeeper:
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
         parser.add_argument("--gas-initial-multiplier", type=float, default=1.0,
                             help="Adjusts the initial API-provided 'fast' gas price, default 1.0")
-        parser.add_argument("--gas-reactive-multiplier", type=float, default=2.25,
+        parser.add_argument("--gas-reactive-multiplier", type=float, default=1.125,
                             help="Increases gas price when transactions haven't been mined after some time")
-        parser.add_argument("--gas-maximum", type=float, default=5000,
+        parser.add_argument("--gas-maximum", type=float, default=2000,
                             help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
 
         parser.add_argument("--debug", dest='debug', action='store_true',
@@ -131,9 +131,8 @@ class AuctionKeeper:
         self.arguments = parser.parse_args(args)
 
         # Configure connection to the chain
-        provider = HTTPProvider(endpoint_uri=self.arguments.rpc_host,
-                                request_kwargs={'timeout': self.arguments.rpc_timeout})
-        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else Web3(provider)
+        self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else web3_via_http(
+            endpoint_uri=self.arguments.rpc_host, timeout=self.arguments.rpc_timeout, http_pool_size=100)
         self.web3.eth.defaultAccount = self.arguments.eth_from
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
