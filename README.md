@@ -150,8 +150,6 @@ the following actions:
 * The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will 
 `bite`, `flap`, or `flop` in response to opportunities regardless of whether or not your Dai or MKR balance is 
 sufficient to participate.  This too imposes a gas fee.
-* When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add
-Dai to the Vat.
 * Biting vaults to kick off new collateral auctions is an expensive operation.  To do so without a VulcanizeDB 
 subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then 
 continuously refresh urn state to detect undercollateralized urns.

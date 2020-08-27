@@ -528,10 +528,10 @@ class AuctionKeeper:
 
         # Read auction information from the chain
         input = self.strategy.get_input(id)
-        auction_missing = (input.end == 0)
+        auction_deleted = (input.end == 0)
         auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
-        if auction_missing:
+        if auction_deleted:
             # Try to remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
             self.auctions.remove_auction(id)
@@ -539,11 +539,15 @@ class AuctionKeeper:
             logging.debug(f"Stopped tracking auction {id}")
             return False
 
-        # Check if the auction is finished.  If so configured, `deal` the auction.
+        # Check if the auction is finished.  If so configured, `tick` or `deal` the auction synchronously.
         elif auction_finished:
-            if self.deal_all or input.guy in self.deal_for:
-                # Always using default gas price for `deal`
-                self._run_future(self.strategy.deal(id).transact_async(gas_price=self.gas_price))
+            if input.tic == 0:
+                if self.arguments.create_auctions:
+                    logging.info(f"Auction {id} ended without bids; resurrecting auction")
+                    self.strategy.tick(id).transact(gas_price=self.gas_price)
+                    return True
+            elif self.deal_all or input.guy in self.deal_for:
+                self.strategy.deal(id).transact(gas_price=self.gas_price)
 
                 # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
