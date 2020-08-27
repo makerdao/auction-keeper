@@ -46,20 +46,10 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(20)).transact(
             from_address=self.keeper_address)
 
-    def test_bite_and_flip(self, web3, mcd, gal_address, keeper_address):
-        # given
-        # c = mcd.collaterals['ETH-A']
-        # keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-        #                                  f"--type flip "
-        #                                  f"--from-block 1 "
-        #                                  f"--ilk {c.ilk.name} "
-        #                                  f"--model ./bogus-model.sh"), web3=mcd.web3)
-        # keeper.approve()
+    def test_bite_and_flip(self, mcd, gal_address):
+        # given 21 Dai / (200 price * 1.2 mat) == 0.0875 vault size
         unsafe_cdp = create_unsafe_cdp(mcd, self.c, Wad.from_number(0.0875), gal_address, draw_dai=False)
         assert len(mcd.active_auctions()["flips"][self.c.ilk.name]) == 0
-        # # Keeper won't bid with a 0 Dai balance
-        # purchase_dai(Wad.from_number(20), keeper_address)
-        # assert mcd.dai_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
 
         # when
         self.keeper.check_vaults()
