@@ -34,7 +34,6 @@ from typing import Optional
 
 
 tend_lot = Wad.from_number(1.2)
-tend_small_lot = Wad(2000)
 
 
 @pytest.fixture()
@@ -46,12 +45,6 @@ def kick(mcd, c: Collateral, gal_address) -> int:
 
     # Bite gal CDP
     unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
-    return bite(mcd, c, unsafe_cdp)
-
-
-@pytest.fixture()
-def kick_small_lot(mcd, c: Collateral, gal_address) -> int:
-    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_small_lot, gal_address)
     return bite(mcd, c, unsafe_cdp)
 
 
@@ -674,6 +667,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
+    @pytest.mark.skip("small bites no longer possible; change this to ensure it doesn't perform a small bite")
     def test_should_not_tend_on_rounding_errors_with_small_amounts(self, kick_small_lot):
         # given
         (model, model_factory) = models(self.keeper, kick_small_lot)
@@ -698,6 +692,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
+    @pytest.mark.skip("small bites no longer possible")
     def test_should_not_dent_on_rounding_errors_with_small_amounts(self):
         # given
         flipper = self.collateral.flipper
@@ -724,10 +719,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    def test_should_deal_when_we_won_the_auction(self):
+    def test_should_deal_when_we_won_the_auction(self, kick):
         # given
         flipper = self.collateral.flipper
-        kick = flipper.kicks()
 
         # when
         collateral_before = self.collateral.gem.balance_of(self.keeper_address)

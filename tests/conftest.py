@@ -306,6 +306,7 @@ def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     assert isinstance(c, Collateral)
     assert isinstance(unsafe_cdp, Urn)
 
+    assert mcd.cat.can_bite(unsafe_cdp.ilk, unsafe_cdp)
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
     bites = mcd.cat.past_bites(1)
     assert len(bites) == 1
