@@ -138,7 +138,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     urn = mcd.vat.urn(collateral.ilk, our_address)
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
-    # change in art = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
+    # change in art = (collateral balance * collateral price with safety margin) - vault's existing stablecoin debt
     dart = urn.ink * ilk.spot - Wad(Ray(urn.art) * ilk.rate)
 
     # change in debt must also take the rate into account
