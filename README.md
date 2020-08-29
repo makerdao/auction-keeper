@@ -45,7 +45,7 @@ these instances of the current status of their auctions and bid according to dec
 
 The way the auction discovery and monitoring mechanism works at the moment is simplistic for illustration purposes.
 It basically operates as a loop which kicks in on every new block enumerating all auctions from `1` to `kicks`.
-Bidding models are checked every 2 seconds and submitted where appropriate.
+Bidding models are checked periodically and submitted where appropriate.
 
 
 ### Starting and stopping _bidding models_
