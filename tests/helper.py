@@ -65,8 +65,7 @@ def wait_for_other_threads(max_secs=60):
     while threading.active_count() > 1:
         if (datetime.now() - started).total_seconds() > max_secs:
             raise TimeoutError("Worker threads took too long to complete")
-        asyncio.ensure_future(asyncio.sleep(0.2))
-        time.sleep(0.2)
+        time.sleep(0.5)
 
 
 class TransactionIgnoringTest:

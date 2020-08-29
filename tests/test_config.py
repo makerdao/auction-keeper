@@ -19,11 +19,11 @@ import threading
 import time
 import pytest
 
-from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address, Transact, Wad
 from pymaker.auctions import Flipper, Flapper, Flopper
 from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
+from pymaker.gas import GeometricGasPrice
 from pymaker.token import DSToken
 from tests.conftest import get_node_gas_price, keeper_address, mcd, web3
 from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
@@ -41,20 +41,19 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.collateral.approve(self.keeper_address)
         assert self.collateral.gem.deposit(Wad.from_number(1)).transact()
         self.ilk = self.collateral.ilk
+        self.gas = GeometricGasPrice(initial_price=int(1.1*GeometricGasPrice.GWEI), every_secs=2)
 
     def setup_method(self):
+        """ Several tests wait on thread count to hit one when testing asynchronous transactions.
+        Ensure each test starts with a clean state, and that wait_for_other_threads() functions properly. """
         wait_for_other_threads()
+        assert threading.active_count() == 1
 
     def test_empty_tx(self):
         empty_tx = Transact(self, self.web3, None, self.keeper_address, None, None, [self.keeper_address, Wad(0)])
         empty_tx.transact()
 
-    @pytest.mark.timeout(2)
-    def test_wait_for_other_threads(self):
-        wait_for_other_threads(1)
-        assert threading.active_count() == 1
-
-    # @pytest.mark.timeout(15)
+    @pytest.mark.timeout(15)
     def test_ignore_sync_transaction(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
 
@@ -68,14 +67,13 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.check_sync_transaction_still_works()
         self.check_async_transaction_still_works()
 
-    @pytest.mark.skip("FIXME: resolve issue testing async transactions")
     @pytest.mark.timeout(30)
     def test_replace_async_transaction(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.11)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
-        AuctionKeeper._run_future(tx1.transact_async())
+        AuctionKeeper._run_future(tx1.transact_async(gas_price=self.gas))
         self.end_ignoring_transactions()
 
         amount2 = Wad.from_number(0.14)
@@ -90,14 +88,13 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.check_sync_transaction_still_works()
         self.check_async_transaction_still_works()
 
-    @pytest.mark.skip("FIXME: resolve issue testing async transactions")
     @pytest.mark.timeout(30)
     def test_replace_async_transaction_delay_expensive_call_while_ignoring_tx(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.12)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
-        AuctionKeeper._run_future(tx1.transact_async())
+        AuctionKeeper._run_future(tx1.transact_async(gas_price=self.gas))
         time.sleep(2)
         self.end_ignoring_transactions()
 
@@ -113,14 +110,13 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.check_sync_transaction_still_works()
         self.check_async_transaction_still_works()
 
-    @pytest.mark.skip("FIXME: resolve issue testing async transactions")
     @pytest.mark.timeout(30)
     def test_replace_async_transaction_delay_expensive_call_after_ignoring_tx(self):
         balance_before = self.mcd.vat.gem(self.ilk, self.keeper_address)
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.13)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
-        AuctionKeeper._run_future(tx1.transact_async())
+        AuctionKeeper._run_future(tx1.transact_async(gas_price=self.gas))
         self.end_ignoring_transactions()
 
         time.sleep(2)
