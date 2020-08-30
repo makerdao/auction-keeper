@@ -19,6 +19,7 @@ import pytest
 import threading
 import time
 
+from auction_keeper.logic import Reservoir
 from auction_keeper.main import AuctionKeeper
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import keeper_address, mcd, our_address, web3, wrap_eth, purchase_dai
@@ -303,7 +304,8 @@ class TestRebalance(TestVatDai):
             purchase_dai(Wad.from_number(77), self.keeper_address)
             assert self.get_dai_token_balance() == Wad.from_number(77)
             # and pretending there's a bid which requires Dai
-            assert self.keeper.check_bid_cost(Rad.from_number(20))
+            reservoir = Reservoir(self.keeper.vat.dai(self.keeper_address))
+            assert self.keeper.check_bid_cost(id=1, cost=Rad.from_number(20), reservoir=reservoir)
 
             # then ensure all Dai is joined
             assert self.get_dai_token_balance() == Wad(0)
@@ -312,7 +314,8 @@ class TestRebalance(TestVatDai):
             # when adding more Dai and pretending there's a bid we cannot cover
             purchase_dai(Wad.from_number(23), self.keeper_address)
             assert self.get_dai_token_balance() == Wad.from_number(23)
-            assert not self.keeper.check_bid_cost(Rad(Wad.from_number(120)))
+            reservoir = Reservoir(self.keeper.vat.dai(self.keeper_address))
+            assert not self.keeper.check_bid_cost(id=2, cost=Rad(Wad.from_number(120)), reservoir=reservoir)
 
             # then ensure the added Dai was joined anyway
             assert self.get_dai_token_balance() == Wad(0)
@@ -339,13 +342,15 @@ class TestRebalance(TestVatDai):
             assert self.keeper.dai_join.exit(self.keeper_address, Wad.from_number(22)).transact()
             assert self.get_dai_vat_balance() == Wad.from_number(78)
             # and pretending there's a bid which requires more Dai
-            assert self.keeper.check_bid_cost(Rad.from_number(79))
+            reservoir = Reservoir(self.keeper.vat.dai(self.keeper_address))
+            assert self.keeper.check_bid_cost(id=3, cost=Rad.from_number(79), reservoir=reservoir)
 
             # then ensure Dai was joined up to the target
             assert self.get_dai_vat_balance() == target
 
             # when pretending there's a bid which we have plenty of Dai to cover
-            assert self.keeper.check_bid_cost(Rad(Wad.from_number(1)))
+            reservoir = Reservoir(self.keeper.vat.dai(self.keeper_address))
+            assert self.keeper.check_bid_cost(id=4, cost=Rad(Wad.from_number(1)), reservoir=reservoir)
 
             # then ensure Dai levels haven't changed
             assert self.get_dai_vat_balance() == target

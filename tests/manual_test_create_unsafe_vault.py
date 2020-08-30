@@ -52,6 +52,7 @@ urn = mcd.vat.urn(collateral.ilk, our_address)
 # mcd.approve_dai(our_address)
 # Transact.gas_estimate_for_bad_txs = 20000
 osm_price = collateral.pip.peek()
+action = sys.argv[4] if len(sys.argv) > 4 else "create"
 
 
 def r(value, decimals=1):
@@ -98,6 +99,7 @@ def handle_returned_collateral():
 
 
 create_risky_vault()
+
 
 
 while True:

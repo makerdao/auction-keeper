@@ -36,7 +36,7 @@ from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
 
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
-from auction_keeper.logic import Auction, Auctions
+from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 from auction_keeper.urn_history import UrnHistory
@@ -503,6 +503,16 @@ class AuctionKeeper:
                          f"{(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
+        # Initialize the reservoir with Dai/MKR balance for this round of bid submissions.
+        # This isn't a perfect solution as it omits the cost of bids submitted from the last round.
+        # Recreating the reservoir preserves the stateless design of this keeper.
+        if self.flipper or self.flopper:
+            reservoir = Reservoir(self.vat.dai(self.our_address))
+        elif self.flapper:
+            reservoir = Reservoir(Rad(self.mkr.balance_of(self.our_address)))
+        else:
+            raise RuntimeError("Unsupported auction type")
+        
         with self.auctions_lock:
             for id, auction in self.auctions.auctions.items():
                 # If we're exiting, release the lock around checking price models
@@ -511,7 +521,7 @@ class AuctionKeeper:
 
                 if not self.auction_handled_by_this_shard(id):
                     continue
-                self.handle_bid(id=id, auction=auction)
+                self.handle_bid(id=id, auction=auction, reservoir=reservoir)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
@@ -577,9 +587,10 @@ class AuctionKeeper:
         # Feed the model with current state
         auction.feed_model(input)
 
-    def handle_bid(self, id: int, auction: Auction):
+    def handle_bid(self, id: int, auction: Auction, reservoir: Reservoir):
         assert isinstance(id, int)
         assert isinstance(auction, Auction)
+        assert isinstance(reservoir, Reservoir)
 
         output = auction.model_output()
         if output is None:
@@ -589,7 +600,7 @@ class AuctionKeeper:
         # If we can't afford the bid, log a warning/error and back out.
         # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
         if cost is not None:
-            if not self.check_bid_cost(cost):
+            if not self.check_bid_cost(id, cost, reservoir):
                 return
 
         if bid_price is not None and bid_transact is not None:
@@ -648,32 +659,33 @@ class AuctionKeeper:
                 self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                              gas_price=auction.gas_price))
 
-    def check_bid_cost(self, cost: Rad, already_rebalanced=False) -> bool:
+    def check_bid_cost(self, id: int, cost: Rad, reservoir: Reservoir, already_rebalanced=False) -> bool:
+        assert isinstance(id, int)
         assert isinstance(cost, Rad)
 
         # If this is an auction where we bid with Dai...
         if self.flipper or self.flopper:
-            vat_dai = self.vat.dai(self.our_address)
-            if cost > vat_dai:
+            if not reservoir.check_bid_cost(id, cost):
                 if not already_rebalanced:
                     # Try to synchronously join Dai the Vat
                     if self.is_joining_dai:
-                        self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                        self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                           "waiting for Dai to rebalance")
                         return False
                     else:
                         rebalanced = self.rebalance_dai()
                         if rebalanced and rebalanced > Wad(0):
-                            return self.check_bid_cost(cost, already_rebalanced=True)
+                            reservoir.refill(Rad(rebalanced))
+                            return self.check_bid_cost(id, cost, reservoir, already_rebalanced=True)
 
-                self.logger.debug(f"Bid cost {str(cost)} exceeds vat balance of {vat_dai}; "
+                self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                   "bid will not be submitted")
                 return False
         # If this is an auction where we bid with MKR...
         elif self.flapper:
             mkr_balance = self.mkr.balance_of(self.our_address)
             if cost > Rad(mkr_balance):
-                self.logger.debug(f"Bid cost {str(cost)} exceeds MKR balance of {mkr_balance}; "
+                self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                   "bid will not be submitted")
                 return False
         return True
