@@ -27,23 +27,32 @@ from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for
 
 @pytest.mark.timeout(60)
 class TestAuctionKeeperBite(TransactionIgnoringTest):
-    def test_bite_and_flip(self, web3, mcd, gal_address, keeper_address):
-        # given
-        c = mcd.collaterals['ETH-A']
-        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                         f"--type flip "
-                                         f"--from-block 1 "
-                                         f"--ilk {c.ilk.name} "
-                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
-        keeper.approve()
-        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1.2), gal_address)
-        assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
+    def setup_class(self):
+        """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
+        to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
+        self.web3 = web3()
+        self.mcd = mcd(self.web3)
+        self.c = self.mcd.collaterals['ETH-C']
+        self.keeper_address = keeper_address(self.web3)
+        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
+                                     f"--type flip "
+                                     f"--from-block 1 "
+                                     f"--ilk {self.c.ilk.name} "
+                                     f"--model ./bogus-model.sh"), web3=self.mcd.web3)
+        self.keeper.approve()
+
         # Keeper won't bid with a 0 Dai balance
-        purchase_dai(Wad.from_number(20), keeper_address)
-        assert mcd.dai_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
+        purchase_dai(Wad.from_number(20), self.keeper_address)
+        assert self.mcd.dai_adapter.join(self.keeper_address, Wad.from_number(20)).transact(
+            from_address=self.keeper_address)
+
+    def test_bite_and_flip(self, mcd, gal_address):
+        # given 21 Dai / (200 price * 1.2 mat) == 0.0875 vault size
+        unsafe_cdp = create_unsafe_cdp(mcd, self.c, Wad.from_number(0.0875), gal_address, draw_dai=False)
+        assert len(mcd.active_auctions()["flips"][self.c.ilk.name]) == 0
 
         # when
-        keeper.check_vaults()
+        self.keeper.check_vaults()
         wait_for_other_threads()
 
         # then
@@ -52,7 +61,22 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
         assert urn.art == Wad(0)  # unsafe cdp has been bitten
         assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
-        assert c.flipper.kicks() == 1  # One auction started
+        assert self.c.flipper.kicks() == 1  # One auction started
+
+    def test_should_not_bite_dusty_urns(self, mcd, gal_address):
+        # given a lot smaller than the dust limit
+        urn = mcd.vat.urn(self.c.ilk, gal_address)
+        assert urn.art < Wad(self.c.ilk.dust)
+        kicks_before = self.c.flipper.kicks()
+
+        # when a small unsafe urn is created
+        assert not mcd.cat.can_bite(self.c.ilk, urn)
+
+        # then ensure the keeper does not bite it
+        self.keeper.check_vaults()
+        wait_for_other_threads()
+        kicks_after = self.c.flipper.kicks()
+        assert kicks_before == kicks_after
 
     @classmethod
     def teardown_class(cls):
@@ -65,7 +89,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
             return
 
         # given the existence of queued debt
-        c = mcd.collaterals['ETH-A']
+        c = mcd.collaterals['ETH-C']
         kick = c.flipper.kicks()
         last_bite = mcd.cat.past_bites(10)[0]
 

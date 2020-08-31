@@ -21,6 +21,7 @@ import logging
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from io import StringIO
 from mock import MagicMock
 from web3 import Web3
@@ -59,9 +60,12 @@ def time_travel_by(web3: Web3, seconds: int):
         web3.manager.request_blocking("evm_mine", [])
 
 
-def wait_for_other_threads():
+def wait_for_other_threads(max_secs=60):
+    started = datetime.now()
     while threading.active_count() > 1:
-        asyncio.sleep(0.4)
+        if (datetime.now() - started).total_seconds() > max_secs:
+            raise TimeoutError("Worker threads took too long to complete")
+        time.sleep(0.5)
 
 
 class TransactionIgnoringTest:

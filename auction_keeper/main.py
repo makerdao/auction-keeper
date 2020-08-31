@@ -355,8 +355,7 @@ class AuctionKeeper:
         logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 
         for urn in urns.values():
-            safe = urn.ink * ilk.spot >= urn.art * rate
-            if not safe:
+            if self.cat.can_bite(ilk, urn):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")

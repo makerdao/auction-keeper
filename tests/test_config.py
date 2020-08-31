@@ -15,15 +15,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import asyncio
+import threading
 import time
 import pytest
 
-from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address, Transact, Wad
 from pymaker.auctions import Flipper, Flapper, Flopper
 from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
+from pymaker.gas import GeometricGasPrice
 from pymaker.token import DSToken
 from tests.conftest import get_node_gas_price, keeper_address, mcd, web3
 from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
@@ -41,6 +41,13 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.collateral.approve(self.keeper_address)
         assert self.collateral.gem.deposit(Wad.from_number(1)).transact()
         self.ilk = self.collateral.ilk
+        self.gas = GeometricGasPrice(initial_price=int(1.1*GeometricGasPrice.GWEI), every_secs=2)
+
+    def setup_method(self):
+        """ Several tests wait on thread count to hit one when testing asynchronous transactions.
+        Ensure each test starts with a clean state, and that wait_for_other_threads() functions properly. """
+        wait_for_other_threads()
+        assert threading.active_count() == 1
 
     def test_empty_tx(self):
         empty_tx = Transact(self, self.web3, None, self.keeper_address, None, None, [self.keeper_address, Wad(0)])
@@ -66,7 +73,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.11)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
-        AuctionKeeper._run_future(tx1.transact_async())
+        AuctionKeeper._run_future(tx1.transact_async(gas_price=self.gas))
         self.end_ignoring_transactions()
 
         amount2 = Wad.from_number(0.14)
@@ -87,7 +94,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.12)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
-        AuctionKeeper._run_future(tx1.transact_async())
+        AuctionKeeper._run_future(tx1.transact_async(gas_price=self.gas))
         time.sleep(2)
         self.end_ignoring_transactions()
 
@@ -109,7 +116,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.13)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
-        AuctionKeeper._run_future(tx1.transact_async())
+        AuctionKeeper._run_future(tx1.transact_async(gas_price=self.gas))
         self.end_ignoring_transactions()
 
         time.sleep(2)

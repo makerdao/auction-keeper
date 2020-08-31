@@ -34,7 +34,6 @@ from typing import Optional
 
 
 tend_lot = Wad.from_number(1.2)
-tend_small_lot = Wad(2000)
 
 
 @pytest.fixture()
@@ -46,12 +45,6 @@ def kick(mcd, c: Collateral, gal_address) -> int:
 
     # Bite gal CDP
     unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
-    return bite(mcd, c, unsafe_cdp)
-
-
-@pytest.fixture()
-def kick_small_lot(mcd, c: Collateral, gal_address) -> int:
-    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_small_lot, gal_address)
     return bite(mcd, c, unsafe_cdp)
 
 
@@ -361,8 +354,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         (model, model_factory) = models(self.keeper, kick)
         flipper = self.collateral.flipper
         # and
-        TestAuctionKeeperFlipper.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address,
-                                               Rad.from_number(90))
+        self.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address, Rad.from_number(90))
         # and
         time_travel_by(self.web3, flipper.ttl() + 1)
         # and
@@ -674,60 +666,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         time_travel_by(self.web3, flipper.ttl() + 1)
         assert flipper.deal(kick).transact()
 
-    def test_should_not_tend_on_rounding_errors_with_small_amounts(self, kick_small_lot):
-        # given
-        (model, model_factory) = models(self.keeper, kick_small_lot)
-        flipper = self.collateral.flipper
-
-        # when
-        bid_price = Wad.from_number(3.0)
-        self.simulate_model_bid(self.mcd, self.collateral, model, bid_price)
-        # and
-        self.keeper.check_all_auctions()
-        self.keeper.check_for_bids()
-        wait_for_other_threads()
-        # then
-        assert flipper.bids(kick_small_lot).bid == Rad(bid_price * tend_small_lot)
-
-        # when
-        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
-        # and
-        self.keeper.check_all_auctions()
-        self.keeper.check_for_bids()
-        wait_for_other_threads()
-        # then
-        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
-
-    def test_should_not_dent_on_rounding_errors_with_small_amounts(self):
+    def test_should_deal_when_we_won_the_auction(self, kick):
         # given
         flipper = self.collateral.flipper
-        kick_small_lot = flipper.kicks()
-        (model, model_factory) = models(self.keeper, kick_small_lot)
-
-        # when
-        auction = flipper.bids(kick_small_lot)
-        bid_price = Wad(auction.tab / Rad(tend_small_lot))
-        self.simulate_model_bid(self.mcd, self.collateral, model, bid_price)
-        # and
-        self.keeper.check_all_auctions()
-        self.keeper.check_for_bids()
-        wait_for_other_threads()
-        # then
-        assert flipper.bids(kick_small_lot).lot == auction.lot
-
-        # when
-        tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
-        # and
-        self.keeper.check_all_auctions()
-        self.keeper.check_for_bids()
-        wait_for_other_threads()
-        # then
-        assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
-
-    def test_should_deal_when_we_won_the_auction(self):
-        # given
-        flipper = self.collateral.flipper
-        kick = flipper.kicks()
 
         # when
         collateral_before = self.collateral.gem.balance_of(self.keeper_address)

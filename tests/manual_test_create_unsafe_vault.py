@@ -49,8 +49,9 @@ collateral = mcd.collaterals[str(sys.argv[3])] if len(sys.argv) > 3 else mcd.col
 ilk = mcd.vat.ilk(collateral.ilk.name)
 token = Token(collateral.gem.symbol(), collateral.gem.address, collateral.adapter.dec())
 urn = mcd.vat.urn(collateral.ilk, our_address)
-# mcd.approve_dai(our_address)
-# Transact.gas_estimate_for_bad_txs = 20000
+# mcd.approve_dai(our_address)                  # Uncomment upon first execution for the account
+# Transact.gas_estimate_for_bad_txs = 20000     # Uncomment to debug transaction failures onchain
+# mcd.spotter.poke(ilk).transact()              # Uncomment if the Kovan spot price is out-of-sync
 osm_price = collateral.pip.peek()
 action = sys.argv[4] if len(sys.argv) > 4 else "create"
 
