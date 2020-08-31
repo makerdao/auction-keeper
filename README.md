@@ -150,8 +150,6 @@ the following actions:
 * The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will 
 `bite`, `flap`, or `flop` in response to opportunities regardless of whether or not your Dai or MKR balance is 
 sufficient to participate.  This too imposes a gas fee.
-* When using `--vat-dai-target` to manage Vat inventory: After procuring more Dai, the keeper should be restarted to add
-Dai to the Vat.
 * Biting vaults to kick off new collateral auctions is an expensive operation.  To do so without a VulcanizeDB 
 subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then 
 continuously refresh urn state to detect undercollateralized urns.
@@ -205,14 +203,14 @@ Auction keeper can use one of several sources for the initial gas price of a tra
  
 When using an API source for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the initial 
 value provided by the API.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no 
-initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price of 
-10 Gwei.
+initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price 
+determined by your node.
 
 Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a 
-transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `2.25`, or 225%) until it is mined or 
-`--gas-maximum` (default 5000 Gwei) is reached.  
+transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `1.125`, an increase of 12.5%) 
+until it is mined or `--gas-maximum` (default 2000 Gwei) is reached.  
 Note that [Parity](https://wiki.parity.io/Transactions-Queue#dropping-conditions), as of this writing, requires a 
-minimum gas increase of `1.125` (112.5%) to propogate transaction replacement; this should be treated as a minimum 
+minimum gas increase of `1.125` to propagate transaction replacement; this should be treated as a minimum 
 value unless you want replacements to happen less frequently than 30 seconds (2+ blocks). 
 
 This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only 
@@ -221,26 +219,38 @@ generally advisable to allow the keeper to manage gas prices for bids, and not s
 
 
 ### Accounting
+Key points:
+- Dai must be **joined** from a token balance to the `Vat` for bidding on `flip` and `flop` auctions.
+- Won collateral can be **exited** from the `Vat` to a token balance after a won auction is dealt (closed).
+- MKR for/from `flap`/`flop` auctions is managed directly through token balances and is never joined to the `Vat`.
 
-Auction contracts exclusively interact with Dai (for all auctions) and collateral (for `flip` auctions) in the `Vat`.
-More explicitly:
- * Dai used to bid on auctions is withdrawn from the `Vat`.
- * Collateral and surplus Dai won at auction is placed in the `Vat`.
+The keeper provides facilities for managing `Vat` balances, which may be turned off to manage manually. 
+To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit`, 
+set `--return-gem-interval 0`, and do not pass `--vat-dai-target`.
 
-By default, all Dai and collateral in your `eth-from` account is `exit`ed from the Vat and added to your token balance
-when the keeper is shut down.  This feature may be disabled using the `--keep-dai-in-vat-on-exit` and
-`--keep-gem-in-vat-on-exit` switches respectively.  **Using an `eth-from` account with an open vault is discouraged**,
-as debt will hinder the auction contracts' ability to access your Dai, and `auction-keeper`'s ability to `exit` Dai
-from the `Vat`.
+Warnings: **Do not use an `eth-from` account on multiple keepers** as it complicates Vat inventory management and 
+will likely cause nonce conflicts.  Using an `eth-from` account with an open vault is also discouraged.
 
-**Using the `eth-from` account on multiple keepers is also discouraged** as it complicates `Vat` inventory management.
-When running multiple keepers using the same account, the balance of Dai in the `Vat` will be shared across keepers.  
-If using the feature, set `--vat-dai-target` to the same value on each keeper, and sufficiently high to cover total
-desired exposure.
+#### Dai
+All auction contracts exclusively interact with Dai (for all auctions) in the `Vat`.  `--vat-dai-target` may be set to 
+the amount you wish to maintain, or `all` to join your account's entire token balance.  Rebalances do not account for 
+Dai moved from the `Vat` to an auction contract for an active bid.  Dai is rebalanced per `--vat-dai-target` when:
+- The keeper starts up
+- `Vat` balance is insufficient to place a bid
+- An auction is dealt
 
-To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit`
-switches, and do not pass the `--vat-dai-target` switch.  You may use [mcd-cli](https://github.com/makerdao/mcd-cli)
-to manually `join`/`exit` Dai to/from each of your keeper accounts.  Here is an example to join 6000 Dai on a testnet,
+To avoid transaction spamming, small "dusty" Dai balances will be ignored (until the keeper exits, if so configured).  
+By default, all Dai in your `eth-from` account is exited from the `Vat` and added to your token balance when the keeper 
+is terminated normally.  This feature may be disabled using `--keep-dai-in-vat-on-exit`.
+
+#### Collateral (flip auctions)
+Won collateral is periodically exited by setting `--return-gem-interval` to the number of seconds between balance 
+checks.  Collateral is exited from the `Vat` when the keeper is terminated normally unless `--keep-gem-in-vat-on-exit` 
+is specified.
+
+#### Other tools
+Alternatively, [mcd-cli](https://github.com/makerdao/mcd-cli) can be used to manually manage `Vat` balances.
+Here is an example to join 6000 Dai on a testnet,
 and exit 300 Dai on Kovan, respectively:
 ```bash
 mcd -C testnet dai join 6000
@@ -249,22 +259,24 @@ mcd -C kovan dai exit 300
 `mcd-cli` requires installation and configuration; view the
 [mcd-cli README](https://github.com/makerdao/mcd-cli#mcd-command-line-interface) for more information.
 
-MKR used to bid on `flap` auctions is directly withdrawn from your token balance.  MKR won at `flop` auctions is
-directly deposited to your token balance.
-
 
 ### Managing resources
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  This list is 
-built by initializing an in-memory cache with urn history, and then querying recent events upon each block.  There are 
-two ways to initialize the cache:
- * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events. 
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are 
+two ways to retrieve the list of urns:
+ * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events.  
+    The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events 
+    will be queried back to the last cached block to detect new urns.  The state of all urns will be queried 
+    continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join` 
+    contract was deployed for some collateral types and chains.
+    
+    ![example from blocks](README-from-block.png)
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for 
-    basic authentication with the `--vulcanize-key` argument. 
+    basic authentication with the `--vulcanize-key` argument.  This reduces urn check time (<10 seconds for ETH-A).
 
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first bite which has not been `flog`ged.

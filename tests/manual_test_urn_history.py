@@ -17,14 +17,12 @@
 
 
 import logging
+import os
 import sys
-import time
 from datetime import datetime, timedelta
-from pprint import pprint
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.urn_history import UrnHistory
-from pymaker import Wad
 from pymaker.deployment import DssDeployment
 
 
@@ -34,21 +32,23 @@ logging.getLogger("web3").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)
 logging.getLogger("requests").setLevel(logging.INFO)
 
-web3 = Web3(HTTPProvider(endpoint_uri=sys.argv[1], request_kwargs={"timeout": 240}))
-vulcanize_endpoint = sys.argv[2]
-vulcanize_key = sys.argv[3]
+web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
+vulcanize_endpoint = sys.argv[1]
+vulcanize_key = sys.argv[2]
 mcd = DssDeployment.from_node(web3)
-collateral_type = sys.argv[4] if len(sys.argv) > 4 else "ETH-A"
+collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
 ilk = mcd.collaterals[collateral_type].ilk
-from_block = int(sys.argv[5]) if len(sys.argv) > 5 else 8928152  # 8928152 example for mainnet, 9989448 for WBTC
+# on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
+from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
 
 
-def wait(blocks_to_wait: int, uh: UrnHistory):
-    while blocks_to_wait > 0:
-        print(f"Testing cache for another {blocks_to_wait} blocks")
-        time.sleep(13.4)
+def wait(minutes_to_wait: int, uh: UrnHistory):
+    while minutes_to_wait > 0:
+        print(f"Testing cache for another {minutes_to_wait} minutes")
+        state_update_started = datetime.now()
         uh.get_urns()
-        blocks_to_wait -= 1
+        minutes_elapsed = int((datetime.now() - state_update_started).seconds / 60)
+        minutes_to_wait -= minutes_elapsed
 
 
 # Retrieve data from chain
@@ -58,8 +58,7 @@ uh = UrnHistory(web3, mcd, ilk, from_block, None, None)
 urns_logs = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-# wait(1500, uh)
-
+wait(30, uh)
 
 # Retrieve data from Vulcanize
 started = datetime.now()
@@ -75,7 +74,7 @@ mismatches = 0
 missing = 0
 total_art_logs = 0
 total_art_vdb = 0
-csv = "Urn,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt"
+csv = "Urn,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt\n"
 
 for key, value in urns_logs.items():
     assert value.ilk.name == ilk.name

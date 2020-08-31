@@ -22,7 +22,7 @@ from web3 import Web3
 from auction_keeper.model import Status
 from pymaker import Address, Transact
 from pymaker.approval import directly, hope_directly
-from pymaker.auctions import Flopper, Flapper, Flipper
+from pymaker.auctions import AuctionContract, Flopper, Flapper, Flipper
 from pymaker.gas import GasPrice
 from pymaker.numeric import Wad, Ray, Rad
 
@@ -34,17 +34,28 @@ def era(web3: Web3):
 class Strategy:
     logger = logging.getLogger()
 
-    def approve(self):
+    def __init__(self, contract: AuctionContract):
+        assert isinstance(contract, AuctionContract)
+        self.contract = contract
+
+    def approve(self, gas_price: GasPrice):
         raise NotImplementedError
 
     def get_input(self, id: int):
         raise NotImplementedError
+
+    def deal(self, id: int) -> Transact:
+        return self.contract.deal(id)
+
+    def tick(self, id: int) -> Transact:
+        return self.contract.tick(id)
 
 
 class FlipperStrategy(Strategy):
     def __init__(self, flipper: Flipper, min_lot: Wad):
         assert isinstance(flipper, Flipper)
         assert isinstance(min_lot, Wad)
+        super().__init__(flipper)
 
         self.flipper = flipper
         self.beg = flipper.beg()
@@ -104,7 +115,7 @@ class FlipperStrategy(Strategy):
                 return None, None, None
 
             our_bid = Rad.min(Rad(bid.lot) * price, bid.tab)
-            our_price = price if our_bid < bid.tab else bid.bid / Rad(bid.lot)
+            our_price = price if our_bid < bid.tab else Wad(bid.bid) / bid.lot
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
                 return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
@@ -112,14 +123,12 @@ class FlipperStrategy(Strategy):
                 self.logger.debug(f"tend bid {our_bid} would not exceed the bid increment for auction {id}")
                 return None, None, None
 
-    def deal(self, id: int) -> Transact:
-        return self.flipper.deal(id)
-
 
 class FlapperStrategy(Strategy):
     def __init__(self, flapper: Flapper, mkr: Address):
         assert isinstance(flapper, Flapper)
         assert isinstance(mkr, Address)
+        super().__init__(flapper)
 
         self.flapper = flapper
         self.beg = flapper.beg()
@@ -165,13 +174,11 @@ class FlapperStrategy(Strategy):
             self.logger.debug(f"bid {our_bid} would not exceed the bid increment for auction {id}")
             return None, None, None
 
-    def deal(self, id: int) -> Transact:
-        return self.flapper.deal(id)
-
 
 class FlopperStrategy(Strategy):
     def __init__(self, flopper: Flopper):
         assert isinstance(flopper, Flopper)
+        super().__init__(flopper)
 
         self.flopper = flopper
         self.beg = flopper.beg()
@@ -215,6 +222,3 @@ class FlopperStrategy(Strategy):
         else:
             self.logger.debug(f"lot {our_lot} would not exceed the bid increment for auction {id}")
             return None, None, None
-
-    def deal(self, id: int) -> Transact:
-        return self.flopper.deal(id)

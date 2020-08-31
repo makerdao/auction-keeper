@@ -21,11 +21,11 @@ import sys
 import time
 from web3 import Web3, HTTPProvider
 
-from pymaker import Address
+from pymaker import Address, Transact
 from pymaker.deployment import DssDeployment
 from pymaker.keys import register_keys
 from pymaker.model import Token
-from pymaker.numeric import Wad, Ray
+from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import create_risky_cdp, is_cdp_safe
 
 
@@ -40,43 +40,78 @@ logging.getLogger("web3").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)
 logging.getLogger("requests").setLevel(logging.INFO)
 
+# Usage:
+# python3 tests/manual_test_create_unsafe_vault [ADDRESS] [KEY] [COLLATERAL_TYPE]
+
 mcd = DssDeployment.from_node(web3)
 our_address = Address(web3.eth.defaultAccount)
-collateral = mcd.collaterals[str(sys.argv[3])] if len(sys.argv) > 2 else mcd.collaterals['ETH-A']
+collateral = mcd.collaterals[str(sys.argv[3])] if len(sys.argv) > 3 else mcd.collaterals['ETH-A']
 ilk = mcd.vat.ilk(collateral.ilk.name)
+token = Token(collateral.gem.symbol(), collateral.gem.address, collateral.adapter.dec())
 urn = mcd.vat.urn(collateral.ilk, our_address)
+# mcd.approve_dai(our_address)
+# Transact.gas_estimate_for_bad_txs = 20000
+osm_price = collateral.pip.peek()
+action = sys.argv[4] if len(sys.argv) > 4 else "create"
+
+
+def r(value, decimals=1):
+    return round(float(value), decimals)
+
+logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={osm_price} mat={r(mcd.spotter.mat(ilk))}")
+logging.info(f"{'':<7} duty={mcd.jug.duty(ilk)} min_amount={token.min_amount}")
+
+
+def close_repaid_urn():
+    if urn.ink > Wad(0) and urn.art == Wad(0):
+        dink = urn.ink * -1
+        assert mcd.vat.frob(ilk, our_address, dink, Wad(0)).transact()
+    gem_balance = Wad(mcd.vat.gem(ilk, our_address))
+    if gem_balance > Wad(0):
+        assert collateral.adapter.exit(our_address, gem_balance).transact()
+
+
+# This accounts for several seconds of rate accumulation between time of calculation and the transaction being mined
+flub_amount = Wad(1000)
 
 
 def create_risky_vault():
     # Create a vault close to the liquidation ratio
     if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
-        print("Vault is already unsafe; no action taken")
+        logging.info("Vault is already unsafe; no action taken")
     else:
-        osm_price = collateral.pip.peek()
-        print(f"dust={ilk.dust} osm_price={osm_price} mat={mcd.spotter.mat(ilk)}")
-        # To make a (barely) safe urn, I expected to add 10^-8, but for some reason I need to add 10^-7
-        normalized_collateral_amount = (Wad(ilk.dust) / osm_price * Wad(mcd.spotter.mat(ilk))) + Wad.from_number(0.00000050)
-
-        # token = Token(ilk.name, collateral.gem.address, collateral.adapter.dec())
-        print(f"Opening vault with {normalized_collateral_amount} {ilk.name}")
-        create_risky_cdp(mcd, collateral, Wad.from_number(normalized_collateral_amount), our_address, True)
-        print("Created unsafe vault")
+        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + flub_amount
+        logging.info(f"Opening/adjusting vault with {collateral_amount} {ilk.name}")
+        create_risky_cdp(mcd, collateral, collateral_amount, our_address, False)
+        logging.info("Created risky vault")
 
 
 def handle_returned_collateral():
-    # Handle collateral returned to the urn
+    # Handle collateral returned to the urn after a liquidation is dealt
     available_to_generate = (urn.ink * ilk.spot) - Wad(Ray(urn.art) * ilk.rate)
-    print(f"urn {urn.address} can generate {available_to_generate} Dai")
-    if available_to_generate > Wad(1):
-        mcd.vat.frob(ilk, our_address, Wad(0), available_to_generate)
-        print(f"Attempting to exit {available_to_generate} Dai")
-        assert mcd.dai_adapter.exit(our_address, available_to_generate).transact()
+    if available_to_generate > token.min_amount + flub_amount:
+        logging.info(f"Attempting to generate {available_to_generate} Dai")
+        mcd.vat.frob(ilk, our_address, Wad(0), available_to_generate).transact()
+    dai_balance = Wad(mcd.vat.dai(our_address)) - Wad(1)
+    if dai_balance > token.min_amount:
+        logging.info(f"Attempting to exit {dai_balance} Dai")
+        mcd.dai_adapter.exit(our_address, dai_balance).transact()
 
 
 create_risky_vault()
 
+
+
 while True:
-    time.sleep(3)
+    time.sleep(6)
+    urn = mcd.vat.urn(collateral.ilk, our_address)
+    debt = Ray(urn.art) * ilk.rate
+    if debt > Ray(0):
+        collat_ratio = float(Ray(urn.ink) * Ray(osm_price) / debt)
+        logging.info(f"urn has ink={r(urn.ink)} art={r(urn.art)} debt={r(debt)} and is at {collat_ratio * 100}% collateralization")
+    else:
+        logging.info(f"urn has ink={r(urn.ink)} art={r(urn.art)} debt={r(debt)}")
+
     if web3.eth.blockNumber % 33 == 0:
         mcd.jug.drip(ilk).transact()
 

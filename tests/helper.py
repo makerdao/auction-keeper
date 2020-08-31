@@ -23,7 +23,6 @@ import time
 from contextlib import contextmanager
 from io import StringIO
 from mock import MagicMock
-from pymaker import Wad
 from web3 import Web3
 
 
@@ -102,7 +101,7 @@ class TransactionIgnoringTest:
             return self.original_send_transaction(transaction_without_nonce)
 
         # Give the previous Transact a chance to enter its event loop
-        time.sleep(0.1)
+        time.sleep(0.05)
 
         if ensure_next_tx_is_replacement:
             self.web3.eth.sendTransaction = MagicMock(side_effect=second_send_transaction)
@@ -114,7 +113,7 @@ class TransactionIgnoringTest:
         logging.debug("Finished ignoring async transactions")
 
     def start_ignoring_sync_transactions(self):
-        """ Mocks submission of a tx, prentending it happened """
+        """ Mocks submission of a tx, pretending it happened """
         self.original_tx_count = self.web3.eth.getTransactionCount
         self.original_get_receipt = Transact._get_receipt
         self.original_func = Transact._func

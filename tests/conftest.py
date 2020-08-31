@@ -20,14 +20,15 @@ import pytest
 
 from mock import MagicMock
 from typing import Optional
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
-from pymaker import Address
+from pymaker import Address, web3_via_http
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Collateral, Ilk, Urn
 from pymaker.feed import DSValue
+from pymaker.gas import NodeAwareGasPrice
 from pymaker.keys import register_keys
 from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
@@ -37,7 +38,7 @@ from pymaker.token import DSEthToken, DSToken
 @pytest.fixture(scope="session")
 def web3():
     # These details are specific to the MCD testchain used for pymaker unit tests.
-    web3 = Web3(HTTPProvider("http://0.0.0.0:8545"))
+    web3 = web3_via_http("http://0.0.0.0:8545", 3, 100)
     web3.eth.defaultAccount = "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
     register_keys(web3,
                   ["key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key1.json,pass_file=/dev/null",
@@ -141,7 +142,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     dart = urn.ink * ilk.spot - Wad(Ray(urn.art) * ilk.rate)
 
     # change in debt must also take the rate into account
-    dart = Wad(Ray(dart) * Ray.from_number(1) / ilk.rate)
+    dart = Wad(Ray(dart) / ilk.rate)
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
@@ -150,9 +151,9 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
 
     # prevent the change in debt from exceeding the total debt ceiling
     debt = mcd.vat.debt() + Rad(ilk.rate * dart)
-    line = Rad(ilk.line)
+    line = Rad(mcd.vat.line())
     if (debt + Rad(dart)) >= line:
-        print("max_dart is avoiding total debt ceiling")
+        print(f"debt {debt} + dart {dart} >= {line}; max_dart is avoiding total debt ceiling")
         dart = Wad(debt - Rad(urn.art))
 
     # ensure we've met the dust cutoff
@@ -160,7 +161,6 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
         print(f"max_dart is being bumped from {urn.art + dart} to {ilk.dust} to reach dust cutoff")
         dart = Wad(ilk.dust)
 
-    assert dart > Wad(0)
     return dart
 
 
@@ -216,11 +216,11 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
     assert isinstance(c, Collateral)
     assert isinstance(gal_address, Address)
 
-    # Ensure CDP isn't already unsafe (if so, this shouldn't be called)
+    # Ensure vault isn't already unsafe (if so, this shouldn't be called)
     urn = mcd.vat.urn(c.ilk, gal_address)
     assert is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
 
-    # Add collateral to gal CDP if necessary
+    # Add collateral to gal vault if necessary
     c.approve(gal_address)
     token = Token(c.ilk.name, c.gem.address, c.adapter.dec())
     print(f"collateral_amount={collateral_amount} ink={urn.ink}")
@@ -238,7 +238,7 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
                     raise RuntimeError("Insufficient collateral balance")
             amount_to_join = token.unnormalize_amount(vat_gap)
             if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
-                amount_to_join += token.min_amount
+                amount_to_join += token.unnormalize_amount(token.min_amount)
             assert c.adapter.join(gal_address, amount_to_join).transact(from_address=gal_address)
         vat_balance = mcd.vat.gem(c.ilk, gal_address)
         print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
@@ -354,3 +354,13 @@ def simulate_model_output(model: object, price: Wad, gas_price: Optional[int] = 
     assert (isinstance(price, Wad))
     assert (isinstance(gas_price, int)) or gas_price is None
     model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
+
+
+def get_node_gas_price(web3: Web3):
+    class DummyGasStrategy(NodeAwareGasPrice):
+        def get_gas_price(self, time_elapsed: int) -> Optional[int]:
+            return self.get_node_gas_price()
+
+    assert isinstance(web3, Web3)
+    dummy = DummyGasStrategy(web3)
+    return dummy.get_node_gas_price()
