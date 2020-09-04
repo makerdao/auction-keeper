@@ -73,7 +73,7 @@ class DynamicGasPrice(NodeAwareGasPrice):
             initial_price = int(round(fast_price * self.initial_multiplier))
 
         return GeometricGasPrice(initial_price=initial_price,
-                                 every_secs=30,
+                                 every_secs=42,
                                  coefficient=self.reactive_multiplier,
                                  max_price=self.gas_maximum).get_gas_price(time_elapsed)
 
