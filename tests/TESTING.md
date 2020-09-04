@@ -1,7 +1,7 @@
 # auction-keeper manual testing
 
 The collection of python and shell scripts herein may be used to test `auction-keeper`, `pymaker`'s auction facilities, 
-and relevant smart contracts in `dss`.
+and relevant smart contracts in `dss`.  Artifacts herein assume manual testing will be performed on Kovan.
 
 ## Dependencies
 
@@ -11,6 +11,20 @@ and relevant smart contracts in `dss`.
 * Optionally, to avoid being prompted, set `ETH_PASSWORD` to the password for your private key.
 
 ## Testing flip auctions
+The general test workflow is:
+1. Procure some collateral in a vault owner account
+2. Procure same Dai in a keeper account
+3. Create "risky" vaults as close as possible to the liquidation ratio
+4. Run `auction-keeper` configured to bite and bid
+5. Periodically `drip` the `jug` to apply stability fees, causing the keeper to `bite`
+
+
+### Creating a single risky vault
+This can be done without `mcd-cli`, omitting most dependencies enumerated above.
+`manual_test_create_unsafe_vault.py` creates one native urn for a particular account.
+
+
+### Creating multiple risky vaults
 From the root directory of this repository, with your virtual env sourced:
 1. Set up your python path with `export PYTHONPATH=$PYTHONPATH:./lib/pymaker:./lib/pygasprice-client`.
 2. Run `mcd -C kovan --ilk=ETH-A poke` (replacing `ETH-A` with the desired collateral type) to poke the spot price.
