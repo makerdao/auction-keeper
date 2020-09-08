@@ -59,7 +59,8 @@ action = sys.argv[4] if len(sys.argv) > 4 else "create"
 def r(value, decimals=1):
     return round(float(value), decimals)
 
-logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={osm_price} mat={r(mcd.spotter.mat(ilk))}")
+
+logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={r(osm_price)} mat={r(mcd.spotter.mat(ilk))} spot={r(ilk.spot)} ")
 logging.info(f"{'':<7} duty={mcd.jug.duty(ilk)} min_amount={token.min_amount}")
 
 
@@ -81,7 +82,7 @@ def create_risky_vault():
     if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
         logging.info("Vault is already unsafe; no action taken")
     else:
-        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + flub_amount
+        collateral_amount = Wad(ilk.dust / Rad(ilk.spot) * Rad(ilk.rate)) + flub_amount
         logging.info(f"Opening/adjusting vault with {collateral_amount} {ilk.name}")
         create_risky_cdp(mcd, collateral, collateral_amount, our_address, False)
         logging.info("Created risky vault")
