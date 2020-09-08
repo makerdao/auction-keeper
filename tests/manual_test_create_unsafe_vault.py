@@ -81,7 +81,7 @@ def create_risky_vault():
     if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
         logging.info("Vault is already unsafe; no action taken")
     else:
-        collateral_amount = Wad(ilk.dust / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + flub_amount
+        collateral_amount = Wad(ilk.dust / Rad(ilk.spot) * Rad(ilk.rate)) + flub_amount
         logging.info(f"Opening/adjusting vault with {collateral_amount} {ilk.name}")
         create_risky_cdp(mcd, collateral, collateral_amount, our_address, False)
         logging.info("Created risky vault")
