@@ -59,7 +59,8 @@ action = sys.argv[4] if len(sys.argv) > 4 else "create"
 def r(value, decimals=1):
     return round(float(value), decimals)
 
-logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={osm_price} mat={r(mcd.spotter.mat(ilk))}")
+
+logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={r(osm_price)} mat={r(mcd.spotter.mat(ilk))} spot={r(ilk.spot)} ")
 logging.info(f"{'':<7} duty={mcd.jug.duty(ilk)} min_amount={token.min_amount}")
 
 
