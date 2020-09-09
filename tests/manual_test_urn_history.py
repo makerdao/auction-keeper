@@ -42,15 +42,6 @@ ilk = mcd.collaterals[collateral_type].ilk
 from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
 
 
-def wait(minutes_to_wait: int, uh: UrnHistory):
-    while minutes_to_wait > 0:
-        print(f"Testing cache for another {minutes_to_wait} minutes")
-        state_update_started = datetime.now()
-        uh.get_urns()
-        minutes_elapsed = int((datetime.now() - state_update_started).seconds / 60)
-        minutes_to_wait -= minutes_elapsed
-
-
 # Retrieve data from chain
 started = datetime.now()
 print(f"Connecting to {sys.argv[1]}...")
@@ -58,7 +49,7 @@ uh = UrnHistory(web3, mcd, ilk, from_block, None, None)
 urns_logs = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-wait(30, uh)
+
 
 # Retrieve data from Vulcanize
 started = datetime.now()
