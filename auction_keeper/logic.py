@@ -168,7 +168,7 @@ class Reservoir:
         assert isinstance(id, int)
         assert isinstance(consume, Rad)
 
-        if self.level > consume:
+        if self.level >= consume:
             self.level -= consume
             return True
         else:

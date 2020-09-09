@@ -28,7 +28,7 @@ from requests.exceptions import RequestException
 from typing import Optional
 from web3 import Web3
 
-from pymaker import Address, web3_via_http
+from pymaker import Address, get_pending_transactions, web3_via_http
 from pymaker.deployment import DssDeployment
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
@@ -306,6 +306,8 @@ class AuctionKeeper:
 
         logging.info(f"Keeper will use {self.gas_price} for transactions and bids unless model instructs otherwise")
 
+        self.plunge()
+
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(1)
@@ -317,6 +319,16 @@ class AuctionKeeper:
         time.sleep(1)
         if self.collateral:
             self.collateral.approve(self.our_address, gas_price=self.gas_price)
+
+    def plunge(self):
+        pending_txes = get_pending_transactions(self.web3)
+        if len(pending_txes) > 0:
+            while len(pending_txes) > 0:
+                logging.warning(f"Cancelling first of {len(pending_txes)} pending transactions")
+                pending_txes[0].cancel(gas_price=self.gas_price)
+                # After the synchronous cancel, wait to see if subsequent transactions get mined
+                time.sleep(28)
+                pending_txes = get_pending_transactions(self.web3)
 
     def shutdown(self):
         with self.auctions_lock:
@@ -355,6 +367,9 @@ class AuctionKeeper:
         logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 
         for urn in urns.values():
+            if self.is_shutting_down():
+                return
+
             if self.cat.can_bite(ilk, urn):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "

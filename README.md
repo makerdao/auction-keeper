@@ -305,6 +305,9 @@ amount of time to wait.  For illustration purposes, assume the queue can hold 12
 reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of
 the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue.
 
+Upon startup, the keeper will clear its transaction queue.  This helps recover from insufficiently-aggressive gas 
+configuration and reduces gas-wasting transactions.
+
 #### Hardware and operating system resources
 
  * The most expensive keepers are `flip` and `flop` keepers configured to `kick` new auctions.
