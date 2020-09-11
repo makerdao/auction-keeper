@@ -147,15 +147,15 @@ the following actions:
   * adjusting the balance of surplus to debt
   * queuing debt for auction
   * biting a vault or starting a flap or flop auction
-* The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will 
-`bite`, `flap`, or `flop` in response to opportunities regardless of whether or not your Dai or MKR balance is 
+* The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will
+`bite`, `flap`, or `flop` in response to opportunities regardless of whether or not your Dai or MKR balance is
 sufficient to participate.  This too imposes a gas fee.
-* Biting vaults to kick off new collateral auctions is an expensive operation.  To do so without a VulcanizeDB 
-subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then 
+* Biting vaults to kick off new collateral auctions is an expensive operation.  To do so without a VulcanizeDB
+subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then
 continuously refresh urn state to detect undercollateralized urns.
-   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the urn state 
+   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the urn state
    cache in a reasonable amount of time.  As such, Geth is not recommended for biting vaults.
-   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--kick-only`) 
+   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--kick-only`)
    and bid (`--bid-only`).
 
 
@@ -199,22 +199,22 @@ Auction keeper can use one of several sources for the initial gas price of a tra
  * **Etherchain.org** if keeper started with `--etherchain-gas-price` switch  
  * **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
     that is useful when server hosted locally (e.g. `--poanetwork-url http://localhost:8000`)  
- * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 12.4`) 
- 
-When using an API source for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the initial 
-value provided by the API.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no 
-initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price 
+ * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 12.4`)
+
+When using an API source for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the initial
+value provided by the API.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no
+initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price
 determined by your node.
 
-Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a 
-transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `1.125`, an increase of 12.5%) 
+Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a
+transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `1.125`, an increase of 12.5%)
 until it is mined or `--gas-maximum` (default 2000 Gwei) is reached.  
-Note that [Parity](https://wiki.parity.io/Transactions-Queue#dropping-conditions), as of this writing, requires a 
-minimum gas increase of `1.125` to propagate transaction replacement; this should be treated as a minimum 
-value unless you want replacements to happen less frequently than 30 seconds (2+ blocks). 
+Note that [Parity](https://wiki.parity.io/Transactions-Queue#dropping-conditions), as of this writing, requires a
+minimum gas increase of `1.125` to propagate transaction replacement; this should be treated as a minimum
+value unless you want replacements to happen less frequently than 30 seconds (2+ blocks).
 
-This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only 
-when the model does not provide a gas price.  Unless your price model is aware of your transaction status, it is 
+This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only
+when the model does not provide a gas price.  Unless your price model is aware of your transaction status, it is
 generally advisable to allow the keeper to manage gas prices for bids, and not supply a `gasPrice` in your model.
 
 
@@ -224,28 +224,28 @@ Key points:
 - Won collateral can be **exited** from the `Vat` to a token balance after a won auction is dealt (closed).
 - MKR for/from `flap`/`flop` auctions is managed directly through token balances and is never joined to the `Vat`.
 
-The keeper provides facilities for managing `Vat` balances, which may be turned off to manage manually. 
-To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit`, 
+The keeper provides facilities for managing `Vat` balances, which may be turned off to manage manually.
+To manually control the amount of Dai in the `Vat`, pass `--keep-dai-in-vat-on-exit` and `--keep-gem-in-vat-on-exit`,
 set `--return-gem-interval 0`, and do not pass `--vat-dai-target`.
 
-Warnings: **Do not use an `eth-from` account on multiple keepers** as it complicates Vat inventory management and 
+Warnings: **Do not use an `eth-from` account on multiple keepers** as it complicates Vat inventory management and
 will likely cause nonce conflicts.  Using an `eth-from` account with an open vault is also discouraged.
 
 #### Dai
-All auction contracts exclusively interact with Dai (for all auctions) in the `Vat`.  `--vat-dai-target` may be set to 
-the amount you wish to maintain, or `all` to join your account's entire token balance.  Rebalances do not account for 
+All auction contracts exclusively interact with Dai (for all auctions) in the `Vat`.  `--vat-dai-target` may be set to
+the amount you wish to maintain, or `all` to join your account's entire token balance.  Rebalances do not account for
 Dai moved from the `Vat` to an auction contract for an active bid.  Dai is rebalanced per `--vat-dai-target` when:
 - The keeper starts up
 - `Vat` balance is insufficient to place a bid
 - An auction is dealt
 
 To avoid transaction spamming, small "dusty" Dai balances will be ignored (until the keeper exits, if so configured).  
-By default, all Dai in your `eth-from` account is exited from the `Vat` and added to your token balance when the keeper 
+By default, all Dai in your `eth-from` account is exited from the `Vat` and added to your token balance when the keeper
 is terminated normally.  This feature may be disabled using `--keep-dai-in-vat-on-exit`.
 
 #### Collateral (flip auctions)
-Won collateral is periodically exited by setting `--return-gem-interval` to the number of seconds between balance 
-checks.  Collateral is exited from the `Vat` when the keeper is terminated normally unless `--keep-gem-in-vat-on-exit` 
+Won collateral is periodically exited by setting `--return-gem-interval` to the number of seconds between balance
+checks.  Collateral is exited from the `Vat` when the keeper is terminated normally unless `--keep-gem-in-vat-on-exit`
 is specified.
 
 #### Other tools
@@ -264,18 +264,18 @@ mcd -C kovan dai exit 300
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are 
+To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are
 two ways to retrieve the list of urns:
  * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events.  
-    The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events 
-    will be queried back to the last cached block to detect new urns.  The state of all urns will be queried 
-    continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join` 
+    The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events
+    will be queried back to the last cached block to detect new urns.  The state of all urns will be queried
+    continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join`
     contract was deployed for some collateral types and chains.
-    
+
     ![example from blocks](README-from-block.png)
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
-    resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for 
+    resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for
     basic authentication with the `--vulcanize-key` argument.  This reduces urn check time (<10 seconds for ETH-A).
 
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically
@@ -305,7 +305,7 @@ amount of time to wait.  For illustration purposes, assume the queue can hold 12
 reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of
 the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue.
 
-Upon startup, the keeper will clear its transaction queue.  This helps recover from insufficiently-aggressive gas 
+Upon startup, the keeper will clear its transaction queue.  This helps recover from insufficiently-aggressive gas
 configuration and reduces gas-wasting transactions.
 
 #### Hardware and operating system resources
@@ -319,12 +319,11 @@ configuration and reduces gas-wasting transactions.
 This keeper connects to the Ethereum network using [Web3.py](https://github.com/ethereum/web3.py) and interacts with
 the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pymaker).  A connection to an Ethereum node
 (`--rpc-host`) is required.  [Parity](https://www.parity.io/ethereum/) and [Geth](https://geth.ethereum.org/) nodes are
-supported over HTTP. Websocket endpoints are not supported by `pymaker`.  A _full_ or _archive_ node is required; 
+supported over HTTP. Websocket endpoints are not supported by `pymaker`.  A _full_ or _archive_ node is required;
 _light_ nodes are not supported.
 
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
-with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible, however, because
-it does not support the `eth_sendTransaction` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/69c7b6d869bb3bc9c4cca7b82cc6e8d435966d4b/pymaker/__init__.py#L431) pymaker.
+with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible over HTTP, however, because it does not support the  `eth_newBlockFilter` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/master/pymaker/lifecycle.py#L351) pymaker.
 
 
 ## Testing
