@@ -20,32 +20,33 @@ from pprint import pformat
 from typing import Optional
 
 from auction_keeper.process import Process
-from pymaker import Address
-from pymaker.numeric import Wad, Ray, Rad
+from pyflex import Address
+from pyflex.numeric import Wad, Ray, Rad
 
 
 class Parameters:
-    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], id: int):
-        assert isinstance(flipper, Address) or (flipper is None)
-        assert isinstance(flapper, Address) or (flapper is None)
-        assert isinstance(flopper, Address) or (flopper is None)
+    def __init__(self, collateral_auction_house: Optional[Address], surplus_auction_house: Optional[Address],
+                 debt_auction_house: Optional[Address], id: int):
+        assert isinstance(collateral_auction_house, Address) or (collateral_auction_house is None)
+        assert isinstance(surplus_auction_house, Address) or (surplus_auction_house is None)
+        assert isinstance(debt_auction_house, Address) or (debt_auction_house is None)
         assert isinstance(id, int)
 
-        self.flipper = flipper
-        self.flapper = flapper
-        self.flopper = flopper
+        self.collateral_auction_house = collateral_auction_house
+        self.surplus_auction_house = surplus_auction_house
+        self.debt_auction_house = debt_auction_house
         self.id = id
 
     def __eq__(self, other):
         assert isinstance(other, Parameters)
 
-        return self.flipper == other.flipper and \
-               self.flapper == other.flapper and \
-               self.flopper == other.flopper and \
+        return self.collateral_auction_house == other.collateral_auction_house and \
+               self.surplus_auction_house == other.surplus_auction_house and \
+               self.debt_auction_house == other.debt_auction_house and \
                self.id == other.id
 
     def __hash__(self):
-        return hash((self.flipper, self.flapper, self.flopper, self.id))
+        return hash((self.collateral_auction_house, self.surplus_auction_house, self.debt_auction_house, self.id))
 
     def __repr__(self):
         return pformat(vars(self))
@@ -54,77 +55,77 @@ class Parameters:
 class Status:
     def __init__(self,
                  id: int,
-                 flipper: Optional[Address],
-                 flapper: Optional[Address],
-                 flopper: Optional[Address],
-                 bid: Wad,
-                 lot: Wad,
-                 tab: Optional[Wad],
-                 beg: Wad,
-                 guy: Address,
+                 collateral_auction_house: Optional[Address],
+                 surplus_auction_house: Optional[Address],
+                 debt_auction_house: Optional[Address],
+                 bid_amount: Wad,
+                 amount_to_sell: Wad,
+                 amount_to_raise: Optional[Wad],
+                 bid_increase: Wad,
+                 high_bidder: Address,
                  era: int,
-                 tic: int,
-                 end: int,
+                 bid_expiry: int,
+                 auction_deadline: int,
                  price: Optional[Wad]):
         assert isinstance(id, int)
-        assert isinstance(flipper, Address) or (flipper is None)
-        assert isinstance(flapper, Address) or (flapper is None)
-        assert isinstance(flopper, Address) or (flopper is None)
-        # Numeric type of bid and lot depends on auction type; Dai values are bid in Rad, collateral and MKR in Wad.
+        assert isinstance(collateral_auction_house, Address) or (collateral_auction_house is None)
+        assert isinstance(surplus_auction_house, Address) or (surplus_auction_house is None)
+        assert isinstance(debt_auction_house, Address) or (debt_auction_house is None)
+        # Numeric type of bid and amount_to_sell depends on auction type; Dai values are bid in Rad, collateral and MKR in Wad.
         assert isinstance(bid, Wad) or isinstance(bid, Rad)
-        assert isinstance(lot, Wad) or isinstance(lot, Rad)
-        assert isinstance(tab, Rad) or (tab is None)
-        assert isinstance(beg, Wad)
-        assert isinstance(guy, Address)
+        assert isinstance(amount_to_sell, Wad) or isinstance(amount_to_sell, Rad)
+        assert isinstance(amount_to_raise, Rad) or (amount_to_raise is None)
+        assert isinstance(bid_increase, Wad)
+        assert isinstance(high_bidder, Address)
         assert isinstance(era, int)
-        assert isinstance(tic, int)
-        assert isinstance(end, int)
+        assert isinstance(bid_expiry, int)
+        assert isinstance(auction_deadline, int)
         assert isinstance(price, Wad) or (price is None)
 
         self.id = id
-        self.flipper = flipper
-        self.flapper = flapper
-        self.flopper = flopper
+        self.collateral_auction_house = collateral_auction_house
+        self.surplus_auction_house = surplus_auction_house
+        self.debt_auction_house = debt_auction_house
         self.bid = bid
-        self.lot = lot
-        self.tab = tab
-        self.beg = beg
-        self.guy = guy
+        self.amount_to_sell = amount_to_sell
+        self.amount_to_raise = amount_to_raise
+        self.bid_increase = bid_increase
+        self.high_bidder = high_bidder
         self.era = era
-        self.tic = tic
-        self.end = end
+        self.bid_expiry = bid_expiry
+        self.auction_deadline = auction_deadline
         self.price = price
 
     def __eq__(self, other):
         assert isinstance(other, Status)
 
         return self.id == other.id and \
-               self.flipper == other.flipper and \
-               self.flapper == other.flapper and \
-               self.flopper == other.flopper and \
+               self.collateral_auction_house == other.collateral_auction_house and \
+               self.surplus_auction_house == other.surplus_auction_house and \
+               self.debt_auction_house == other.debt_auction_house and \
                self.bid == other.bid and \
-               self.lot == other.lot and \
-               self.tab == other.tab and \
-               self.beg == other.beg and \
-               self.guy == other.guy and \
+               self.amount_to_sell == other.amount_to_sell and \
+               self.amount_to_raise == other.amount_to_raise and \
+               self.bid_increase == other.bid_increase and \
+               self.high_bidder == other.high_bidder and \
                self.era == other.era and \
-               self.tic == other.tic and \
-               self.end == other.end and \
+               self.bid_expiry == other.bid_expiry and \
+               self.auction_deadline == other.auction_deadline and \
                self.price == other.price
 
     def __hash__(self):
         return hash((self.id,
-                     self.flipper,
-                     self.flapper,
-                     self.flopper,
+                     self.collateral_auction_house,
+                     self.surplus_auction_house,
+                     self.debt_auction_house,
                      self.bid,
-                     self.lot,
-                     self.tab,
-                     self.beg,
-                     self.guy,
+                     self.amount_to_sell,
+                     self.amount_to_raise,
+                     self.bid_increase,
+                     self.high_bidder,
                      self.era,
-                     self.tic,
-                     self.end,
+                     self.bid_expiry,
+                     self.auction_deadline,
                      self.price))
 
     def __repr__(self):
@@ -161,9 +162,9 @@ class Model:
 
         self._command = command
         self._arguments = f"--id {parameters.id}"
-        self._arguments += f" --flipper {parameters.flipper}" if parameters.flipper is not None else ""
-        self._arguments += f" --flapper {parameters.flapper}" if parameters.flapper is not None else ""
-        self._arguments += f" --flopper {parameters.flopper}" if parameters.flopper is not None else ""
+        self._arguments += f" --collateral_auction_house {parameters.collateral_auction_house}" if parameters.collateral_auction_house is not None else ""
+        self._arguments += f" --surplus_auction_house {parameters.surplus_auction_house}" if parameters.surplus_auction_house is not None else ""
+        self._arguments += f" --debt_auction_house {parameters.debt_auction_house}" if parameters.debt_auction_house is not None else ""
         self._last_output = None
 
         self.logger.info(f"Instantiated model using process '{self._command} {self._arguments}'")
@@ -185,26 +186,26 @@ class Model:
         record = {
             "id": str(input.id),
             "bid": str(input.bid),
-            "lot": str(input.lot),
-            "beg": str(input.beg),
-            "guy": str(input.guy),
+            "amount_to_sell": str(input.amount_to_sell),
+            "bid_increase": str(input.bid_increase),
+            "high_bidder": str(input.high_bidder),
             "era": int(input.era),
-            "tic": int(input.tic),
-            "end": int(input.end),
+            "bid_expiry": int(input.bid_expiry),
+            "auction_deadline": int(input.auction_deadline),
             "price": str(input.price) if input.price is not None else None,
         }
 
-        if input.tab:
-            record['tab'] = str(input.tab)
+        if input.amount_to_raise:
+            record['amount_to_raise'] = str(input.amount_to_raise)
 
-        if input.flipper:
-            record['flipper'] = str(input.flipper)
+        if input.collateral_auction_house:
+            record['collateral_auction_house'] = str(input.collateral_auction_house)
 
-        if input.flapper:
-            record['flapper'] = str(input.flapper)
+        if input.surplus_auction_house:
+            record['surplus_auction_house'] = str(input.surplus_auction_house)
 
-        if input.flopper:
-            record['flopper'] = str(input.flopper)
+        if input.debt_auction_house:
+            record['debt_auction_house'] = str(input.debt_auction_house)
 
         self._process.write(record)
 

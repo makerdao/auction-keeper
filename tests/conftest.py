@@ -24,28 +24,28 @@ from web3 import Web3
 
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
-from pymaker import Address, web3_via_http
-from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral, Ilk, Urn
-from pymaker.feed import DSValue
-from pymaker.gas import NodeAwareGasPrice
-from pymaker.keys import register_keys
-from pymaker.model import Token
-from pymaker.numeric import Wad, Ray, Rad
-from pymaker.token import DSEthToken, DSToken
+from pyflex import Address, web3_via_http
+from pyflex.deployment import DssDeployment
+from pyflex.dss import Collateral, Ilk, Urn
+from pyflex.feed import DSValue
+from pyflex.gas import NodeAwareGasPrice
+from pyflex.keys import register_keys
+from pyflex.model import Token
+from pyflex.numeric import Wad, Ray, Rad
+from pyflex.token import DSEthToken, DSToken
 
 
 @pytest.fixture(scope="session")
 def web3():
-    # These details are specific to the MCD testchain used for pymaker unit tests.
+    # These details are specific to the MCD testchain used for pyflex unit tests.
     web3 = web3_via_http("http://0.0.0.0:8545", 3, 100)
     web3.eth.defaultAccount = "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
     register_keys(web3,
-                  ["key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key1.json,pass_file=/dev/null",
-                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key2.json,pass_file=/dev/null",
-                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key3.json,pass_file=/dev/null",
-                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key4.json,pass_file=/dev/null",
-                   "key_file=lib/pymaker/tests/config/keys/UnlimitedChain/key.json,pass_file=/dev/null"])
+                  ["key_file=lib/pyflex/tests/config/keys/UnlimitedChain/key1.json,pass_file=/dev/null",
+                   "key_file=lib/pyflex/tests/config/keys/UnlimitedChain/key2.json,pass_file=/dev/null",
+                   "key_file=lib/pyflex/tests/config/keys/UnlimitedChain/key3.json,pass_file=/dev/null",
+                   "key_file=lib/pyflex/tests/config/keys/UnlimitedChain/key4.json,pass_file=/dev/null",
+                   "key_file=lib/pyflex/tests/config/keys/UnlimitedChain/key.json,pass_file=/dev/null"])
 
     # reduce logspew
     logging.getLogger("web3").setLevel(logging.INFO)

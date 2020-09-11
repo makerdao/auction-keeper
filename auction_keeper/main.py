@@ -28,18 +28,18 @@ from requests.exceptions import RequestException
 from typing import Optional
 from web3 import Web3
 
-from pymaker import Address, web3_via_http
-from pymaker.deployment import DssDeployment
-from pymaker.keys import register_keys
-from pymaker.lifecycle import Lifecycle
-from pymaker.model import Token
-from pymaker.numeric import Wad, Ray, Rad
+from pyflex import Address, web3_via_http
+from pyflex.deployment import GfDeployment
+from pyflex.keys import register_keys
+from pyflex.lifecycle import Lifecycle
+from pyflex.model import Token
+from pyflex.numeric import Wad, Ray, Rad
 
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
-from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
-from auction_keeper.urn_history import UrnHistory
+from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy, EnglishCollateralAuctionStrategy
+from auction_keeper.safe_history import SafeHistory
 
 
 class AuctionKeeper:
@@ -149,14 +149,14 @@ class AuctionKeeper:
             raise RuntimeError("--from-block must be specified to kick off flop auctions")
 
         # Configure core and token contracts
-        self.mcd = DssDeployment.from_node(web3=self.web3)
-        self.vat = self.mcd.vat
-        self.cat = self.mcd.cat
-        self.vow = self.mcd.vow
-        self.mkr = self.mcd.mkr
-        self.dai_join = self.mcd.dai_adapter
+        self.geb = GfDeployment.from_node(web3=self.web3)
+        self.vat = self.geb.vat
+        self.cat = self.geb.cat
+        self.vow = self.geb.vow
+        self.mkr = self.geb.mkr
+        self.dai_join = self.geb.dai_adapter
         if self.arguments.type == 'flip':
-            self.collateral = self.mcd.collaterals[self.arguments.ilk]
+            self.collateral = self.geb.collaterals[self.arguments.ilk]
             self.ilk = self.collateral.ilk
             self.gem_join = self.collateral.adapter
         else:
@@ -166,14 +166,14 @@ class AuctionKeeper:
 
         # Configure auction contracts
         self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
-        self.flapper = self.mcd.flapper if self.arguments.type == 'flap' else None
-        self.flopper = self.mcd.flopper if self.arguments.type == 'flop' else None
+        self.flapper = self.geb.flapper if self.arguments.type == 'flap' else None
+        self.flopper = self.geb.flopper if self.arguments.type == 'flop' else None
         self.urn_history = None
         if self.flipper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
             if self.arguments.create_auctions:
-                self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
+                self.urn_history = UrnHistory(self.web3, self.geb, self.ilk, self.arguments.from_block,
                                               self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
@@ -310,10 +310,10 @@ class AuctionKeeper:
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(1)
         if self.dai_join:
-            if self.mcd.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
+            if self.geb.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
                 return
             else:
-                self.mcd.approve_dai(usr=self.our_address, gas_price=self.gas_price)
+                self.geb.approve_dai(usr=self.our_address, gas_price=self.gas_price)
         time.sleep(1)
         if self.collateral:
             self.collateral.approve(self.our_address, gas_price=self.gas_price)
@@ -348,7 +348,7 @@ class AuctionKeeper:
         started = datetime.now()
         ilk = self.vat.ilk(self.ilk.name)
         rate = ilk.rate
-        available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
+        available_dai = self.geb.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
 
         # Look for unsafe vaults and bite them
         urns = self.urn_history.get_urns()
@@ -432,7 +432,7 @@ class AuctionKeeper:
         if woe + sin >= sump:
             # We need to bring Joy to 0 and Woe to at least sump
 
-            available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
+            available_dai = self.geb.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
             if self.arguments.bid_on_auctions and available_dai == Wad(0):
                 self.logger.warning("Skipping opportunity to kiss/flog/heal/flop because there is no Dai to bid")
                 return
@@ -638,7 +638,7 @@ class AuctionKeeper:
                     auction.gas_price.update_gas_price(output.gas_price)
                 auction.register_transaction(bid_transact)
 
-                # ...ask pymaker to replace the transaction
+                # ...ask pyflex to replace the transaction
                 self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                              gas_price=auction.gas_price))
 
@@ -655,7 +655,7 @@ class AuctionKeeper:
                 auction.gas_price = new_gas_strategy
                 auction.register_transaction(bid_transact)
 
-                # ...ask pymaker to replace the transaction
+                # ...ask pyflex to replace the transaction
                 self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
                                                              gas_price=auction.gas_price))
 
@@ -700,7 +700,7 @@ class AuctionKeeper:
         dai = self.dai_join.dai()
         token_balance = dai.balance_of(self.our_address)  # Wad
         # Prevent spending gas on small rebalances
-        dust = Wad(self.mcd.vat.ilk(self.ilk.name).dust) if self.ilk else Wad.from_number(20)
+        dust = Wad(self.geb.vat.ilk(self.ilk.name).dust) if self.ilk else Wad.from_number(20)
 
         dai_to_join = Wad(0)
         dai_to_exit = Wad(0)

@@ -20,8 +20,8 @@ from typing import Optional
 
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.model import Stance, Parameters, Status, Model, ModelFactory
-from pymaker import Address, TransactStatus, Transact
-from pymaker.numeric import Rad
+from pyflex import Address, TransactStatus, Transact
+from pyflex.numeric import Rad
 
 
 class Auction:

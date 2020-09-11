@@ -20,7 +20,7 @@ from typing import Optional
 from web3 import Web3
 
 from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
-from pymaker.gas import GasPrice, GeometricGasPrice, NodeAwareGasPrice
+from pyflex.gas import GasPrice, GeometricGasPrice, NodeAwareGasPrice
 
 
 class UpdatableGasPrice(GasPrice):

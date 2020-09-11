@@ -22,66 +22,66 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 from web3 import Web3
 
-from pymaker import Address, Wad
-from pymaker.deployment import DssDeployment
-from pymaker.dss import Ilk, Urn
+from pyflex import Address, Wad
+from pyflex.deployment import GfDeployment
+from pyflex.gf import CollateralType, SAFE
 
 
 class UrnHistory:
     logger = logging.getLogger()
     cache_lookback = 10  # for handling block reorgs
 
-    def __init__(self, web3: Web3, mcd: DssDeployment, ilk: Ilk, from_block: Optional[int],
+    def __init__(self, web3: Web3, geb: GfDeployment, collateral_type: CollateralType, from_block: Optional[int],
                  vulcanize_endpoint: Optional[str], vulcanize_key: Optional[str]):
         assert isinstance(web3, Web3)
-        assert isinstance(mcd, DssDeployment)
-        assert isinstance(ilk, Ilk)
+        assert isinstance(geb, GfDeployment)
+        assert isinstance(collateral_type, CollateralType)
         assert isinstance(from_block, int) or from_block is None
         assert isinstance(vulcanize_endpoint, str) or vulcanize_endpoint is None
         assert isinstance(vulcanize_key, str) or vulcanize_key is None
         assert from_block or vulcanize_endpoint
 
         self.web3 = web3
-        self.mcd = mcd
-        self.ilk = ilk
+        self.geb = geb
+        self.collateral_type = ilk
         self.from_block = from_block
         self.vulcanize_endpoint = vulcanize_endpoint
         self.vulcanize_key = vulcanize_key
         self.cache_block = from_block
         self.cache = {}
 
-    def get_urns(self) -> Dict[Address, Urn]:
+    def get_safes(self) -> Dict[Address, Urn]:
         """Returns a list of urns indexed by address"""
         if self.vulcanize_endpoint:
             return self.get_urns_from_vulcanize()
         else:
             return self.get_urns_from_past_frobs()
 
-    def get_urns_from_past_frobs(self) -> Dict[Address, Urn]:
+    def get_safes_from_past_frobs(self) -> Dict[Address, Urn]:
         start = datetime.now()
-        urn_addresses = set()
+        safe_addresses = set()
 
-        # Get a unique list of urn addresses
+        # Get a unique list of safe addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
-        frobs = self.mcd.vat.past_frobs(from_block=from_block, to_block=to_block, ilk=self.ilk)
+        frobs = self.geb.safe_engine.past_frobs(from_block=from_block, to_block=to_block, collateral_type=self.ilk)
         for frob in frobs:
-            urn_addresses.add(frob.urn)
+            safe_addresses.add(frob.safe)
 
-        # Update state of already-cached urns
-        for address, urn in self.cache.items():
-            self.cache[address] = self.mcd.vat.urn(self.ilk, address)
+        # Update state of already-cached safes
+        for address, safe in self.cache.items():
+            self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
 
-        # Cache state of newly discovered urns
-        for address in urn_addresses:
+        # Cache state of newly discovered safes
+        for address in safe_addresses:
             if address not in self.cache:
-                self.cache[address] = self.mcd.vat.urn(self.ilk, address)
+                self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
 
-        self.logger.debug(f"Updated {len(self.cache)} urns in {(datetime.now()-start).seconds} seconds")
+        self.logger.debug(f"Updated {len(self.cache)} safes in {(datetime.now()-start).seconds} seconds")
         self.cache_block = to_block
         return self.cache
 
-    def get_urns_from_vulcanize(self) -> Dict[Address, Urn]:
+    def get_safes_from_vulcanize(self) -> Dict[Address, Urn]:
         start = datetime.now()
 
         response = self.run_query(self.lag_query)
@@ -90,10 +90,10 @@ class UrnHistory:
         response = self.run_query(self.init_query)
         raw = json.loads(response.text)['data']['allUrns']['nodes']
         for item in raw:
-            if item['ilkIdentifier'] == self.ilk.name:
-                urn = self.urn_from_vdb_node(item)
-                self.cache[urn.address] = urn
-        self.logger.debug(f"Found {len(self.cache)} urns from VulcanizeDB up to block {self.cache_block} " 
+            if item['collateralTypeIdentifier'] == self.ilk.name:
+                safe = self.safe_from_vdb_node(item)
+                self.cache[safe.address] = safe
+        self.logger.debug(f"Found {len(self.cache)} safes from VulcanizeDB up to block {self.cache_block} " 
                           f"in {(datetime.now() - start).seconds} seconds")
 
         start = datetime.now()
@@ -101,22 +101,22 @@ class UrnHistory:
         response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
         parsed_data = json.loads(response.text)['data']
 
-        frobs_for_ilk = self.filter_urn_nodes_by_ilk(parsed_data['allVatFrobs']['nodes'])
-        recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in frobs_for_ilk]
-        bites_for_ilk = self.filter_urn_nodes_by_ilk(parsed_data['allRawBites']['nodes'])
-        recent_bites = [item['rawUrnByUrnId']['identifier'] for item in bites_for_ilk]
-        forks_for_ilk = self.filter_nodes_by_ilk(parsed_data['allVatForks']['nodes'])
-        recent_forks = [item['src'] for item in forks_for_ilk] + [item['dst'] for item in forks_for_ilk]
+        frobs_for_collateral_type = self.filter_safe_nodes_by_ilk(parsed_data['allVatFrobs']['nodes'])
+        recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in frobs_for_collateral_type]
+        bites_for_collateral_type = self.filter_safe_nodes_by_ilk(parsed_data['allRawBites']['nodes'])
+        recent_bites = [item['rawUrnByUrnId']['identifier'] for item in bites_for_collateral_type]
+        forks_for_collateral_type = self.filter_nodes_by_ilk(parsed_data['allVatForks']['nodes'])
+        recent_forks = [item['src'] for item in forks_for_collateral_type] + [item['dst'] for item in forks_for_ilk]
         assert isinstance(recent_frobs, list)
         assert isinstance(recent_bites, list)
         assert isinstance(recent_forks, list)
         recent_changes = set(recent_frobs + recent_bites + recent_forks)
-        for urn in recent_changes:
-            address = Address(urn)
-            self.cache[address] = self.mcd.vat.urn(self.ilk, address)
+        for safe in recent_changes:
+            address = Address(safe)
+            self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
 
         current_block = int(parsed_data['lastBlock']['nodes'][0]['blockNumber'])
-        self.logger.debug(f"Updated {len(recent_changes)} urns from block {from_block} to {current_block} "
+        self.logger.debug(f"Updated {len(recent_changes)} safes from block {from_block} to {current_block} "
                           f"in {(datetime.now() - start).seconds} seconds")
         self.cache_block = current_block
         return self.cache
@@ -136,28 +136,28 @@ class UrnHistory:
             raise RuntimeError(f"Vulcanize query failed: {error_msg}")
         return response
 
-    def filter_urn_nodes_by_ilk(self, nodes: list):
+    def filter_safe_nodes_by_collateral_type(self, nodes: list):
         assert isinstance(nodes, list)
-        return list(filter(lambda item: item['rawUrnByUrnId']['rawIlkByIlkId']['identifier'] == self.ilk.name, nodes))
+        return list(filter(lambda item: item['rawUrnByUrnId']['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
 
-    def filter_nodes_by_ilk(self, nodes: list):
+    def filter_nodes_by_collateral_type(self, nodes: list):
         assert isinstance(nodes, list)
-        return list(filter(lambda item: item['rawIlkByIlkId']['identifier'] == self.ilk.name, nodes))
+        return list(filter(lambda item: item['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
 
-    def urn_from_vdb_node(self, node: dict) -> Urn:
+    def safe_from_vdb_node(self, node: dict) -> Urn:
         assert isinstance(node, dict)
 
-        address = Address(node['urnIdentifier'])
+        address = Address(node['safeIdentifier'])
         ink = Wad(int(node['ink']))
         art = Wad(int(node['art']))
 
-        return Urn(address, self.ilk, ink, art)
+        return Urn(address, self.collateral_type, ink, art)
 
     init_query = """query {
       allUrns {
         nodes {
-          urnIdentifier
-          ilkIdentifier
+          safeIdentifier
+          collateralTypeIdentifier
           ink
           art
         }
@@ -177,7 +177,7 @@ class UrnHistory:
       {
         nodes {
           rawUrnByUrnId {
-            rawIlkByIlkId {
+            rawCollateralTypeByCollateralTypeId {
               identifier
             }
             identifier
@@ -188,7 +188,7 @@ class UrnHistory:
       {
         nodes {
           rawUrnByUrnId {
-            rawIlkByIlkId {
+            rawCollateralTypeByCollateralTypeId {
               identifier
             }
             identifier
@@ -198,7 +198,7 @@ class UrnHistory:
       allVatForks(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
       {
         nodes {
-          rawIlkByIlkId {
+          rawCollateralTypeByCollateralTypeId {
               identifier
           }
           src
