@@ -20,11 +20,12 @@ from typing import Optional, Tuple
 from web3 import Web3
 
 from auction_keeper.model import Status
-from pymaker import Address, Transact
-from pymaker.approval import directly, hope_directly
-from pymaker.auctions import AuctionContract, Flopper, Flapper, Flipper
-from pymaker.gas import GasPrice
-from pymaker.numeric import Wad, Ray, Rad
+from pyflex import Address, Transact
+from pyflex.approval import directly, approve_safe_modification_directly
+from pyflex.auctions import AuctionContract, PreSettlementSurplusAuctionHouse, DebtAuctionHouse
+from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
+from pyflex.gas import GasPrice
+from pyflex.numeric import Wad, Ray, Rad
 
 
 def era(web3: Web3):
@@ -44,181 +45,181 @@ class Strategy:
     def get_input(self, id: int):
         raise NotImplementedError
 
-    def deal(self, id: int) -> Transact:
-        return self.contract.deal(id)
+    def settle_auction(self, id: int) -> Transact:
+        return self.contract.settle_auction(id)
 
-    def tick(self, id: int) -> Transact:
-        return self.contract.tick(id)
+    def restart_auction(self, id: int) -> Transact:
+        return self.contract.restart_auction(id)
 
 
-class FlipperStrategy(Strategy):
-    def __init__(self, flipper: Flipper, min_lot: Wad):
-        assert isinstance(flipper, Flipper)
-        assert isinstance(min_lot, Wad)
-        super().__init__(flipper)
+class EnglishCollateralAuctionStrategy(Strategy):
+    def __init__(self, collateral_auction_house: EnglishCollateralAuctionHouse, min_amount_to_sell: Wad):
+        assert isinstance(collateral_auction_house, EnglishCollateralAuctionHouse)
+        assert isinstance(min_amount_to_sell, Wad)
+        super().__init__(collateral_auction_house)
 
-        self.flipper = flipper
-        self.beg = flipper.beg()
-        self.min_lot = min_lot
+        self.collateral_auction_house = collateral_auction_house
+        self.bid_increase = collateral_auction_house.bid_increase()
+        self.min_amount_to_sell = min_amount_to_sell
 
     def approve(self, gas_price: GasPrice):
         assert isinstance(gas_price, GasPrice)
-        self.flipper.approve(self.flipper.vat(), hope_directly(gas_price=gas_price))
+        self.collateral_auction_house.approve(self.collateral_auction_house.safe_engine(), hope_directly(gas_price=gas_price))
 
-    def kicks(self) -> int:
-        return self.flipper.kicks()
+    def auctions_started(self) -> int:
+        return self.collateral_auction_house.auctions_started()
 
     def get_input(self, id: int) -> Status:
         assert isinstance(id, int)
 
         # Read auction state
-        bid = self.flipper.bids(id)
+        bid = self.collateral_auction_house.bids(id)
 
         # Prepare the model input from auction state
         return Status(id=id,
-                      flipper=self.flipper.address,
-                      flapper=None,
-                      flopper=None,
-                      bid=bid.bid,  # Rad
-                      lot=bid.lot,  # Wad
-                      tab=bid.tab,
-                      beg=self.beg,
-                      guy=bid.guy,
-                      era=era(self.flipper.web3),
-                      tic=bid.tic,
-                      end=bid.end,
-                      price=Wad(bid.bid / Rad(bid.lot)) if bid.lot != Wad(0) else None)
+                      collateral_auction_house=self.collateral_auction_house.address,
+                      surplus_auction_house=None,
+                      debt_auction_house=None,
+                      bid_amount=bid.bid_amount,  # Rad
+                      amount_to_sell=bid.amount_to_sell,  # Wad
+                      amount_to_raise=bid.amount_to_raise,
+                      bid_increase=self.bid_increase,
+                      high_bidder=bid.high_bidder,
+                      era=era(self.collateral_auction_house.web3),
+                      bid_expiry=bid.bid_expiry,
+                      auction_deadline=bid.auction_deadline,
+                      price=Wad(bid.bid_amount / Rad(bid.amount_to_sell)) if bid.amount_to_sell != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
-        bid = self.flipper.bids(id)
+        bid = self.collateral_auction_house.bids(id)
 
-        # dent phase
-        if bid.bid == bid.tab:
-            our_lot = Wad(bid.bid / Rad(price))
-            if our_lot < self.min_lot:
-                self.logger.debug(f"dent lot {our_lot} less than minimum {self.min_lot} for auction {id}")
+        # decreaseSoldAmount phase
+        if bid.bid_amount == bid.amount_to_raise:
+            our_amount = Wad(bid.bid_amount / Rad(price))
+            if our_amount < self.min_amount_to_sell:
+                self.logger.debug(f"decreaseSoldAmount lot {our_amount} less than minimum {self.min_amount_to_sell} for auction {id}")
                 return None, None, None
 
-            if (our_lot * self.beg <= bid.lot) and (our_lot < bid.lot):
-                return price, self.flipper.dent(id, our_lot, bid.bid), bid.bid
+            if (our_amount * self.bid_increase <= bid.amount_to_sell) and (our_amount < bid.amount_to_sell):
+                return price, self.collateral_auction_house.decrease_sold_amount(id, our_amount, bid.bid_amount), bid.bid_amount
             else:
-                self.logger.debug(f"dent lot {our_lot} would not exceed the bid increment for auction {id}")
+                self.logger.debug(f"decreaseSoldAmount lot {our_amount} would not exceed the bid increment for auction {id}")
                 return None, None, None
 
-        # tend phase
+        # increaseBidSize phase
         else:
-            if bid.lot < self.min_lot:
-                self.logger.debug(f"tend lot {bid.lot} less than minimum {self.min_lot} for auction {id}")
+            if bid.amount_to_sell < self.min_amount_to_sell:
+                self.logger.debug(f"increaseBidSize lot {bid.amount_to_sell} less than minimum {self.min_amount_to_sell} for auction {id}")
                 return None, None, None
 
-            our_bid = Rad.min(Rad(bid.lot) * price, bid.tab)
-            our_price = price if our_bid < bid.tab else Wad(bid.bid) / bid.lot
+            our_bid = Rad.min(Rad(bid.amount_to_sell) * price, bid.amount_to_raise)
+            our_price = price if our_bid < bid.amount_to_raise else Wad(bid.bid_amount) / bid.amount_to_sell
 
-            if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
-                return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
+            if (our_bid >= bid.bid_amount * self.bid_increase or our_bid == bid.amount_to_raise) and our_bid > bid.bid_amount:
+                return our_price, self.collateral_auction_house.increase_bid_size(id, bid.amount_to_sell, our_bid), our_bid
             else:
-                self.logger.debug(f"tend bid {our_bid} would not exceed the bid increment for auction {id}")
+                self.logger.debug(f"increaseBidSize bid {our_bid} would not exceed the bid increment for auction {id}")
                 return None, None, None
 
 
-class FlapperStrategy(Strategy):
-    def __init__(self, flapper: Flapper, mkr: Address):
-        assert isinstance(flapper, Flapper)
-        assert isinstance(mkr, Address)
-        super().__init__(flapper)
+class SurplusAuctionStrategy(Strategy):
+    def __init__(self, surplus_auction_house: PreSettlementSurplusAuctionHouse, prot: Address):
+        assert isinstance(surplus_auction_house, PreSettlementSurplusAuctionHouse)
+        assert isinstance(prot, Address)
+        super().__init__(surplus_auction_house)
 
-        self.flapper = flapper
-        self.beg = flapper.beg()
-        self.mkr = mkr
+        self.surplus_auction_house = surplus_auction_house
+        self.bid_increase = surplus_auction_house.bid_increase()
+        self.prot = prot
 
     def approve(self, gas_price: GasPrice):
-        self.flapper.approve(self.mkr, directly(gas_price=gas_price))
+        self.surplus_auction_house.approve(self.prot, directly(gas_price=gas_price))
 
-    def kicks(self) -> int:
-        return self.flapper.kicks()
+    def auctions_started(self) -> int:
+        return self.surplus_auction_house.auctions_started()
 
     def get_input(self, id: int) -> Status:
         assert isinstance(id, int)
 
         # Read auction state
-        bid = self.flapper.bids(id)
+        bid = self.surplus_auction_house.bids(id)
 
         # Prepare the model input from auction state
         return Status(id=id,
-                      flipper=None,
-                      flapper=self.flapper.address,
-                      flopper=None,
-                      bid=bid.bid,
-                      lot=bid.lot,
+                      collateral_auction_house=None,
+                      surplus_auction_house=self.flapper.address,
+                      debt_auction_house=None,
+                      bid_amount=bid.bid_amount,
+                      amount_to_sell=bid.amount_to_sell,
                       tab=None,
-                      beg=self.beg,
-                      guy=bid.guy,
-                      era=era(self.flapper.web3),
-                      tic=bid.tic,
-                      end=bid.end,
-                      price=Wad(bid.lot / Rad(bid.bid)) if bid.bid != Wad(0) else None)
+                      bid_increase=self.bid_increase,
+                      high_bidder=bid.high_bidder,
+                      era=era(self.surplus_auction_house.web3),
+                      bid_expiry=bid.bid_expiry,
+                      auction_deadline=bid.auction_deadline,
+                      price=Wad(bid.amount_to_sell / Rad(bid.bid_amount)) if bid.bid_amount != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
-        bid = self.flapper.bids(id)
-        our_bid = bid.lot / Rad(price)
+        bid = self.surplus_auction_house.bids(id)
+        our_bid = bid.amount_to_sell / Rad(price)
 
-        if our_bid >= Rad(bid.bid) * Rad(self.beg) and our_bid > Rad(bid.bid):
-            return price, self.flapper.tend(id, bid.lot, Wad(our_bid)), Rad(our_bid)
+        if our_bid >= Rad(bid.bid_amount) * Rad(self.bid_increase) and our_bid > Rad(bid.bid_amount):
+            return price, self.surplus_auction_house.increase_bid_size(id, bid.amount_to_sell, Wad(our_bid)), Rad(our_bid)
         else:
             self.logger.debug(f"bid {our_bid} would not exceed the bid increment for auction {id}")
             return None, None, None
 
 
-class FlopperStrategy(Strategy):
-    def __init__(self, flopper: Flopper):
-        assert isinstance(flopper, Flopper)
-        super().__init__(flopper)
+class DebtAuctionStrategy(Strategy):
+    def __init__(self, debt_auction_house: DebtAuctionHouse):
+        assert isinstance(debt_auction_house, DebtAuctionHouse)
+        super().__init__(debt_auction_house)
 
-        self.flopper = flopper
-        self.beg = flopper.beg()
+        self.debt_auctoin_house = debt_auction_house
+        self.bid_increase = debt_auction_house.bid_increase()
 
     def approve(self, gas_price: GasPrice):
-        self.flopper.approve(self.flopper.vat(), hope_directly(gas_price=gas_price))
+        self.debt_auction_house.approve(self.debt_auction_house.safe_engine(), hope_directly(gas_price=gas_price))
 
-    def kicks(self) -> int:
-        return self.flopper.kicks()
+    def auctions_started(self) -> int:
+        return self.debt_auction_house.auctions_started()
 
     def get_input(self, id: int) -> Status:
         assert isinstance(id, int)
 
         # Read auction state
-        bid = self.flopper.bids(id)
+        bid = self.debt_auction_house.bids(id)
 
         # Prepare the model input from auction state
         return Status(id=id,
-                      flipper=None,
-                      flapper=None,
-                      flopper=self.flopper.address,
-                      bid=bid.bid,
-                      lot=bid.lot,
-                      tab=None,
-                      beg=self.beg,
-                      guy=bid.guy,
-                      era=era(self.flopper.web3),
-                      tic=bid.tic,
-                      end=bid.end,
-                      price=Wad(bid.bid / Rad(bid.lot)) if bid.lot != Wad(0) else None)
+                      collateral_auction_house=None,
+                      surplus_auction_house=None,
+                      debt_auction_house=self.debt_auction_house.address,
+                      bid_amount=bid.bid_amount,
+                      amount_to_sell=bid.amount_to_sell,
+                      amount_to_raise=None,
+                      bid_increase=self.bid_increase,
+                      high_bidder=bid.high_bidder,
+                      era=era(self.debt_auction_house.web3),
+                      bid_expiry=bid.bid_expiry,
+                      auction_deadline=bid.auction_deadline,
+                      price=Wad(bid.bid_amount / Rad(bid.amount_to_sell)) if bid.bid_amount != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(price, Wad)
 
-        bid = self.flopper.bids(id)
-        our_lot = bid.bid / Rad(price)
+        bid = self.debt_auction_house.bids(id)
+        our_amount = bid.bid_amount / Rad(price)
 
-        if Ray(our_lot) * self.beg <= Ray(bid.lot) and our_lot < Rad(bid.lot):
-            return price, self.flopper.dent(id, Wad(our_lot), bid.bid), bid.bid
+        if Ray(our_amount) * self.bid_increase <= Ray(bid.amount_to_sell) and our_amount < Rad(bid.amount_to_sell):
+            return price, self.debt_auction_house.decrease_sold_amount(id, Wad(our_amount), bid.bid_amount), bid.bid_amount
         else:
-            self.logger.debug(f"lot {our_lot} would not exceed the bid increment for auction {id}")
+            self.logger.debug(f"our_amount {our_amount} would not exceed the bid increment for auction {id}")
             return None, None, None
