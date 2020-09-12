@@ -24,10 +24,10 @@ from web3 import Web3
 
 from pyflex import Address, Wad
 from pyflex.deployment import GfDeployment
-from pyflex.gf import CollateralType, SAFE
+from pyflex.gf import CollateralType, Safe
 
 
-class UrnHistory:
+class SafeHistory:
     logger = logging.getLogger()
     cache_lookback = 10  # for handling block reorgs
 
@@ -43,30 +43,30 @@ class UrnHistory:
 
         self.web3 = web3
         self.geb = geb
-        self.collateral_type = ilk
+        self.collateral_type = collateral_type
         self.from_block = from_block
         self.vulcanize_endpoint = vulcanize_endpoint
         self.vulcanize_key = vulcanize_key
         self.cache_block = from_block
         self.cache = {}
 
-    def get_safes(self) -> Dict[Address, Urn]:
-        """Returns a list of urns indexed by address"""
+    def get_safes(self) -> Dict[Address, Safe]:
+        """Returns a list of safes indexed by address"""
         if self.vulcanize_endpoint:
-            return self.get_urns_from_vulcanize()
+            return self.get_safes_from_vulcanize()
         else:
-            return self.get_urns_from_past_frobs()
+            return self.get_safes_from_past_frobs()
 
-    def get_safes_from_past_frobs(self) -> Dict[Address, Urn]:
+    def get_safes_from_past_frobs(self) -> Dict[Address, Safe]:
         start = datetime.now()
         safe_addresses = set()
 
         # Get a unique list of safe addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
-        frobs = self.geb.safe_engine.past_frobs(from_block=from_block, to_block=to_block, collateral_type=self.ilk)
-        for frob in frobs:
-            safe_addresses.add(frob.safe)
+        mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block, to_block=to_block, collateral_type=self.collateral_type)
+        for mods in mods:
+            safe_addresses.add(mod.safe)
 
         # Update state of already-cached safes
         for address, safe in self.cache.items():
@@ -81,16 +81,16 @@ class UrnHistory:
         self.cache_block = to_block
         return self.cache
 
-    def get_safes_from_vulcanize(self) -> Dict[Address, Urn]:
+    def get_safes_from_vulcanize(self) -> Dict[Address, Safe]:
         start = datetime.now()
 
         response = self.run_query(self.lag_query)
         self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
 
         response = self.run_query(self.init_query)
-        raw = json.loads(response.text)['data']['allUrns']['nodes']
+        raw = json.loads(response.text)['data']['allSafes']['nodes']
         for item in raw:
-            if item['collateralTypeIdentifier'] == self.ilk.name:
+            if item['collateralTypeIdentifier'] == self.collateral_type.name:
                 safe = self.safe_from_vdb_node(item)
                 self.cache[safe.address] = safe
         self.logger.debug(f"Found {len(self.cache)} safes from VulcanizeDB up to block {self.cache_block} " 
@@ -101,16 +101,16 @@ class UrnHistory:
         response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
         parsed_data = json.loads(response.text)['data']
 
-        frobs_for_collateral_type = self.filter_safe_nodes_by_ilk(parsed_data['allVatFrobs']['nodes'])
-        recent_frobs = [item['rawUrnByUrnId']['identifier'] for item in frobs_for_collateral_type]
-        bites_for_collateral_type = self.filter_safe_nodes_by_ilk(parsed_data['allRawBites']['nodes'])
-        recent_bites = [item['rawUrnByUrnId']['identifier'] for item in bites_for_collateral_type]
-        forks_for_collateral_type = self.filter_nodes_by_ilk(parsed_data['allVatForks']['nodes'])
-        recent_forks = [item['src'] for item in forks_for_collateral_type] + [item['dst'] for item in forks_for_ilk]
-        assert isinstance(recent_frobs, list)
-        assert isinstance(recent_bites, list)
-        assert isinstance(recent_forks, list)
-        recent_changes = set(recent_frobs + recent_bites + recent_forks)
+        mods_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allSafeEngineMods']['nodes'])
+        recent_mods = [item['rawSafeBySafeId']['identifier'] for item in mods_for_collateral_type]
+        liquidations_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allRawLiquidations']['nodes'])
+        recent_liquidations = [item['rawSafeBySafeId']['identifier'] for item in liquidations_for_collateral_type]
+        transfers_for_collateral_type = self.filter_nodes_by_collateral_type(parsed_data['allSafeEngineTransfers']['nodes'])
+        recent_transfers = [item['src'] for item in transfers_for_collateral_type] + [item['dst'] for item in transfers_for_collateral_type]
+        #assert isinstance(recent_mods, list)
+        #assert isinstance(recent_liquidations, list)
+        #assert isinstance(recent_transfers, list)
+        recent_changes = set(recent_mods + recent_liquidations + recent_transfers)
         for safe in recent_changes:
             address = Address(safe)
             self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
@@ -138,28 +138,28 @@ class UrnHistory:
 
     def filter_safe_nodes_by_collateral_type(self, nodes: list):
         assert isinstance(nodes, list)
-        return list(filter(lambda item: item['rawUrnByUrnId']['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
+        return list(filter(lambda item: item['rawSafeBySafeId']['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
 
     def filter_nodes_by_collateral_type(self, nodes: list):
         assert isinstance(nodes, list)
         return list(filter(lambda item: item['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
 
-    def safe_from_vdb_node(self, node: dict) -> Urn:
+    def safe_from_vdb_node(self, node: dict) -> Safe:
         assert isinstance(node, dict)
 
         address = Address(node['safeIdentifier'])
-        ink = Wad(int(node['ink']))
-        art = Wad(int(node['art']))
+        safe_collateral = Wad(int(node['safeCollateral']))
+        safe_debt = Wad(int(node['safeDebt']))
 
-        return Urn(address, self.collateral_type, ink, art)
+        return Safe(address, self.collateral_type, safe_collateral, safe_debt)
 
     init_query = """query {
-      allUrns {
+      allSafes {
         nodes {
           safeIdentifier
           collateralTypeIdentifier
-          ink
-          art
+          safeCollateral
+          safeDebt
         }
       }
     }"""
@@ -173,10 +173,10 @@ class UrnHistory:
     }"""
 
     recent_changes_query = """query($fromBlock: BigInt) {
-      allVatFrobs(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      allSafeEngineMods(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
       {
         nodes {
-          rawUrnByUrnId {
+          rawSafeBySafeId {
             rawCollateralTypeByCollateralTypeId {
               identifier
             }
@@ -184,10 +184,10 @@ class UrnHistory:
           }
         }
       }
-      allRawBites(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      allRawLiquidations(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
       {
         nodes {
-          rawUrnByUrnId {
+          rawSafeBySafeId {
             rawCollateralTypeByCollateralTypeId {
               identifier
             }
@@ -195,7 +195,7 @@ class UrnHistory:
           }
         }
       }
-      allVatForks(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      allSafeEngineTransfers(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
       {
         nodes {
           rawCollateralTypeByCollateralTypeId {
