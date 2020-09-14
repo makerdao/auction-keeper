@@ -26,7 +26,7 @@ from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
 from pyflex import Address, web3_via_http
 from pyflex.deployment import GfDeployment
-from pyflex.dss import Collateral, Ilk, Urn
+from pyflex.gf import Collateral, CollateralType, Safe
 from pyflex.feed import DSValue
 from pyflex.gas import NodeAwareGasPrice
 from pyflex.keys import register_keys
@@ -71,7 +71,7 @@ def other_address(web3):
 
 
 @pytest.fixture(scope="session")
-def gal_address(web3):
+def auction_income_recipient_address(web3):
     return Address(web3.eth.accounts[3])
 
 
@@ -86,17 +86,17 @@ def wrap_eth(geb: GfDeployment, address: Address, amount: Wad):
     assert collateral.gem.deposit(amount).transact(from_address=address)
 
 
-def mint_mkr(mkr: DSToken, recipient_address: Address, amount: Wad):
-    assert isinstance(mkr, DSToken)
+def mint_prot(prot: DSToken, recipient_address: Address, amount: Wad):
+    assert isinstance(prot, DSToken)
     assert isinstance(recipient_address, Address)
     assert isinstance(amount, Wad)
     assert amount > Wad(0)
 
     deployment_address = Address("0x00a329c0648769A73afAc7F9381E08FB43dBEA72")
-    assert mkr.mint(amount).transact(from_address=deployment_address)
-    assert mkr.balance_of(deployment_address) > Wad(0)
-    assert mkr.approve(recipient_address).transact(from_address=deployment_address)
-    assert mkr.transfer(recipient_address, amount).transact(from_address=deployment_address)
+    assert prot.mint(amount).transact(from_address=deployment_address)
+    assert prot.balance_of(deployment_address) > Wad(0)
+    assert prot.approve(recipient_address).transact(from_address=deployment_address)
+    assert prot.transfer(recipient_address, amount).transact(from_address=deployment_address)
 
 
 @pytest.fixture(scope="session")
@@ -111,7 +111,7 @@ def c(geb):
 
 def get_collateral_price(collateral: Collateral):
     assert isinstance(collateral, Collateral)
-    return Wad(Web3.toInt(collateral.pip.read()))
+    return Wad(Web3.toInt(collateral.osm.read()))
 
 
 def set_collateral_price(geb: GfDeployment, collateral: Collateral, price: Wad):
@@ -120,49 +120,48 @@ def set_collateral_price(geb: GfDeployment, collateral: Collateral, price: Wad):
     assert isinstance(price, Wad)
     assert price > Wad(0)
 
-    pip = collateral.pip
-    assert isinstance(pip, DSValue)
+    osm = collateral.osm
+    assert isinstance(osm, DSValue)
 
-    print(f"Changing price of {collateral.ilk.name} to {price}")
-    assert pip.poke_with_int(price.value).transact(from_address=pip.get_owner())
-    assert geb.spotter.poke(ilk=collateral.ilk).transact(from_address=pip.get_owner())
+    print(f"Changing price of {collateral.collateral_type.name} to {price}")
+    assert osm.poke(price.value).transact(from_address=osm.get_owner())
+    assert geb.oracle_relayer.poke(collateral_type=collateral.collateral_type).transact(from_address=osm.get_owner())
 
     assert get_collateral_price(collateral) == price
 
 
-def max_dart(geb: GfDeployment, collateral: Collateral, our_address: Address) -> Wad:
+def max_delta_debt(geb: GfDeployment, collateral: Collateral, our_address: Address) -> Wad:
     assert isinstance(geb, GfDeployment)
     assert isinstance(collateral, Collateral)
     assert isinstance(our_address, Address)
 
-    safe = geb.safe_engine.safe(collateral.ilk, our_address)
-    ilk = geb.safe_engine.ilk(collateral.ilk.name)
+    safe = geb.safe_engine.safe(collateral.collateral_type, our_address)
+    collateral_type = geb.safe_engine.collateral_type(collateral.collateral_type.name)
 
-    # change in art = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
-    dart = safe.ink * ilk.spot - Wad(Ray(safe.art) * ilk.rate)
+    # change in debt = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
+    delta_debt = safe.locked_collateral * collateral_type.safety_price - Wad(Ray(safe.generated_debt) * collateral_type.accumulated_rate)
 
     # change in debt must also take the rate into account
-    dart = Wad(Ray(dart) / ilk.rate)
+    delta_debt = Wad(Ray(delta_debt) / collateral_type.accumulated_rate)
 
     # prevent the change in debt from exceeding the collateral debt ceiling
-    if (Rad(safe.art) + Rad(dart)) >= ilk.line:
-        print("max_dart is avoiding collateral debt ceiling")
-        dart = Wad(ilk.line - Rad(safe.art))
+    if (Rad(safe.generated_debt) + Rad(delta_debt)) >= collateral_type.debt_ceiling:
+        print("max_delta_debt is avoiding collateral debt ceiling")
+        delta_debt = Wad(collateral_type.delta_ceiling - Rad(safe.generated_debt))
 
     # prevent the change in debt from exceeding the total debt ceiling
-    debt = geb.safe_engine.debt() + Rad(ilk.rate * dart)
-    line = Rad(geb.safe_engine.line())
-    if (debt + Rad(dart)) >= line:
-        print(f"debt {debt} + dart {dart} >= {line}; max_dart is avoiding total debt ceiling")
-        dart = Wad(debt - Rad(safe.art))
+    debt = geb.safe_engine.debt() + Rad(collateral_type.accumulated_rate * delta_debt)
+    debt_ceiling = Rad(geb.safe_engine.debt_ceiling())
+    if (debt + Rad(delta_debt)) >= debt_ceiling:
+        print(f"debt {debt} + delta_debt {delta_debt} >= {debt_ceiling}; max_delta_debt is avoiding total debt ceiling")
+        delta_debt = Wad(debt - Rad(safe.generated_debt))
 
-    # ensure we've met the dust cutoff
-    if Rad(safe.art + dart) < ilk.dust:
-        print(f"max_dart is being bumped from {safe.art + dart} to {ilk.dust} to reach dust cutoff")
-        dart = Wad(ilk.dust)
+    # ensure we've met the debt_floor cutoff
+    if Rad(safe.generated_debt + delta_debt) < collateral_type.debt_floor:
+        print(f"max_delta_debt is being bumped from {safe.generated_debt + delta_debt} to {collateral_type.debt_floor} to reach debt_floor cutoff")
+        delta_debt = Wad(collateral_type.debt_floor)
 
-    return dart
-
+    return delta_debt
 
 def reserve_system_coin(geb: GfDeployment, c: Collateral, usr: Address, amount: Wad, extra_collateral=Wad.from_number(1)):
     assert isinstance(geb, GfDeployment)
@@ -172,18 +171,18 @@ def reserve_system_coin(geb: GfDeployment, c: Collateral, usr: Address, amount: 
     assert amount > Wad(0)
 
     # Determine how much collateral is needed
-    ilk = geb.safe_engine.ilk(c.ilk.name)
-    rate = ilk.rate  # Ray
-    spot = ilk.spot  # Ray
-    assert rate >= Ray.from_number(1)
-    collateral_required = Wad((Ray(amount) / spot) * rate) * extra_collateral + Wad(1)
+    collateral_type = geb.safe_engine.collateral_type(c.collateral_type.name)
+    accumulated_rate = collateral_type.accumulated_rate  # Ray
+    safety_price = collateral_type.safety_price  # Ray
+    assert accumulated_rate >= Ray.from_number(1)
+    collateral_required = Wad((Ray(amount) / safety_price) * accumulated_rate) * extra_collateral + Wad(1)
     print(f'collateral_required for {str(amount)} system_coin is {str(collateral_required)}')
 
     wrap_eth(geb, usr, collateral_required)
     c.approve(usr)
     assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
-    assert geb.safe_engine.frob(c.ilk, usr, collateral_required, amount).transact(from_address=usr)
-    assert geb.safe_engine.safe(c.ilk, usr).art >= Wad(amount)
+    assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, usr, collateral_required, amount).transact(from_address=usr)
+    assert geb.safe_engine.safe(c.collateral_type, usr).generated_debt >= Wad(amount)
 
 
 def purchase_system_coin(amount: Wad, recipient: Address):
@@ -191,7 +190,7 @@ def purchase_system_coin(amount: Wad, recipient: Address):
     assert isinstance(recipient, Address)
 
     m = geb(web3())
-    seller = gal_address(web3())
+    seller = auction_income_recipient_address(web3())
     reserve_system_coin(m, m.collaterals['ETH-C'], seller, amount)
     m.approve_system_coin(seller)
     m.approve_system_coin(recipient)
@@ -199,115 +198,115 @@ def purchase_system_coin(amount: Wad, recipient: Address):
     assert m.system_coin.transfer_from(seller, recipient, amount).transact(from_address=seller)
 
 
-def is_cdp_safe(ilk: Ilk, safe: Urn) -> bool:
-    assert isinstance(safe, Urn)
-    assert safe.art is not None
-    assert ilk.rate is not None
-    assert safe.ink is not None
-    assert ilk.spot is not None
+def is_safe_safe(collateral_type: CollateralType, safe: Safe) -> bool:
+    assert isinstance(safe, Safe)
+    assert safe.generated_debt is not None
+    assert collateral_type.accumulated_rate is not None
+    assert safe.locked_collateral is not None
+    assert collateral_type.safety_price is not None
 
-    #print(f'art={safe.art} * rate={ilk.rate} <=? ink={safe.ink} * spot={ilk.spot}')
+    #print(f'art={safe.generated_debt} * rate={collateral_type.rate} <=? ink={safe.locked_collateral} * spot={collateral_type.spot}')
     return (Ray(safe.generated_debt) * collateral_type.accumulated_rate) <= Ray(safe.safe_collateral) * collateral_type.safety_price
 
-def create_risky_cdp(geb: GfDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
-                     draw_system_coin=True) -> Urn:
+def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
+                     draw_system_coin=True) -> Safe:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
-    assert isinstance(gal_address, Address)
+    assert isinstance(auction_income_recipient_address, Address)
 
     # Ensure vault isn't already unsafe (if so, this shouldn't be called)
-    safe = geb.safe_engine.safe(c.collateral_type, gal_address)
-    assert is_cdp_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
+    safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
+    assert is_safe_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
 
     # Add collateral to gal vault if necessary
-    c.approve(gal_address)
-    token = Token(c.ilk.name, c.gem.address, c.adapter.dec())
-    print(f"collateral_amount={collateral_amount} ink={safe.ink}")
-    dink = collateral_amount - safe.ink
-    if dink > Wad(0):
-        safe_engine_balance = geb.safe_engine.gem(c.ilk, gal_address)
-        balance = token.normalize_amount(c.gem.balance_of(gal_address))
-        print(f"before join: dink={dink} safe_engine_balance={safe_engine_balance} balance={balance} safe_engine_gap={dink - safe_engine_balance}")
-        if safe_engine_balance < dink:
-            safe_engine_gap = dink - safe_engine_balance
+    c.approve(auction_income_recipient_address)
+    token = Token(c.collateral_type.name, c.gem.address, c.adapter.dec())
+    print(f"collateral_amount={collateral_amount} ink={safe.locked_collateral}")
+    delta_collateral = collateral_amount - safe.locked_collateral
+    if delta_collateral > Wad(0):
+        safe_engine_balance = geb.safe_engine.gem(c.collateral_type, auction_income_recipient_address)
+        balance = token.normalize_amount(c.gem.balance_of(auction_income_recipient_address))
+        print(f"before join: delta_collateral={delta_collateral} safe_engine_balance={safe_engine_balance} balance={balance} safe_engine_gap={delta_collateral - safe_engine_balance}")
+        if safe_engine_balance < delta_collateral:
+            safe_engine_gap = delta_collateral - safe_engine_balance
             if balance < safe_engine_gap:
-                if c.ilk.name.startswith("ETH"):
-                    wrap_eth(geb, gal_address, safe_engine_gap)
+                if c.collateral_type.name.startswith("ETH"):
+                    wrap_eth(geb, auction_income_recipient_address, safe_engine_gap)
                 else:
                     raise RuntimeError("Insufficient collateral balance")
             amount_to_join = token.unnormalize_amount(safe_engine_gap)
             if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
                 amount_to_join += token.unnormalize_amount(token.min_amount)
-            assert c.adapter.join(gal_address, amount_to_join).transact(from_address=gal_address)
-        safe_engine_balance = geb.safe_engine.gem(c.ilk, gal_address)
-        print(f"after join: dink={dink} safe_engine_balance={safe_engine_balance} balance={balance} safe_engine_gap={dink - safe_engine_balance}")
-        assert safe_engine_balance >= dink
-        assert geb.safe_engine.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
+            assert c.adapter.join(auction_income_recipient_address, amount_to_join).transact(from_address=auction_income_recipient_address)
+        safe_engine_balance = geb.safe_engine.gem(c.collateral_type, auction_income_recipient_address)
+        print(f"after join: delta_collateral={delta_collateral} safe_engine_balance={safe_engine_balance} balance={balance} safe_engine_gap={delta_collateral - safe_engine_balance}")
+        assert safe_engine_balance >= delta_collateral
+        assert geb.safe_engine.frob(c.collateral_type, auction_income_recipient_address, delta_collateral, Wad(0)).transact(from_address=auction_income_recipient_address)
 
     # Put gal CDP at max possible debt
-    dart = max_dart(geb, c, gal_address) - Wad(1)
-    if dart > Wad(0):
-        print(f"Attempting to frob with dart={dart}")
-        assert geb.safe_engine.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
+    delta_debt = max_delta_debt(geb, c, auction_income_recipient_address) - Wad(1)
+    if delta_debt > Wad(0):
+        print(f"Attempting to modify safe collateralization with delta_debt={delta_debt}")
+        assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, auction_income_recipient_address, Wad(0), delta_debt).transact(from_address=auction_income_recipient_address)
 
     # Draw our Dai, simulating the usual behavior
-    safe = geb.safe_engine.safe(c.collateral_type, gal_address)
+    safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
     if draw_system_coin and safe.generated_debt > Wad(0):
-        geb.approve_system_coin(gal_address)
-        assert geb.system_coin_adapter.exit(gal_address, safe.generated_debt).transact(from_address=gal_address)
+        geb.approve_system_coin(auction_income_recipient_address)
+        assert geb.system_coin_adapter.exit(auction_income_recipient_address, safe.generated_debt).transact(from_address=auction_income_recipient_address)
         print(f"Exited {safe.generated_debt} System coin from safe")
 
 
-def create_unsafe_cdp(geb: GfDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
+def create_unsafe_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
                       draw_system_coin=True) -> Safe:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
-    assert isinstance(gal_address, Address)
+    assert isinstance(auction_income_recipient_address, Address)
 
-    create_risky_cdp(geb, c, collateral_amount, gal_address, draw_system_coin)
-    safe = geb.safe_engine.urn(c.collateral_type, gal_address)
+    create_risky_safe(geb, c, collateral_amount, auction_income_recipient_address, draw_system_coin)
+    safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
 
     # Manipulate price to make gal CDP underwater
     to_price = Wad(c.osm.read_as_int()) - Wad.from_number(1)
     set_collateral_price(geb, c, to_price)
 
-    # Ensure the CDP is unsafe
-    assert not is_cdp_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
+    # Ensure the SAFE is unsafe
+    assert not is_safe_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
     return safe
 
-def create_cdp_with_surplus(geb: GfDeployment, c: Collateral, gal_address: Address) -> Safe:
+def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_recipient_address: Address) -> Safe:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
-    assert isinstance(gal_address, Address)
+    assert isinstance(auction_income_recipient_address, Address)
 
     # Ensure there is no debt which a previous test failed to clean up
     assert geb.safe_engine.debt_balance(geb.accounting_engine.address) == Rad(0)
 
     safe_collateral = Wad.from_number(1)
     safe_debt = Wad.from_number(50)
-    wrap_eth(geb, gal_address, safe_collateral)
-    c.approve(gal_address)
-    assert c.adapter.join(gal_address, safe_collateral).transact(
-        from_address=gal_address)
-    assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, gal_address, delta_collateral=safe_collateral,
-                                                         delta_debt=safe_debt).transact(from_address=gal_address)
-    assert geb.tax_collector.tax_single(c.collateral_type).transact(from_address=gal_address)
+    wrap_eth(geb, auction_income_recipient_address, safe_collateral)
+    c.approve(auction_income_recipient_address)
+    assert c.adapter.join(auction_income_recipient_address, safe_collateral).transact(
+        from_address=auction_income_recipient_address)
+    assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, auction_income_recipient_address, delta_collateral=safe_collateral,
+                                                         delta_debt=safe_debt).transact(from_address=auction_income_recipient_address)
+    assert geb.tax_collector.tax_single(c.collateral_type).transact(from_address=auction_income_recipient_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
     print(f"system_coin(accounting_engine)={str(geb.safe_engine.system_coin(geb.accounting_engine.address))} >? debt_balance(accounting_engine)={str(geb.safe_engine.debt_balance(geb.accounting_engine.address))} " 
           f"+ accounting_engine.surplus_auction_amount_to_sell={str(geb.accounting_engine.surplus_auction_amount_to_sell())} + accounting_engine.surplus_buffer={str(geb.accounting_engine.surplus_buffer())}")
     assert geb.safe_engine.system_coin(geb.accounting_engine.address) > mcd.safe_engine.sin(geb.accounting_engine.address) + geb.accounting_engine.bump() + geb.accounting_engine.hump()
-    return geb.safe_engine.urn(c.ilk, gal_address)
+    return geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
 
 
-def bite(geb: GfDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
+def bite(geb: GfDeployment, c: Collateral, unsafe_safe: Safe) -> int:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
-    assert isinstance(unsafe_cdp, Urn)
+    assert isinstance(unsafe_safe, Safe)
 
-    assert geb.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
-    bites = geb.cat.past_bites(1)
+    assert geb.cat.bite(unsafe_safe.collateral_type, unsafe_safe).transact()
+    bites = geb.cat.past_liquidations(1)
     assert len(bites) == 1
-    return c.flipper.kicks()
+    return c.collateral_auction_house.auctions_started()
 
 
 def pop_debt_and_settle_debt(web3: Web3, geb: GfDeployment, past_blocks=8, cancel_auctioned_debt=True, require_settle_debt=True):

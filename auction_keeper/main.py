@@ -59,26 +59,26 @@ class AuctionKeeper:
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
-        parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
+        parser.add_argument('--type', type=str, choices=['collateral', 'surplus', 'debt'],
                             help="Auction type in which to participate")
-        parser.add_argument('--ilk', type=str,
-                            help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
+        parser.add_argument('--collateral-type', type=str,
+                            help="Name of the collateral type for a collateral keeper (e.g. 'ETH-B', 'ZRX-A'); "
                                  "available collateral types can be found at the left side of the Oasis Borrow")
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
-        parser.add_argument('--kick-only', dest='bid_on_auctions', action='store_false',
+        parser.add_argument('--start-auctions-only', dest='bid_on_auctions', action='store_false',
                             help="Do not bid on auctions")
-        parser.add_argument('--deal-for', type=str, nargs="+",
-                            help="List of addresses for which auctions will be dealt")
+        parser.add_argument('--settle-auction-for', type=str, nargs="+",
+                            help="List of addresses for which auctions will be settled")
 
         parser.add_argument('--min-auction', type=int, default=0,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
                             help="Maximum number of auctions to simultaneously interact with, "
                                  "used to manage OS and hardware limitations")
-        parser.add_argument('--min-flip-lot', type=float, default=0,
-                            help="Minimum lot size to create or bid upon a flip auction")
+        parser.add_argument('--min-collateral-lot', type=float, default=0,
+                            help="Minimum lot size to create or bid upon a collateral auction")
         parser.add_argument('--bid-check-interval', type=float, default=4.0,
                             help="Period of timer [in seconds] used to check bidding models for changes")
         parser.add_argument('--bid-delay', type=float, default=0.0,
@@ -89,21 +89,21 @@ class AuctionKeeper:
                             help="Number of shards; should be one greater than your highest --shard-id")
 
         parser.add_argument("--vulcanize-endpoint", type=str,
-                            help="When specified, urn history will be initialized from a VulcanizeDB node, "
-                                 "reducing load on the Ethereum node for flip auctions")
+                            help="When specified, safe history will be initialized from a VulcanizeDB node, "
+                                 "reducing load on the Ethereum node for collateral auctions")
         parser.add_argument("--vulcanize-key", type=str,
                             help="API key for the Vulcanize endpoint")
         parser.add_argument('--from-block', type=int,
-                            help="Starting block from which to find vaults to bite or debt to queue "
+                            help="Starting block from which to find vaults to liquidation or debt to queue "
                                  "(set to block where MCD was deployed)")
 
-        parser.add_argument('--vat-dai-target', type=str,
-                            help="Amount of Dai to keep in the Vat contract or ALL to join entire token balance")
-        parser.add_argument('--keep-dai-in-vat-on-exit', dest='exit_dai_on_shutdown', action='store_false',
-                            help="Retain Dai in the Vat on exit, saving gas when restarting the keeper")
-        parser.add_argument('--keep-gem-in-vat-on-exit', dest='exit_gem_on_shutdown', action='store_false',
-                            help="Retain collateral in the Vat on exit")
-        parser.add_argument('--return-gem-interval', type=int, default=300,
+        parser.add_argument('--safe-engine-system-coin-target', type=str,
+                            help="Amount of system coin to keep in the SafeEngine contract or ALL to join entire token balance")
+        parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
+                            help="Retain system coin in the Safe Engine on exit, saving gas when restarting the keeper")
+        parser.add_argument('--keep-collateral-in-safe-engine-on-exit', dest='exit_colllateral_on_shutdown', action='store_false',
+                            help="Retain collateral in the Safe Engine on exit")
+        parser.add_argument('--return-collateral-interval', type=int, default=300,
                             help="Period of timer [in seconds] used to check and exit won collateral")
 
         parser.add_argument("--model", type=str, nargs='+',
@@ -137,48 +137,48 @@ class AuctionKeeper:
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
 
-        # Check configuration for retrieving urns/bites
-        if self.arguments.type == 'flip' and self.arguments.create_auctions \
+        # Check configuration for retrieving safes/liquidations
+        if self.arguments.type == 'collateral' and self.arguments.create_auctions \
                 and self.arguments.from_block is None and self.arguments.vulcanize_endpoint is None:
             raise RuntimeError("Either --from-block or --vulcanize-endpoint must be specified to kick off "
-                               "flip auctions")
-        if self.arguments.type == 'flip' and not self.arguments.ilk:
-            raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
-        if self.arguments.type == 'flop' and self.arguments.create_auctions \
+                               "collateral auctions")
+        if self.arguments.type == 'collateral' and not self.arguments.collateral_type:
+            raise RuntimeError("--collateral-type must be supplied when configuring a collateral keeper")
+        if self.arguments.type == 'debt' and self.arguments.create_auctions \
                 and self.arguments.from_block is None:
-            raise RuntimeError("--from-block must be specified to kick off flop auctions")
+            raise RuntimeError("--from-block must be specified to start debt auctions")
 
         # Configure core and token contracts
         self.geb = GfDeployment.from_node(web3=self.web3)
-        self.vat = self.geb.vat
-        self.cat = self.geb.cat
-        self.vow = self.geb.vow
-        self.mkr = self.geb.mkr
-        self.dai_join = self.geb.dai_adapter
-        if self.arguments.type == 'flip':
-            self.collateral = self.geb.collaterals[self.arguments.ilk]
-            self.ilk = self.collateral.ilk
-            self.gem_join = self.collateral.adapter
+        self.safe_engine = self.geb.safe_engine
+        self.liquidation_engine = self.geb.cat
+        self.accounting_engine = self.geb.vow
+        self.prot = self.geb.mkr
+        self.system_coin_join = self.geb.system_coin_adapter
+        if self.arguments.type == 'collateral':
+            self.collateral = self.geb.collaterals[self.arguments.collateral_type]
+            self.collateral_type = self.collateral.collateral_type
+            self.collateral_join = self.collateral.adapter
         else:
             self.collateral = None
-            self.ilk = None
-            self.gem_join = None
+            self.collateral_type = None
+            self.collateral_join = None
 
         # Configure auction contracts
-        self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
-        self.flapper = self.geb.flapper if self.arguments.type == 'flap' else None
-        self.flopper = self.geb.flopper if self.arguments.type == 'flop' else None
-        self.urn_history = None
-        if self.flipper:
-            self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
-            self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
+        self.collateral_auction_house = self.collateral.collateral_auction_house if self.arguments.type == 'collateral' else None
+        self.surplus_auction_house = self.geb.surplus_auction_house if self.arguments.type == 'surplus' else None
+        self.debt_auction_house = self.geb.debt_auction_house if self.arguments.type == 'debt' else None
+        self.safe_history = None
+        if self.collateral_auction_house:
+            self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
+            self.strategy = FlipperStrategy(self.collateral_auction_house, self.min_collateral_lot)
             if self.arguments.create_auctions:
-                self.urn_history = UrnHistory(self.web3, self.geb, self.ilk, self.arguments.from_block,
+                self.safe_history = UrnHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
                                               self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
-        elif self.flapper:
-            self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
-        elif self.flopper:
-            self.strategy = FlopperStrategy(self.flopper)
+        elif self.surplus_auction_house:
+            self.strategy = FlapperStrategy(self.surplus_auction_house, self.prot.address)
+        elif self.debt_auction_house:
+            self.strategy = FlopperStrategy(self.debt_auction_house)
         else:
             raise RuntimeError("Please specify auction type")
 
@@ -190,13 +190,13 @@ class AuctionKeeper:
                 raise RuntimeError("--model must be specified to bid on auctions")
             else:
                 model_command = ":"
-        self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
-                                 flapper=self.flapper.address if self.flapper else None,
-                                 flopper=self.flopper.address if self.flopper else None,
+        self.auctions = Auctions(collateral_auction_house=self.collateral_auction_house.address if self.collateral_auction_house else None,
+                                 surplus_auction_house=self.surplus_auction_house.address if self.surplus_auction_house else None,
+                                 debt_auction_house=self.debt_auction_house.address if self.debt_auction_house else None,
                                  model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
         # Since we don't want periodically-pollled bidding threads to back up, use a flag instead of a lock.
-        self.is_joining_dai = False
+        self.is_joining_system_coin = False
         self.dead_since = {}
         self.lifecycle = None
 
@@ -246,33 +246,33 @@ class AuctionKeeper:
             self.lifecycle = lifecycle
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
-            if self.flipper and self.cat:
-                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_vaults))
-            elif self.flapper and self.vow:
-                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
-            elif self.flopper and self.vow:
-                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flop))
+            if self.collateral_auction_house and self.liquidation_engine:
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_safes))
+            elif self.surplus_auction_house and self.accounting_engine:
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_surplus))
+            elif self.debt_auction_house and self.accounting_engine:
+                lifecycle.on_block(functools.partial(seq_func, check_func=self.check_debt))
             else:  # unusual corner case
                 lifecycle.on_block(self.check_all_auctions)
 
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
-            if self.arguments.return_gem_interval:
-                lifecycle.every(self.arguments.return_gem_interval, self.exit_gem)
+            if self.arguments.return_collateral_interval:
+                lifecycle.every(self.arguments.return_collateral_interval, self.exit_collateral)
 
     def auction_notice(self) -> str:
-        if self.arguments.type == 'flip':
+        if self.arguments.type == 'collateral':
             return "--> Check all urns and kick off new auctions if any" + \
-                   " unsafe urns need to be bitten"
+                   " unsafe safes need to be bitten"
         else:
-            return "--> Check thresholds in Vow Contract and kick off new" + \
+            return "--> Check thresholds in Accounting Engine Contract and kick off new" + \
                   f" {self.arguments.type} auctions once reached"
 
     def startup(self):
         self.approve()
-        self.rebalance_dai()
-        if self.flapper:
-            self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
+        self.rebalance_system_coin()
+        if self.surplus_auction_house:
+            self.logger.info(f"MKR balance is {self.prot.balance_of(self.our_address)}")
 
         notice_string = []
         if not self.arguments.create_auctions:
@@ -298,9 +298,9 @@ class AuctionKeeper:
             logging.info("Keeper will perform the following operation(s) in parallel:")
             [logging.info(line) for line in notice_string]
 
-            if self.flipper and self.ilk and self.ilk.name == "ETH-A":
+            if self.collateral_auction_house and self.collateral_type and self.collateral_type.name == "ETH-A":
                 logging.info("*** When Keeper is dealing/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
-                logging.info("*** When Keeper is kicking, initializing urn history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
+                logging.info("*** When Keeper is kicking, initializing safe history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
@@ -309,11 +309,11 @@ class AuctionKeeper:
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(1)
-        if self.dai_join:
-            if self.geb.dai.allowance_of(self.our_address, self.dai_join.address) > Wad.from_number(2**50):
+        if self.system_coin_join:
+            if self.geb.system_coin.allowance_of(self.our_address, self.system_coin_join.address) > Wad.from_number(2**50):
                 return
             else:
-                self.geb.approve_dai(usr=self.our_address, gas_price=self.gas_price)
+                self.geb.approve_system_coin(usr=self.our_address, gas_price=self.gas_price)
         time.sleep(1)
         if self.collateral:
             self.collateral.approve(self.our_address, gas_price=self.gas_price)
@@ -321,20 +321,20 @@ class AuctionKeeper:
     def shutdown(self):
         with self.auctions_lock:
             del self.auctions
-        if self.arguments.exit_dai_on_shutdown:
-            self.exit_dai_on_shutdown()
-        if not self.arguments.exit_gem_on_shutdown:
-            self.exit_gem()
+        if self.arguments.exit_system_coin_on_shutdown:
+            self.exit_system_coin_on_shutdown()
+        if not self.arguments.exit_collateral_on_shutdown:
+            self.exit_collateral()
 
     def is_shutting_down(self) -> bool:
         return self.lifecycle and self.lifecycle.terminated_externally
 
-    def exit_dai_on_shutdown(self):
-        # Unlike rebalance_dai(), this doesn't join, and intentionally doesn't check dust
-        vat_balance = Wad(self.vat.dai(self.our_address))
-        if vat_balance > Wad(0):
-            self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
-            assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
+    def exit_system_coin_on_shutdown(self):
+        # Unlike rebalance_system_coin(), this doesn't join, and intentionally doesn't check debt_floor
+        safe_engine_balance = Wad(self.safe_engine.coin_balance(self.our_address))
+        if safe_engine_balance > Wad(0):
+            self.logger.info(f"Exiting {str(safe_engine_balance)} system coin from the Safe Engine before shutdown")
+            assert self.system_coin_join.exit(self.our_address, safe_engine_balance).transact(gas_price=self.gas_price)
 
     def auction_handled_by_this_shard(self, id: int) -> bool:
         assert isinstance(id, int)
@@ -344,131 +344,131 @@ class AuctionKeeper:
             logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
             return False
 
-    def check_vaults(self):
+    def check_safes(self):
         started = datetime.now()
-        ilk = self.vat.ilk(self.ilk.name)
-        rate = ilk.rate
-        available_dai = self.geb.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
+        collateral_type = self.safe_engine.collateral_type(self.collateral_type.name)
+        rate = collateral_type.rate
+        available_system_coin = self.geb.system_coin.balance_of(self.our_address) + Wad(self.safe_engine.coin_balance(self.our_address))
 
-        # Look for unsafe vaults and bite them
-        urns = self.urn_history.get_urns()
-        logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
+        # Look for unsafe vaults and liquidation them
+        safes = self.safe_history.get_safes()
+        logging.debug(f"Evaluating {len(safes)} {self.collateral_type} safes to be bitten if any are unsafe")
 
-        for urn in urns.values():
-            safe = urn.ink * ilk.spot >= urn.art * rate
+        for safe in safes.values():
+            safe = safe.locked_collateral * collateral_type.spot >= safe.art * rate
             if not safe:
-                if self.arguments.bid_on_auctions and available_dai == Wad(0):
-                    self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
-                                        "because there is no Dai to bid")
+                if self.arguments.bid_on_auctions and available_system_coin == Wad(0):
+                    self.logger.warning(f"Skipping opportunity to liquidation safe {safe.address} "
+                                        "because there is no system coin to bid")
                     break
 
-                if urn.ink < self.min_flip_lot:
-                    self.logger.info(f"Ignoring urn {urn.address.address} with ink={urn.ink} < "
-                                     f"min_lot={self.min_flip_lot}")
+                if safe.locked_collateral < self.min_collateral_lot:
+                    self.logger.info(f"Ignoring safe {safe.address.address} with ink={safe.locked_collateral} < "
+                                     f"min_lot={self.min_collateral_lot}")
                     continue
 
-                self._run_future(self.cat.bite(ilk, urn).transact_async(gas_price=self.gas_price))
+                self._run_future(self.liquidation_engine.liquidate(collateral_type, safe).transact_async(gas_price=self.gas_price))
 
-        self.logger.info(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
-        # Cat.bite implicitly kicks off the flip auction; no further action needed.
+        self.logger.info(f"Checked {len(safes)} safes in {(datetime.now()-started).seconds} seconds")
+        # LiquidationEngine.liquidate implicitly starts the collateral auction; no further action needed.
 
-    def check_flap(self):
-        # Check if Vow has a surplus of Dai compared to bad debt
-        joy = self.vat.dai(self.vow.address)
-        awe = self.vat.sin(self.vow.address)
+    def check_surplus(self):
+        # Check if Accounting Engine has a surplus of system coin compared to bad debt
+        joy = self.safe_engine.coin_balance(self.accounting_engine.address)
+        awe = self.safe_engine.sin(self.accounting_engine.address)
 
-        # Check if Vow has Dai in excess
+        # Check if Accounting Engine has system coin in excess
         if joy > awe:
-            bump = self.vow.bump()
-            hump = self.vow.hump()
+            bump = self.accounting_engine.bump()
+            hump = self.accounting_engine.hump()
 
-            # Check if Vow has enough Dai surplus to start an auction and that we have enough mkr balance
+            # Check if Accounting Engine has enough system coin surplus to start an auction and that we have enough prot balance
             if (joy - awe) >= (bump + hump):
 
-                if self.arguments.bid_on_auctions and self.mkr.balance_of(self.our_address) == Wad(0):
-                    self.logger.warning("Skipping opportunity to heal/flap because there is no MKR to bid")
+                if self.arguments.bid_on_auctions and self.prot.balance_of(self.our_address) == Wad(0):
+                    self.logger.warning("Skipping opportunity to heal/surplus because there is no MKR to bid")
                     return
 
-                woe = self.vow.woe()
+                unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
                 # Heal the system to bring Woe to 0
-                if woe > Rad(0):
-                    self.vow.heal(woe).transact(gas_price=self.gas_price)
-                self.vow.flap().transact(gas_price=self.gas_price)
+                if unqueued_unauctioned_debt > Rad(0):
+                    self.accounting_engine.heal(unqueued_unauctioned_debt).transact(gas_price=self.gas_price)
+                self.accounting_engine.auction_surplus().transact(gas_price=self.gas_price)
 
-    def reconcile_debt(self, joy: Rad, ash: Rad, woe: Rad):
+    def reconcile_debt(self, joy: Rad, total_on_auction_debt: Rad, unqueued_unauctioned_debt: Rad):
         assert isinstance(joy, Rad)
-        assert isinstance(ash, Rad)
-        assert isinstance(woe, Rad)
+        assert isinstance(total_on_auction_debt, Rad)
+        assert isinstance(unqueued_unauctioned_debt, Rad)
 
-        if ash > Rad(0):
-            if joy > ash:
-                self.vow.kiss(ash).transact(gas_price=self.gas_price)
+        if total_on_auction_debt > Rad(0):
+            if joy > total_on_auction_debt:
+                self.accounting_engine.kiss(total_on_auction_debt).transact(gas_price=self.gas_price)
             else:
-                self.vow.kiss(joy).transact(gas_price=self.gas_price)
+                self.accounting_engine.kiss(joy).transact(gas_price=self.gas_price)
                 return
-        if woe > Rad(0):
-            joy = self.vat.dai(self.vow.address)
-            if joy > woe:
-                self.vow.heal(woe).transact(gas_price=self.gas_price)
+        if unqueued_unauctioned_debt > Rad(0):
+            joy = self.safe_engine.coin_balance(self.accounting_engine.address)
+            if joy > unqueued_unauctioned_debt:
+                self.accounting_engine.heal(unqueued_unauctioned_debt).transact(gas_price=self.gas_price)
             else:
-                self.vow.heal(joy).transact(gas_price=self.gas_price)
+                self.accounting_engine.heal(joy).transact(gas_price=self.gas_price)
 
-    def check_flop(self):
-        # Check if Vow has a surplus of bad debt compared to Dai
-        joy = self.vat.dai(self.vow.address)
-        awe = self.vat.sin(self.vow.address)
+    def check_debt(self):
+        # Check if Accounting Engine has a surplus of bad debt compared to system coin
+        joy = self.safe_engine.coin_balance(self.accounting_engine.address)
+        awe = self.safe_engine.sin(self.accounting_engine.address)
 
-        # Check if Vow has bad debt in excess
+        # Check if Accounting Engine has bad debt in excess
         excess_debt = joy < awe
         if not excess_debt:
             return
 
-        woe = self.vow.woe()
-        sin = self.vow.sin()
-        sump = self.vow.sump()
-        wait = self.vow.wait()
+        unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
+        debt_queue = self.accounting_engine.debt_queue()
+        debt_auction_bid_size = self.accounting_engine.debt_auction_bid_size()
+        wait = self.accounting_engine.wait()
 
-        # Check if Vow has enough bad debt to start an auction and that we have enough dai balance
-        if woe + sin >= sump:
-            # We need to bring Joy to 0 and Woe to at least sump
+        # Check if Accounting Engine has enough bad debt to start an auction and that we have enough system_coin balance
+        if unqueued_unauctioned_debt + debt_queue >= debt_auction_bid_size:
+            # We need to bring Joy to 0 and Woe to at least debt_auction_bid_size
 
-            available_dai = self.geb.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
-            if self.arguments.bid_on_auctions and available_dai == Wad(0):
-                self.logger.warning("Skipping opportunity to kiss/flog/heal/flop because there is no Dai to bid")
+            available_system_coin = self.geb.system_coin.balance_of(self.our_address) + Wad(self.safe_engine.coin_balance(self.our_address))
+            if self.arguments.bid_on_auctions and available_system_coin == Wad(0):
+                self.logger.warning("Skipping opportunity to kiss/flog/heal/debt because there is no system coin to bid")
                 return
 
-            # first use kiss() as it settled bad debt already in auctions and doesn't decrease woe
-            ash = self.vow.ash()
+            # first use kiss() as it settled bad debt already in auctions and doesn't decrease unqueued_unauctioned_debt
+            total_on_auction_debt = self.accounting_engine.total_on_auction_debt()
             if joy > Rad(0):
-                self.reconcile_debt(joy, ash, woe)
+                self.reconcile_debt(joy, total_on_auction_debt, unqueued_unauctioned_debt)
 
-            # Convert enough sin in woe to have woe >= sump + joy
-            if woe < (sump + joy) and self.cat is not None:
+            # Convert enough sin in unqueued_unauctioned_debt to have unqueued_unauctioned_debt >= debt_auction_bid_size + joy
+            if unqueued_unauctioned_debt < (debt_auction_bid_size + joy) and self.liquidation_engine is not None:
                 past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
-                for bite_event in self.cat.past_bites(past_blocks):  # TODO: cache ?
+                for liquidation_event in self.liquidation_engine.past_liquidations(past_blocks):  # TODO: cache ?
                     era = bite_event.era(self.web3)
                     now = self.web3.eth.getBlock('latest')['timestamp']
-                    sin = self.vow.sin_of(era)
-                    # If the bite hasn't already been flogged and has aged past the `wait`
+                    debt_queue = self.accounting_engine.debt_queue_of(era)
+                    # If the liquidation hasn't already been popped from queue and has aged past the `wait`
                     if sin > Rad(0) and era + wait <= now:
-                        self.vow.flog(era).transact(gas_price=self.gas_price)
+                        self.accounting_engine.pop_debt_from_queue(era).transact(gas_price=self.gas_price)
 
-                        # flog() sin until woe is above sump + joy
-                        joy = self.vat.dai(self.vow.address)
-                        if self.vow.woe() - joy >= sump:
+                        # pop debt from queue until unqueued_unauctioned_debt is above debt_auction_bid_size + joy
+                        joy = self.safe_engine.coin_balance(self.accounting_engine.address)
+                        if self.accounting_engine.unqueued_unauctioned_debt() - joy >= debt_auction_bid_size:
                             break
 
             # Reduce on-auction debt and reconcile remaining joy
-            joy = self.vat.dai(self.vow.address)
+            joy = self.safe_engine.coin_balance(self.accounting_engine.address)
             if joy > Rad(0):
-                ash = self.vow.ash()
-                woe = self.vow.woe()
-                self.reconcile_debt(joy, ash, woe)
-                joy = self.vat.dai(self.vow.address)
+                total_on_auction_debt = self.accounting_engine.total_on_auction_debt()
+                unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
+                self.reconcile_debt(joy, total_on_auction_debt, unqueued_unauctioned_debt)
+                joy = self.safe_engine.coin_balance(self.accounting_engine.address)
 
-            woe = self.vow.woe()
-            if sump <= woe and joy == Rad(0):
-                self.vow.flop().transact(gas_price=self.gas_price)
+            unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
+            if debt_auction_bid_size <= unqueued_unauctioned_debt and joy == Rad(0):
+                self.accounting_engine.auction_debt().transact(gas_price=self.gas_price)
 
     def check_all_auctions(self):
         started = datetime.now()
@@ -503,13 +503,13 @@ class AuctionKeeper:
                          f"{(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
-        # Initialize the reservoir with Dai/MKR balance for this round of bid submissions.
+        # Initialize the reservoir with system coin/MKR balance for this round of bid submissions.
         # This isn't a perfect solution as it omits the cost of bids submitted from the last round.
         # Recreating the reservoir preserves the stateless design of this keeper.
-        if self.flipper or self.flopper:
-            reservoir = Reservoir(self.vat.dai(self.our_address))
-        elif self.flapper:
-            reservoir = Reservoir(Rad(self.mkr.balance_of(self.our_address)))
+        if self.collateral_auction_house or self.debt_auction_house:
+            reservoir = Reservoir(self.safe_engine.coin_balance(self.our_address))
+        elif self.surplus_auction_house:
+            reservoir = Reservoir(Rad(self.prot.balance_of(self.our_address)))
         else:
             raise RuntimeError("Unsupported auction type")
         
@@ -549,21 +549,21 @@ class AuctionKeeper:
             logging.debug(f"Stopped tracking auction {id}")
             return False
 
-        # Check if the auction is finished.  If so configured, `tick` or `deal` the auction synchronously.
+        # Check if the auction is finished.  If so configured, `restart_auction` or `settle_auction` the auction synchronously.
         elif auction_finished:
-            if input.tic == 0:
+            if input.bid_expiry == 0:
                 if self.arguments.create_auctions:
                     logging.info(f"Auction {id} ended without bids; resurrecting auction")
-                    self.strategy.tick(id).transact(gas_price=self.gas_price)
+                    self.strategy.restart_auction(id).transact(gas_price=self.gas_price)
                     return True
-            elif self.deal_all or input.guy in self.deal_for:
-                self.strategy.deal(id).transact(gas_price=self.gas_price)
+            elif self.settle_auction_all or input.high_bidder in self.settle_auction_for:
+                self.strategy.settle_auction(id).transact(gas_price=self.gas_price)
 
-                # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
-                # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
-                self.rebalance_dai()
+                # Upon winning a collateral or debt auction, we may need to replenish system coin to the Safe Engine.
+                # Upon winning a surplus auction, we may want to withdraw won system coin from the Safe Engine.
+                self.rebalance_system_coin()
             else:
-                logging.debug(f"Not dealing {id} with guy={input.guy}")
+                logging.debug(f"Not settling {id} with high_bidder={input.high_bidder}")
 
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.
@@ -663,17 +663,17 @@ class AuctionKeeper:
         assert isinstance(id, int)
         assert isinstance(cost, Rad)
 
-        # If this is an auction where we bid with Dai...
-        if self.flipper or self.flopper:
+        # If this is an auction where we bid with system coin...
+        if self.collateral_auction_house or self.debt_auction_house:
             if not reservoir.check_bid_cost(id, cost):
                 if not already_rebalanced:
-                    # Try to synchronously join Dai the Vat
-                    if self.is_joining_dai:
+                    # Try to synchronously join system coin the Safe Engine
+                    if self.is_joining_system_coin:
                         self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
-                                          "waiting for Dai to rebalance")
+                                          "waiting for system coin to rebalance")
                         return False
                     else:
-                        rebalanced = self.rebalance_dai()
+                        rebalanced = self.rebalance_system_coin()
                         if rebalanced and rebalanced > Wad(0):
                             reservoir.refill(Rad(rebalanced))
                             return self.check_bid_cost(id, cost, reservoir, already_rebalanced=True)
@@ -682,83 +682,83 @@ class AuctionKeeper:
                                   "bid will not be submitted")
                 return False
         # If this is an auction where we bid with MKR...
-        elif self.flapper:
-            mkr_balance = self.mkr.balance_of(self.our_address)
-            if cost > Rad(mkr_balance):
+        elif self.surplus_auction_house:
+            prot_balance = self.mkr.balance_of(self.our_address)
+            if cost > Rad(prot_balance):
                 self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                   "bid will not be submitted")
                 return False
         return True
 
-    def rebalance_dai(self) -> Optional[Wad]:
-        # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards vat_dai_target
+    def rebalance_system_coin(self) -> Optional[Wad]:
+        # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards safe_engine.coin_balance_target
 
-        if self.arguments.vat_dai_target is None:
+        if self.arguments.safe_engine.coin_balance_target is None:
             return None
 
-        logging.info(f"Checking if internal Dai balance needs to be rebalanced")
-        dai = self.dai_join.dai()
-        token_balance = dai.balance_of(self.our_address)  # Wad
+        logging.info(f"Checking if internal system coin balance needs to be rebalanced")
+        system_coin = self.system_coin_join.system_coin()
+        token_balance = system_coin.balance_of(self.our_address)  # Wad
         # Prevent spending gas on small rebalances
-        dust = Wad(self.geb.vat.ilk(self.ilk.name).dust) if self.ilk else Wad.from_number(20)
+        debt_floopr = Wad(self.geb.safe_engine.collateral_type(self.collateral_type.name).debt_floor) if self.collateral_type else Wad.from_number(20)
 
-        dai_to_join = Wad(0)
-        dai_to_exit = Wad(0)
+        system_coin_to_join = Wad(0)
+        system_coin_to_exit = Wad(0)
         try:
-            if self.arguments.vat_dai_target.upper() == "ALL":
-                dai_to_join = token_balance
+            if self.arguments.safe_engine.coin_balance_target.upper() == "ALL":
+                system_coin_to_join = token_balance
             else:
-                dai_target = Wad.from_number(float(self.arguments.vat_dai_target))
-                if dai_target < dust:
-                    self.logger.warning(f"Dust cutoff of {dust} exceeds Dai target {dai_target}; "
+                system_coin_target = Wad.from_number(float(self.arguments.safe_engine.coin_balance_target))
+                if system_coin_target < debt_floor:
+                    self.logger.warning(f"Dust cutoff of {debt_floor} exceeds system coin target {system_coin_target}; "
                                         "please adjust configuration accordingly")
-                vat_balance = Wad(self.vat.dai(self.our_address))
-                if vat_balance < dai_target:
-                    dai_to_join = dai_target - vat_balance
-                elif vat_balance > dai_target:
-                    dai_to_exit = vat_balance - dai_target
+                safe_engine_balance = Wad(self.safe_engine.coin_balance(self.our_address))
+                if safe_engine_balance < system_coin_target:
+                    system_coin_to_join = system_coin_target - safe_engine_balance
+                elif safe_engine_balance > system_coin_target:
+                    system_coin_to_exit = safe_engine_balance - system_coin_target
         except ValueError:
-            raise ValueError("Unsupported --vat-dai-target")
+            raise ValueError("Unsupported --safe_engine.coin_balance-target")
 
-        if dai_to_join >= dust:
-            # Join tokens to the vat
-            if token_balance >= dai_to_join:
-                self.logger.info(f"Joining {str(dai_to_join)} Dai to the Vat")
-                return self.join_dai(dai_to_join)
+        if system_coin_to_join >= debt_floor:
+            # Join tokens to the safe_engine
+            if token_balance >= system_coin_to_join:
+                self.logger.info(f"Joining {str(system_coin_to_join)} system coin to the Safe Engine")
+                return self.join_system_coin(system_coin_to_join)
             elif token_balance > Wad(0):
-                self.logger.warning(f"Insufficient balance to maintain Dai target; joining {str(token_balance)} "
-                                    "Dai to the Vat")
-                return self.join_dai(token_balance)
+                self.logger.warning(f"Insufficient balance to maintain system coin target; joining {str(token_balance)} "
+                                    "system coin to the Safe Engine")
+                return self.join_system_coin(token_balance)
             else:
-                self.logger.warning("Insufficient Dai is available to join to Vat; cannot maintain Dai target")
+                self.logger.warning("Insufficient system coin is available to join to Safe Engine; cannot maintain Dai target")
                 return Wad(0)
-        elif dai_to_exit > dust:
-            # Exit dai from the vat
-            self.logger.info(f"Exiting {str(dai_to_exit)} Dai from the Vat")
-            assert self.dai_join.exit(self.our_address, dai_to_exit).transact(gas_price=self.gas_price)
-            return dai_to_exit * -1
-        self.logger.info(f"Dai token balance: {str(dai.balance_of(self.our_address))}, "
-                         f"Vat balance: {self.vat.dai(self.our_address)}")
+        elif system_coin_to_exit > debt_floor:
+            # Exit system_coin from the safe_engine
+            self.logger.info(f"Exiting {str(system_coin_to_exit)} system coin from the Safe Engine")
+            assert self.system_coin_join.exit(self.our_address, system_coin_to_exit).transact(gas_price=self.gas_price)
+            return system_coin_to_exit * -1
+        self.logger.info(f"system coin token balance: {str(system_coin.balance_of(self.our_address))}, "
+                         f"Safe Engine balance: {self.safe_engine.coin_balance(self.our_address)}")
 
-    def join_dai(self, amount: Wad):
+    def join_system_coin(self, amount: Wad):
         assert isinstance(amount, Wad)
-        assert not self.is_joining_dai
+        assert not self.is_joining_system_coin
         try:
-            self.is_joining_dai = True
-            assert self.dai_join.join(self.our_address, amount).transact(gas_price=self.gas_price)
+            self.is_joining_system_coin = True
+            assert self.system_coin_join.join(self.our_address, amount).transact(gas_price=self.gas_price)
         finally:
-            self.is_joining_dai = False
+            self.is_joining_system_coin = False
         return amount
 
-    def exit_gem(self):
+    def exit_collateral(self):
         if not self.collateral:
             return
 
-        token = Token(self.collateral.ilk.name.split('-')[0], self.collateral.gem.address, self.collateral.adapter.dec())
-        vat_balance = self.vat.gem(self.ilk, self.our_address)
-        if vat_balance > token.min_amount:
-            self.logger.info(f"Exiting {str(vat_balance)} {self.ilk.name} from the Vat")
-            assert self.gem_join.exit(self.our_address, token.unnormalize_amount(vat_balance)).transact(gas_price=self.gas_price)
+        token = Token(self.collateral.collateral_type.name.split('-')[0], self.collateral.collateral.address, self.collateral.adapter.dec())
+        safe_engine_balance = self.safe_engine.collateral(self.collateral_type, self.our_address)
+        if safe_engine_balance > token.min_amount:
+            self.logger.info(f"Exiting {str(safe_engine_balance)} {self.collateral_type.name} from the Safe Engine")
+            assert self.collateral_join.exit(self.our_address, token.unnormalize_amount(safe_engine_balance)).transact(gas_price=self.gas_price)
 
     @staticmethod
     def _run_future(future):

@@ -18,70 +18,70 @@
 import pytest
 
 from auction_keeper.main import AuctionKeeper
-from pymaker.approval import hope_directly
-from pymaker.numeric import Wad, Ray, Rad
+from pyflex.approval import approve_safe_modification_directly
+from pyflex.numeric import Wad, Ray, Rad
 
-from tests.conftest import web3, mcd, create_unsafe_cdp, keeper_address, reserve_dai, purchase_dai
+from tests.conftest import web3, geb, create_unsafe_safe, keeper_address, reserve_system_coin, purchase_system_coin
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
 @pytest.mark.timeout(60)
-class TestAuctionKeeperBite(TransactionIgnoringTest):
-    def test_bite_and_flip(self, web3, mcd, gal_address, keeper_address):
+class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
+    def test_liquidation_and_flip(self, web3, geb, gal_address, keeper_address):
         # given
-        c = mcd.collaterals['ETH-A']
+        c = geb.collaterals['ETH-A']
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                         f"--type flip "
+                                         f"--type collateral "
                                          f"--from-block 1 "
-                                         f"--ilk {c.ilk.name} "
-                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
+                                         f"--collateral-type {c.collateral_type.name} "
+                                         f"--model ./bogus-model.sh"), web3=geb.web3)
         keeper.approve()
-        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1.2), gal_address)
-        assert len(mcd.active_auctions()["flips"][c.ilk.name]) == 0
-        # Keeper won't bid with a 0 Dai balance
+        unsafe_safe = create_unsafe_safe(geb, c, Wad.from_number(1.2), gal_address)
+        assert len(geb.active_auctions()["collateral_auctions"][c.collateral_type.name]) == 0
+        # Keeper won't bid with a 0 system coin balance
         purchase_dai(Wad.from_number(20), keeper_address)
-        assert mcd.dai_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
+        assert geb.system_coin_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
 
         # when
-        keeper.check_vaults()
+        keeper.check_safes()
         wait_for_other_threads()
 
         # then
-        print(mcd.cat.past_bites(10))
-        assert len(mcd.cat.past_bites(10)) > 0
-        urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
-        assert urn.art == Wad(0)  # unsafe cdp has been bitten
-        assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
-        assert c.flipper.kicks() == 1  # One auction started
+        print(geb.liquidation_engine.past_bites(10))
+        assert len(geb.liquidation_engine.past_bites(10)) > 0
+        safe = geb.safe_engine.safe(unsafe_cdp.collateral_type, unsafe_cdp.address)
+        assert safe.generated_debt == Wad(0)  # unsafe safe has been bitten
+        assert safe.locked_collateral == Wad(0)  # unsafe safe is now safe ...
+        assert c.collateral_auction_house.auctions_started() == 1  # One auction started
 
     @classmethod
     def teardown_class(cls):
         w3 = web3()
-        cls.eliminate_queued_debt(w3, mcd(w3), keeper_address(w3))
+        cls.eliminate_queued_debt(w3, geb(w3), keeper_address(w3))
 
     @classmethod
-    def eliminate_queued_debt(cls, web3, mcd, keeper_address):
-        if mcd.vat.sin(mcd.vow.address) == Rad(0):
+    def eliminate_queued_debt(cls, web3, geb, keeper_address):
+        if geb.safe_engine.debt_balance(geb.accounting_engine.address) == Rad(0):
             return
 
         # given the existence of queued debt
-        c = mcd.collaterals['ETH-A']
-        kick = c.flipper.kicks()
-        last_bite = mcd.cat.past_bites(10)[0]
+        c = geb.collaterals['ETH-A']
+        auction_id = c.collateral_auction_house.auctions_started()
+        last_liquidation = geb.liquidation_engine.past_liquidations(10)[0]
 
-        # when a bid covers the CDP debt
-        auction = c.flipper.bids(kick)
-        reserve_dai(mcd, c, keeper_address, Wad(auction.tab) + Wad(1))
-        c.flipper.approve(c.flipper.vat(), approval_function=hope_directly(from_address=keeper_address))
+        # when a bid covers the Safe debt
+        auction = c.collateral_auction_house.bids(auction_id)
+        reserve_system_coin(geb, c, keeper_address, Wad(auction.amount_to_raise) + Wad(1))
+        c.collateral_auction_house.approve(c.collateral_auction_house.safe_engine(), approval_function=approve_safe_modification_directly(from_address=keeper_address))
         c.approve(keeper_address)
-        assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=keeper_address)
-        time_travel_by(web3, c.flipper.ttl() + 1)
-        assert c.flipper.deal(kick).transact()
+        assert c.collateral_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, auction.amount_to_raise).transact(from_address=keeper_address)
+        time_travel_by(web3, c.collateral_auction_house.bid_duration() + 1)
+        assert c.collateral_auction_house.settle_auction(auction_id).transact()
 
         # when a bid covers the vow debt
-        assert mcd.vow.sin_of(last_bite.era(web3)) > Rad(0)
-        assert mcd.vow.flog(last_bite.era(web3)).transact(from_address=keeper_address)
-        assert mcd.vow.heal(mcd.vat.sin(mcd.vow.address)).transact()
+        assert geb.accounting_engine.debt_queue_of(last_liquidation.era(web3)) > Rad(0)
+        assert geb.accounting_engine.pop_debt_from_queue(last_liquidation.era(web3)).transact(from_address=keeper_address)
+        assert geb.accounting_engine.settle_debt(geb.safe_engine.debt_balance(geb.accounting_engine.address)).transact()
 
         # then ensure queued debt has been auctioned off
-        assert mcd.vat.sin(mcd.vow.address) == Rad(0)
+        assert geb.safe_engine.debt_balance(geb.accounting_engine.address) == Rad(0)
