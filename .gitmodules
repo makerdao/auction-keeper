@@ -7,4 +7,3 @@
 [submodule "lib/pyflex"]
 	path = lib/pyflex
 	url = https://github.com/reflexer-labs/pyflex.git
-	branch = auction_keeper

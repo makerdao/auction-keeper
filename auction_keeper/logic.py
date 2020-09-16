@@ -93,18 +93,18 @@ class Auction:
 class Auctions:
     logger = logging.getLogger()
 
-    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address],
-                 model_factory: ModelFactory):
-        assert isinstance(flipper, Address) or (flipper is None)
-        assert isinstance(flapper, Address) or (flapper is None)
-        assert isinstance(flopper, Address) or (flopper is None)
-        assert isinstance(flipper, Address) or isinstance(flapper, Address) or isinstance(flopper, Address)
+    def __init__(self, collateral_auction_house: Optional[Address], surplus_auction_house: Optional[Address],
+                 debt_auction_house: Optional[Address], model_factory: ModelFactory):
+        assert isinstance(collateral_auction_house, Address) or (collateral_auction_house is None)
+        assert isinstance(surplus_auction_house, Address) or (surplus_auction_house is None)
+        assert isinstance(debt_auction_house, Address) or (debt_auction_house is None)
+        assert isinstance(collateral_auction_house, Address) or isinstance(surplus_auction_house, Address) or isinstance(debt_auction_house, Address)
         assert isinstance(model_factory, ModelFactory)
 
         self.auctions = {}
-        self.flipper = flipper
-        self.flapper = flapper
-        self.flopper = flopper
+        self.collateral_auction_house = collateral_auction_house
+        self.surplus_auction_house = surplus_auction_house
+        self.debt_auction_house = debt_auction_house
         self.model_factory = model_factory
 
     # TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
@@ -118,9 +118,9 @@ class Auctions:
             self.logger.info(f"Started monitoring auction #{id}")
 
             # Prepare model startup parameters
-            model_parameters = Parameters(flipper=self.flipper,
-                                          flapper=self.flapper,
-                                          flopper=self.flopper,
+            model_parameters = Parameters(collateral_auction_house=self.collateral_auction_house,
+                                          surplus_auction_house=self.surplus_auction_house,
+                                          debt_auction_house=self.debt_auction_house,
                                           id=id)
 
             # Start the model
@@ -158,13 +158,13 @@ class Auctions:
 
 class Reservoir:
     # Tracks expenditures on a single round of bid submissions, to prevent submitting bids which will fail because
-    # other bids used up the Dai/MKR balance (which doesn't update until the transaction is mined).
+    # other bids used up the system coin or prot balance (which doesn't update until the transaction is mined).
     def __init__(self, level: Rad):
         assert isinstance(level, Rad)
         self.level = level
 
     def check_bid_cost(self, id: int, consume: Rad):
-        # Lowers the level of the reservoir when Dai/MKR is consumed by bids
+        # Lowers the level of the reservoir when system coin or prot is consumed by bids
         assert isinstance(id, int)
         assert isinstance(consume, Rad)
 
@@ -175,5 +175,5 @@ class Reservoir:
             return False
 
     def refill(self, produce: Rad):
-        # Increases Dai rebalanced during a cost check (not used for MKR)
+        # Increases system coin rebalanced during a cost check (not used for prot)
         self.level += produce

@@ -72,7 +72,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def test_should_detect_surplus_auction(self, web3, geb, c, auction_income_recipient_address, keeper_address):
         # given some PROT is available to the keeper and a count of flap auctions
         mint_prot(geb.prot, keeper_address, Wad.from_number(50000))
-        auctions_started = geb.surplus_auction_house.auction_started()
+        auctions_started = geb.surplus_auction_house.auctions_started()
 
         # when surplus is generated
         create_safe_with_surplus(geb, c, auction_income_recipient_address)

@@ -27,7 +27,7 @@ from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for
 
 @pytest.mark.timeout(60)
 class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
-    def test_liquidation_and_flip(self, web3, geb, gal_address, keeper_address):
+    def test_liquidation_and_collateral_auction(self, web3, geb, auction_income_recipient_address, keeper_address):
         # given
         c = geb.collaterals['ETH-A']
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -36,10 +36,10 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
                                          f"--collateral-type {c.collateral_type.name} "
                                          f"--model ./bogus-model.sh"), web3=geb.web3)
         keeper.approve()
-        unsafe_safe = create_unsafe_safe(geb, c, Wad.from_number(1.2), gal_address)
+        unsafe_safe = create_unsafe_safe(geb, c, Wad.from_number(1.2), auction_income_recipient_address)
         assert len(geb.active_auctions()["collateral_auctions"][c.collateral_type.name]) == 0
         # Keeper won't bid with a 0 system coin balance
-        purchase_dai(Wad.from_number(20), keeper_address)
+        purchase_system_coin(Wad.from_number(20), keeper_address)
         assert geb.system_coin_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
 
         # when
@@ -47,10 +47,10 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
         wait_for_other_threads()
 
         # then
-        print(geb.liquidation_engine.past_bites(10))
-        assert len(geb.liquidation_engine.past_bites(10)) > 0
-        safe = geb.safe_engine.safe(unsafe_cdp.collateral_type, unsafe_cdp.address)
-        assert safe.generated_debt == Wad(0)  # unsafe safe has been bitten
+        print(geb.liquidation_engine.past_liquidations(10))
+        assert len(geb.liquidation_engine.past_liquidations(10)) > 0
+        safe = geb.safe_engine.safe(unsafe_safe.collateral_type, unsafe_safe.address)
+        assert safe.generated_debt == Wad(0)  # unsafe safe has been liquidated
         assert safe.locked_collateral == Wad(0)  # unsafe safe is now safe ...
         assert c.collateral_auction_house.auctions_started() == 1  # One auction started
 
@@ -69,7 +69,7 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
         auction_id = c.collateral_auction_house.auctions_started()
         last_liquidation = geb.liquidation_engine.past_liquidations(10)[0]
 
-        # when a bid covers the Safe debt
+        # when a bid covers the SAFE debt
         auction = c.collateral_auction_house.bids(auction_id)
         reserve_system_coin(geb, c, keeper_address, Wad(auction.amount_to_raise) + Wad(1))
         c.collateral_auction_house.approve(c.collateral_auction_house.safe_engine(), approval_function=approve_safe_modification_directly(from_address=keeper_address))

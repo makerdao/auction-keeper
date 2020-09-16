@@ -24,7 +24,7 @@ from auction_keeper.main import AuctionKeeper
 from pyflex import Address, Transact, Wad
 from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
 from pyflex.auctions import PreSettlementSurplusAuctionHouse, DebtAuctionHouse
-from pyflex.gf import LiquidationEngine, CoinJoin, CollateralJoin, AccountingEngine
+from pyflex.gf import LiquidationEngine, CoinJoin, BasicCollateralJoin, AccountingEngine
 from pyflex.token import DSToken
 from tests.conftest import get_node_gas_price, keeper_address, geb, web3
 from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
@@ -49,7 +49,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
 
     @pytest.mark.timeout(15)
     def test_ignore_sync_transaction(self):
-        balance_before = self.geb.safe_engine.collateral(self.collateral_type, self.keeper_address)
+        balance_before = self.geb.safe_engine.token_collateral(self.collateral_type, self.keeper_address)
 
         self.start_ignoring_sync_transactions()
         assert self.collateral.adapter.join(self.keeper_address, Wad.from_number(0.2)).transact()
@@ -63,7 +63,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
 
     @pytest.mark.timeout(30)
     def test_replace_async_transaction(self):
-        balance_before = self.geb.safe_engine.collateral(self.collateral_type, self.keeper_address)
+        balance_before = self.geb.safe_engine.token_collateral(self.collateral_type, self.keeper_address)
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.11)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
@@ -84,7 +84,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
 
     @pytest.mark.timeout(30)
     def test_replace_async_transaction_delay_expensive_call_while_ignoring_tx(self):
-        balance_before = self.geb.safe_engine.collateral(self.collateral_type, self.keeper_address)
+        balance_before = self.geb.safe_engine.token_collateral(self.collateral_type, self.keeper_address)
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.12)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
@@ -106,7 +106,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
 
     @pytest.mark.timeout(30)
     def test_replace_async_transaction_delay_expensive_call_after_ignoring_tx(self):
-        balance_before = self.geb.safe_engine.collateral(self.collateral_type, self.keeper_address)
+        balance_before = self.geb.safe_engine.token_collateral(self.collateral_type, self.keeper_address)
         self.start_ignoring_transactions()
         amount1 = Wad.from_number(0.13)
         tx1 = self.collateral.adapter.join(self.keeper_address, amount1)
@@ -153,17 +153,17 @@ class TestConfig:
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type collateral "
                                          f"--from-block 1 "
-                                         f"--collateral_type USDC-A "
+                                         f"--collateral-type ETH-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.collateral_auction_house, EnglishCollateralAuctionHouse)
         assert keeper.collateral.collateral_auction_house == keeper.collateral_auction_house
-        assert keeper.collateral.collateral_type.name == 'USDC-A'
+        assert keeper.collateral.collateral_type.name == 'ETH-A'
         assert keeper.surplus_auction_house is None
         assert keeper.debt_auction_house is None
         assert isinstance(keeper.liquidation_engine, LiquidationEngine)
-        assert isinstance(keeper.coin_join, CoinJoin)
-        assert isinstance(keeper.collateral_join, GemJoin)
+        assert isinstance(keeper.system_coin_join, CoinJoin)
+        assert isinstance(keeper.collateral_join, BasicCollateralJoin)
 
     def test_collateral_keeper_negative(self, web3, keeper_address: Address):
         with pytest.raises(RuntimeError) as e:
@@ -171,7 +171,7 @@ class TestConfig:
                                     f"--type collateral "
                                     f"--from-block 1 "
                                     f"--model ./bogus-model.sh"), web3=web3)
-        assert "collateral_type" in str(e)
+        assert "collateral-type" in str(e)
 
     def test_surplus_keeper(self, web3, keeper_address: Address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -180,7 +180,7 @@ class TestConfig:
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.surplus_auction_house, PreSettlementSurplusAuctionHouse)
-        assert isinstance(keeper.coin_join, CoinJoin)
+        assert isinstance(keeper.system_coin_join, CoinJoin)
         assert isinstance(keeper.prot, DSToken)
         assert isinstance(keeper.liquidation_engine, LiquidationEngine)
         assert isinstance(keeper.accounting_engine, AccountingEngine)
@@ -197,7 +197,7 @@ class TestConfig:
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.debt_auction_house, DebtAuctionHouse)
-        assert isinstance(keeper.coin_join, CoinJoin)
+        assert isinstance(keeper.system_coin_join, CoinJoin)
         assert isinstance(keeper.prot, DSToken)
         assert isinstance(keeper.liquidation_engine, LiquidationEngine)
         assert isinstance(keeper.accounting_engine, AccountingEngine)
@@ -212,7 +212,7 @@ class TestConfig:
         return AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                        f"--type collateral "
                                        f"--from-block 1 "
-                                       f"--collateral_type ETH-B "
+                                       f"--collateral-type ETH-B "
                                        f"--shards 3 --shard-id {shard} "
                                        f"--model ./bogus-model.sh"), web3=web3)
 
@@ -236,51 +236,51 @@ class TestConfig:
         assert handled0 == handled1 == handled2
         assert handled0 + handled1 + handled2 == auction_count
 
-    def test_deal_list(self, web3, keeper_address: Address):
+    def test_settle_list(self, web3, keeper_address: Address):
         accounts = ["0x40418beb7f24c87ab2d5ffb8404665414e91d858",
                     "0x4A8638b3788c554563Ef2444f86F943ab0Cd9761",
                     "0xdb33dfd3d61308c33c63209845dad3e6bfb2c674"]
 
         default_behavior = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                                    f"--type collateral --from-block 1 "
-                                                   f"--collateral_type ETH-B "
+                                                   f"--collateral-type ETH-B "
                                                    f"--model ./bogus-model.sh"), web3=web3)
-        assert 1 == len(default_behavior.deal_for)
-        assert keeper_address == list(default_behavior.deal_for)[0]
-        assert not default_behavior.deal_all
+        assert 1 == len(default_behavior.settle_auctions_for)
+        assert keeper_address == list(default_behavior.settle_auctions_for)[0]
+        assert not default_behavior.settle_all
 
-        deal_for_3_accounts = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                                      f"--type surplus --from-block 1 "
-                                                      f"--deal-for {accounts[0]} {accounts[1]} {accounts[2]} "
-                                                      f"--model ./bogus-model.sh"), web3=web3)
-        assert 3 == len(deal_for_3_accounts.deal_for)
+        settle_for_3_accounts = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                        f"--type surplus --from-block 1 "
+                                                        f"--settle-auctions-for {accounts[0]} {accounts[1]} {accounts[2]} "
+                                                        f"--model ./bogus-model.sh"), web3=web3)
+        assert 3 == len(settle_for_3_accounts.settle_auctions_for)
         for account in accounts:
-            assert Address(account) in deal_for_3_accounts.deal_for
-        assert not deal_for_3_accounts.deal_all
+            assert Address(account) in settle_for_3_accounts.settle_auctions_for
+        assert not settle_for_3_accounts.settle_all
 
-        disable_deal = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                               f"--type debt --from-block 1 "
-                                               f"--deal-for NONE "
-                                               f"--model ./bogus-model.sh"), web3=web3)
-        assert 0 == len(disable_deal.deal_for)
-        assert not disable_deal.deal_all
+        disable_settle = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                                 f"--type debt --from-block 1 "
+                                                 f"--settle-auctions-for NONE "
+                                                 f"--model ./bogus-model.sh"), web3=web3)
+        assert 0 == len(disable_settle.settle_auctions_for)
+        assert not disable_settle.settle_all
 
-        deal_all = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                           f"--type debt --from-block 1 "
-                                           f"--deal-for ALL "
-                                           f"--model ./bogus-model.sh"), web3=web3)
-        assert deal_all.deal_all
+        settle_all = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                             f"--type debt --from-block 1 "
+                                             f"--settle-auctions-for ALL "
+                                             f"--model ./bogus-model.sh"), web3=web3)
+        assert settle_all.settle_all
 
-    def test_shouldnt_need_urn_history_when_only_bidding(self, web3, keeper_address: Address):
+    def test_shouldnt_need_safe_history_when_only_bidding(self, web3, keeper_address: Address):
         with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                     f"--type collateral "
-                                    f"--collateral_type ETH-A "
+                                    f"--collateral-type ETH-A "
                                     f"--model ./bogus-model.sh"), web3=web3)
 
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type collateral "
-                                         f"--collateral_type ETH-A "
+                                         f"--collateral-type ETH-A "
                                          f"--bid-only "
                                          f"--model ./bogus-model.sh"), web3=web3)
-        assert keeper.urn_history is None
+        assert keeper.safe_history is None

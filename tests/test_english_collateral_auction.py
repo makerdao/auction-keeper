@@ -21,190 +21,189 @@ from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from datetime import datetime
-from pymaker import Address
-from pymaker.approval import hope_directly
-from pymaker.auctions import Flipper
-from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, keeper_address, mcd, models, \
-                           reserve_dai, simulate_model_output, web3
+from pyflex import Address
+from pyflex.approval import approve_safe_modification_directly
+from pyflex.auctions import EnglishCollateralAuctionHouse
+from pyflex.deployment import GfDeployment
+from pyflex.gf import Collateral
+from pyflex.numeric import Wad, Ray, Rad
+from tests.conftest import liquidate, create_unsafe_safe, pop_debt_and_settle_debt, keeper_address, geb, models, \
+                           reserve_system_coin, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from typing import Optional
 
 
-tend_lot = Wad.from_number(1.2)
-tend_small_lot = Wad(2000)
+bid_size = Wad.from_number(1.2)
+bid_size_small = Wad(2000)
 
 
 @pytest.fixture()
-def kick(mcd, c: Collateral, gal_address) -> int:
-    # Ensure we start with a clean urn
-    urn = mcd.vat.urn(c.ilk, gal_address)
-    assert urn.ink == Wad(0)
-    assert urn.art == Wad(0)
+def auction_id(geb, c: Collateral, gal_address) -> int:
+    # Ensure we start with a clean safe
+    safe = geb.safe_engine.safe(c.collateral_type, gal_address)
+    assert safe.collateral_type == Wad(0)
+    assert safe.generated_debt == Wad(0)
 
-    # Bite gal CDP
-    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
-    return bite(mcd, c, unsafe_cdp)
-
+    # liquidate gal SAFE
+    unsafe_safe = create_unsafe_safe(geb, c, bid_size, gal_address)
+    return liquidate(geb, c, unsafe_safe)
 
 @pytest.fixture()
-def kick_small_lot(mcd, c: Collateral, gal_address) -> int:
-    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_small_lot, gal_address)
-    return bite(mcd, c, unsafe_cdp)
+def auction_small(geb, c: Collateral, gal_address) -> int:
+    unsafe_safe = create_unsafe_safe(geb, c, bid_size_small, gal_address)
+    return liquidate(geb, c, unsafe_safe)
 
 
 @pytest.mark.timeout(500)
-class TestAuctionKeeperFlipper(TransactionIgnoringTest):
+class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
     def setup_class(self):
         """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
         to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
         self.web3 = web3()
-        self.mcd = mcd(self.web3)
+        self.geb = geb(self.web3)
         self.keeper_address = keeper_address(self.web3)
-        self.collateral = self.mcd.collaterals['ETH-B']
+        self.collateral = self.geb.collaterals['ETH-B']
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
-                                     f"--type flip "
+                                     f"--type collateral "
                                      f"--from-block 1 "
-                                     f"--ilk {self.collateral.ilk.name} "
-                                     f"--model ./bogus-model.sh"), web3=self.mcd.web3)
+                                     f"--collateral-type {self.collateral.collateral_type.name} "
+                                     f"--model ./bogus-model.sh"), web3=self.geb.web3)
         self.keeper.approve()
 
         assert isinstance(self.keeper.gas_price, DynamicGasPrice)
         self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
 
     @staticmethod
-    def gem_balance(address: Address, c: Collateral) -> Wad:
+    def collateral_balance(address: Address, c: Collateral) -> Wad:
         assert (isinstance(address, Address))
         assert (isinstance(c, Collateral))
-        return Wad(c.gem.balance_of(address))
+        return Wad(c.collateral.balance_of(address))
 
-    def simulate_model_bid(self, mcd: DssDeployment, c: Collateral, model: object,
+    def simulate_model_bid(self, geb: GfDeployment, c: Collateral, model: object,
                            price: Wad, gas_price: Optional[int] = None):
-        assert (isinstance(mcd, DssDeployment))
+        assert (isinstance(geb, GfDeployment))
         assert (isinstance(c, Collateral))
         assert (isinstance(price, Wad))
         assert (isinstance(gas_price, int)) or gas_price is None
         assert price > Wad(0)
 
-        flipper = c.flipper
-        initial_bid = flipper.bids(model.id)
-        assert initial_bid.lot > Wad(0)
-        our_bid = price * initial_bid.lot
-        reserve_dai(mcd, c, self.keeper_address, our_bid, extra_collateral=Wad.from_number(2))
+        collateral_auction_house = c.collateral_auction_house
+        initial_bid = collateral_auction_house.bids(model.id)
+        assert initial_bid.amount_to_sell > Wad(0)
+        our_bid = price * initial_bid.amount_to_sell
+        reserve_system_coin(geb, c, self.keeper_address, our_bid, extra_collateral=Wad.from_number(2))
         simulate_model_output(model=model, price=price, gas_price=gas_price)
 
     @staticmethod
-    def tend(flipper: Flipper, id: int, address: Address, lot: Wad, bid: Rad):
-        assert (isinstance(flipper, Flipper))
+    def increase_bid_size(collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, amount_to_sell: Wad, bid_amount: Rad):
+        assert (isinstance(collateral_auction_house, EnglishCollateralAuctionHouse))
         assert (isinstance(id, int))
-        assert (isinstance(lot, Wad))
-        assert (isinstance(bid, Rad))
+        assert (isinstance(amount_to_sell, Wad))
+        assert (isinstance(bid_amount, Rad))
 
-        current_bid = flipper.bids(id)
-        assert current_bid.guy != Address("0x0000000000000000000000000000000000000000")
-        assert current_bid.tic > datetime.now().timestamp() or current_bid.tic == 0
-        assert current_bid.end > datetime.now().timestamp()
+        current_bid = collateral_auction_house.bids(id)
+        assert current_bid.high_bidder != Address("0x0000000000000000000000000000000000000000")
+        assert current_bid.bid_expiry > datetime.now().timestamp() or current_bid.bid_expiry == 0
+        assert current_bid.auction_deadline > datetime.now().timestamp()
 
-        assert lot == current_bid.lot
-        assert bid <= current_bid.tab
-        assert bid > current_bid.bid
-        assert (bid >= Rad(flipper.beg()) * current_bid.bid) or (bid == current_bid.tab)
+        assert amount_to_sell == current_bid.amount_to_sell
+        assert bid_amount <= current_bid.amount_to_raise
+        assert bid_amount > current_bid.bid
+        assert (bid_amount >= Rad(collateral_auction_house.bid_increase()) * current_bid.bid) or (bid == current_bid.amount_to_raise)
 
-        assert flipper.tend(id, lot, bid).transact(from_address=address)
+        assert collateral_auction_house.increase_bid_size(id, amount_to_sell, bid).transact(from_address=address)
 
     @staticmethod
-    def dent(flipper: Flipper, id: int, address: Address, lot: Wad, bid: Rad):
-        assert (isinstance(flipper, Flipper))
+    def decrease_sold_amount(collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, amount_to_sell: Wad, bid_amount: Rad):
+        assert (isinstance(collateral_auction_house, EnglishCollateralAuctionHouse))
         assert (isinstance(id, int))
-        assert (isinstance(lot, Wad))
-        assert (isinstance(bid, Rad))
+        assert (isinstance(amount_to_sell, Wad))
+        assert (isinstance(bid_amount, Rad))
 
-        current_bid = flipper.bids(id)
-        assert current_bid.guy != Address("0x0000000000000000000000000000000000000000")
-        assert current_bid.tic > datetime.now().timestamp() or current_bid.tic == 0
-        assert current_bid.end > datetime.now().timestamp()
+        current_bid = collateral_auction_house.bids(id)
+        assert current_bid.high_bidder != Address("0x0000000000000000000000000000000000000000")
+        assert current_bid.bid_expiry > datetime.now().timestamp() or current_bid.bid_expiry == 0
+        assert current_bid.auction_deadline > datetime.now().timestamp()
 
-        assert bid == current_bid.bid
-        assert bid == current_bid.tab
-        assert lot < current_bid.lot
-        assert flipper.beg() * lot <= current_bid.lot
+        assert bid_amount == current_bid.bid
+        assert bid_amount == current_bid.amount_to_raise
+        assert amount_to_sell < current_bid.amount_to_sell
+        assert collateral_auction_house.bid_increase() * amount_to_sell <= current_bid.amount_to_sell
 
-        assert flipper.dent(id, lot, bid).transact(from_address=address)
+        assert collateral_auction_house.decrease_sold_amount(id, amount_to_sell, bid_amount).transact(from_address=address)
 
     @staticmethod
-    def tend_with_dai(mcd: DssDeployment, c: Collateral, flipper: Flipper, id: int, address: Address, bid: Rad):
-        assert (isinstance(mcd, DssDeployment))
+    def increase_bid_size_with_system_coin(geb: GfDeployment, c: Collateral, collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, bid_amount: Rad):
+        assert (isinstance(geb, GfDeployment))
         assert (isinstance(c, Collateral))
-        assert (isinstance(flipper, Flipper))
+        assert (isinstance(collateral_auction_house, EnglishCollateralAuctionHouse))
         assert (isinstance(id, int))
-        assert (isinstance(bid, Rad))
+        assert (isinstance(bid_amount, Rad))
 
-        flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=address))
-        previous_bid = flipper.bids(id)
+        collateral_auction_house.approve(collateral_auction_house.vat(), approval_function=approve_safe_modification_directly(from_address=address))
+        previous_bid = collateral_auction_house.bids(id)
         c.approve(address)
-        reserve_dai(mcd, c, address, Wad(bid), extra_collateral=Wad.from_number(2))
-        TestAuctionKeeperFlipper.tend(flipper, id, address, previous_bid.lot, bid)
+        reserve_system_coin(geb, c, address, Wad(bid_amount), extra_collateral=Wad.from_number(2))
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size(collateral_auction_house, id, address, previous_bid.amount_to_sell, bid)
 
-    def test_flipper_address(self):
+    def test_collateral_auction_house_address(self):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
-        assert self.keeper.flipper.address == self.collateral.flipper.address
+        assert self.keeper.collateral_auction_house.address == self.collateral.collateral_auction_house.address
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         self.keeper.check_all_auctions()
         wait_for_other_threads()
-        initial_bid = self.collateral.flipper.bids(kick)
+        initial_bid = self.collateral.collateral_auction_house.bids(kick)
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=flipper.address,
-                                                                      flapper=None,
-                                                                      flopper=None,
+        model_factory.create_model.assert_called_once_with(Parameters(collateral_auction_house=collateral_auction_house.address,
+                                                                      surplus_auction_house=None,
+                                                                      debt_auction_house=None,
                                                                       id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper == flipper.address
-        assert status.flapper is None
-        assert status.flopper is None
-        assert status.bid == Rad.from_number(0)
-        assert status.lot == initial_bid.lot
-        assert status.tab == initial_bid.tab
-        assert status.beg > Wad.from_number(1)
-        assert status.guy == self.mcd.cat.address
+        assert status.collateral_auction_house == collateral_auction_house.address
+        assert status.surplus_auction_house is None
+        assert status.debt_auction_house is None
+        assert status.bid_amount == Rad.from_number(0)
+        assert status.amount_to_sell == initial_bid.amount_to_sell
+        assert status.amount_to_raise == initial_bid.amount_to_raise
+        assert status.bid_increase > Wad.from_number(1)
+        assert status.high_bidder == self.geb.liquidation_engine.address
         assert status.era > 0
-        assert status.end < status.era + flipper.tau() + 1
-        assert status.tic == 0
+        assert status.auction_deadline < status.era + collateral_auction_house.tau() + 1
+        assert status.bid_expiry == 0
         assert status.price == Wad(0)
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         self.keeper.check_all_auctions()
-        TestAuctionKeeperFlipper.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address,
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address,
                                                Rad.from_number(80))
-        flipper.deal(kick).transact(from_address=other_address)
+        collateral_auction_house.settle_auction(kick).transact(from_address=other_address)
 
     def test_should_provide_model_with_updated_info_after_our_own_bid(self, kick):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         (model, model_factory) = models(self.keeper, kick)
 
         # when
         self.keeper.check_all_auctions()
         wait_for_other_threads()
-        previous_bid = flipper.bids(model.id)
+        previous_bid = collateral_auction_house.bids(model.id)
         # then
         assert model.send_status.call_count == 1
 
         # when
-        initial_bid = flipper.bids(kick)
+        initial_bid = collateral_auction_house.bids(kick)
         our_price = Wad.from_number(30)
-        our_bid = our_price * initial_bid.lot
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, our_bid)
+        our_bid = our_price * initial_bid.amount_to_sell
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, our_bid)
         simulate_model_output(model=model, price=our_price)
         self.keeper.check_for_bids()
 
@@ -219,26 +218,26 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper == flipper.address
-        assert status.flapper is None
-        assert status.flopper is None
-        assert status.bid == Rad(our_price * status.lot)
-        assert status.lot == previous_bid.lot
-        assert status.tab == previous_bid.tab
-        assert status.beg > Wad.from_number(1)
-        assert status.guy == self.keeper_address
+        assert status.collateral_auction_house == collateral_auction_house.address
+        assert status.surplus_auction_house is None
+        assert status.debt_auction_house is None
+        assert status.bid_amount == Rad(our_price * status.amount_to_sell)
+        assert status.amount_to_sell == previous_bid.amount_to_sell
+        assert status.amount_to_raise == previous_bid.amount_to_raise
+        assert status.bid_increase > Wad.from_number(1)
+        assert status.high_bidder == self.keeper_address
         assert status.era > 0
-        assert status.end > status.era
-        assert status.tic > status.era
+        assert status.auction_deadline > status.era
+        assert status.bid_expiry > status.era
         assert status.price == our_price
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, kick, other_address):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -248,10 +247,10 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert model.send_status.call_count == 1
 
         # when
-        flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=other_address))
-        previous_bid = flipper.bids(kick)
+        collateral_auction_house.approve(collateral_auction_house.vat(), approval_function=approve_safe_modification_directly(from_address=other_address))
+        previous_bid = collateral_auction_house.bids(kick)
         new_bid_amount = Rad.from_number(80)
-        self.tend_with_dai(self.mcd, self.collateral, flipper, model.id, other_address, new_bid_amount)
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, model.id, other_address, new_bid_amount)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -260,22 +259,22 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper == flipper.address
-        assert status.flapper is None
-        assert status.flopper is None
-        assert status.bid == new_bid_amount
-        assert status.lot == previous_bid.lot
-        assert status.tab == previous_bid.tab
-        assert status.beg > Wad.from_number(1)
-        assert status.guy == other_address
+        assert status.collateral_auction_house == collateral_auction_house.address
+        assert status.surplus_auction_house is None
+        assert status.debt_auction_house is None
+        assert status.bid_amount == new_bid_amount
+        assert status.amount_to_sell == previous_bid.amount_to_sell
+        assert status.amount_to_raise == previous_bid.amount_to_raise
+        assert status.bid_increase > Wad.from_number(1)
+        assert status.high_bidder == other_address
         assert status.era > 0
-        assert status.end > status.era
-        assert status.tic > status.era
-        assert status.price == (Wad(new_bid_amount) / previous_bid.lot)
+        assert status.auction_deadline > status.era
+        assert status.bid_expiry > status.era
+        assert status.price == (Wad(new_bid_amount) / previous_bid.amount_to_sell)
 
-    def test_should_tick_if_auction_expired_due_to_tau(self, kick):
+    def test_should_restart_if_auction_expired_due_to_total_auction_length(self, kick):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -286,27 +285,27 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        time_travel_by(self.web3, flipper.tau() + 1)
+        time_travel_by(self.web3, collateral_auction_house.tau() + 1)
         # and
-        self.simulate_model_bid(self.mcd, self.collateral, model, Wad.from_number(15.0))
+        self.simulate_model_bid(self.geb, self.collateral, model, Wad.from_number(15.0))
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
         model.terminate.assert_not_called()
-        auction = flipper.bids(kick)
-        assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(15.0), 2)
+        auction = collateral_auction_house.bids(kick)
+        assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(15.0), 2)
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
 
-    def test_should_terminate_model_if_auction_expired_due_to_ttl_and_somebody_else_won_it(self, kick, other_address):
+    def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, kick, other_address):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         self.keeper.check_all_auctions()
@@ -316,11 +315,11 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=other_address))
+        collateral_auction_house.approve(collateral_auction_house.vat(), approval_function=approve_safe_modification_directly(from_address=other_address))
         new_bid_amount = Rad.from_number(85)
-        self.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address, new_bid_amount)
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, new_bid_amount)
         # and
-        time_travel_by(self.web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -329,12 +328,12 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
         # cleanup
-        assert flipper.deal(kick).transact()
+        assert collateral_auction_house.settle_auction(kick).transact()
 
-    def test_should_terminate_model_if_auction_is_dealt(self, kick, other_address):
+    def test_should_terminate_model_if_auction_is_settled(self, kick, other_address):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         self.keeper.check_all_auctions()
@@ -344,11 +343,11 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address, Rad.from_number(90))
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, Rad.from_number(90))
         # and
-        time_travel_by(self.web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
-        flipper.deal(kick).transact(from_address=other_address)
+        collateral_auction_house.settle_auction(kick).transact(from_address=other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -356,17 +355,17 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    def test_should_not_instantiate_model_if_auction_is_dealt(self, kick, other_address):
+    def test_should_not_instantiate_model_if_auction_is_settled(self, kick, other_address):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        TestAuctionKeeperFlipper.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address,
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address,
                                                Rad.from_number(90))
         # and
-        time_travel_by(self.web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
-        flipper.deal(kick).transact(from_address=other_address)
+        collateral_auction_house.settle_auction(kick).transact(from_address=other_address)
 
         # when
         self.keeper.check_all_auctions()
@@ -389,210 +388,210 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
     def test_should_make_initial_bid(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
-        self.simulate_model_bid(self.mcd, self.collateral, model, Wad.from_number(16.0))
+        self.simulate_model_bid(self.geb, self.collateral, model, Wad.from_number(16.0))
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(16.0), 2)
+        auction = collateral_auction_house.bids(kick)
+        assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(16.0), 2)
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_bid_even_if_there_is_already_a_bidder(self, kick, other_address):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        self.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address, Rad.from_number(21))
-        assert flipper.bids(kick).bid == Rad.from_number(21)
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, Rad.from_number(21))
+        assert collateral_auction_house.bids(kick).bid == Rad.from_number(21)
 
         # when
-        self.simulate_model_bid(self.mcd, self.collateral, model, Wad.from_number(23))
+        self.simulate_model_bid(self.geb, self.collateral, model, Wad.from_number(23))
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert round(auction.bid / Rad(auction.lot), 2) == round(Rad.from_number(23), 2)
+        auction = collateral_auction_house.bids(kick)
+        assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(23), 2)
 
-    def test_should_sequentially_tend_and_dent_if_price_takes_us_to_the_dent_phrase(self, kick, keeper_address):
+    def test_should_sequentially_increase_bid_size_and_decrease_sold_amount_if_price_takes_us_to_the_decrease_sold_amount_phrase(self, kick, keeper_address):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         (model, model_factory) = models(self.keeper, kick)
 
         # when
         our_bid_price = Wad.from_number(150)
-        assert our_bid_price * flipper.bids(kick).lot > Wad(flipper.bids(1).tab)
+        assert our_bid_price * collateral_auction_house.bids(kick).amount_to_sell > Wad(collateral_auction_house.bids(1).amount_to_raise)
 
-        self.simulate_model_bid(self.mcd, self.collateral, model, our_bid_price)
+        self.simulate_model_bid(self.geb, self.collateral, model, our_bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot == tend_lot
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell == bid_size
 
         # when
-        reserve_dai(self.mcd, self.collateral, keeper_address, Wad(auction.tab))
+        reserve_system_coin(self.geb, self.collateral, keeper_address, Wad(auction.amount_to_raise))
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot < tend_lot
-        assert round(auction.bid / Rad(auction.lot), 2) == round(Rad(our_bid_price), 2)
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell < bid_size
+        assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad(our_bid_price), 2)
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
-    def test_should_use_most_up_to_date_price_for_dent_even_if_it_gets_updated_during_tend(self, kick):
+    def test_should_use_most_up_to_date_price_for_decrease_sold_amount_even_if_it_gets_updated_during_increase_bid_size(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         first_bid_price = Wad.from_number(140)
-        self.simulate_model_bid(self.mcd, self.collateral, model, first_bid_price)
+        self.simulate_model_bid(self.geb, self.collateral, model, first_bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot == tend_lot
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell == bid_size
 
         # when
         second_bid_price = Wad.from_number(150)
-        self.simulate_model_bid(self.mcd, self.collateral, model, second_bid_price)
+        self.simulate_model_bid(self.geb, self.collateral, model, second_bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot == Wad(auction.bid / Rad(second_bid_price))
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell == Wad(auction.bid_amount / Rad(second_bid_price))
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
-    def test_should_only_tend_if_bid_is_only_slightly_above_tab(self, kick):
+    def test_should_only_increase_bid_size_if_bid_is_only_slightly_above_amount_to_raise(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
-        auction = flipper.bids(kick)
-        bid_price = Wad(auction.tab) + Wad.from_number(0.1)
-        self.simulate_model_bid(self.mcd, self.collateral, model, bid_price)
+        auction = collateral_auction_house.bids(kick)
+        bid_price = Wad(auction.amount_to_raise) + Wad.from_number(0.1)
+        self.simulate_model_bid(self.geb, self.collateral, model, bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot == tend_lot
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell == bid_size
 
         # when
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot == tend_lot
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell == bid_size
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
-    def test_should_tend_up_to_exactly_tab_if_bid_is_only_slightly_below_tab(self, kick):
-        """I assume the point of this test is that the bid increment should be ignored when `tend`ing the `tab`
-        to transition the auction into _dent_ phase."""
+    def test_should_increase_bid_size_up_to_exactly_amount_to_raise_if_bid_is_only_slightly_below_amount_to_raise(self, kick):
+        """I assume the point of this test is that the bid increment should be ignored when `increase_bid_size`ing the `amount_to_raise`
+        to transition the auction into _decrease_sold_amount_ phase."""
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
-        auction = flipper.bids(kick)
-        assert auction.bid == Rad(0)
-        bid_price = Wad(auction.tab / Rad(tend_lot)) - Wad.from_number(0.01)
-        self.simulate_model_bid(self.mcd, self.collateral, model, bid_price)
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == Rad(0)
+        bid_price = Wad(auction.amount_to_raise / Rad(bid_size)) - Wad.from_number(0.01)
+        self.simulate_model_bid(self.geb, self.collateral, model, bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid < auction.tab
-        assert round(auction.bid, 2) == round(Rad(bid_price * tend_lot), 2)
-        assert auction.lot == tend_lot
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount < auction.amount_to_raise
+        assert round(auction.bid_amount, 2) == round(Rad(bid_price * bid_size), 2)
+        assert auction.amount_to_sell == bid_size
 
         # when
-        price_to_reach_tab = Wad(auction.tab / Rad(tend_lot)) + Wad(1)
-        self.simulate_model_bid(self.mcd, self.collateral, model, price_to_reach_tab)
+        price_to_reach_amount_to_raise = Wad(auction.amount_to_raise / Rad(bid_size)) + Wad(1)
+        self.simulate_model_bid(self.geb, self.collateral, model, price_to_reach_amount_to_raise)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = flipper.bids(kick)
-        assert auction.bid == auction.tab
-        assert auction.lot == tend_lot
+        auction = collateral_auction_house.bids(kick)
+        assert auction.bid_amount == auction.amount_to_raise
+        assert auction.amount_to_sell == bid_size
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         first_bid = Wad.from_number(15.0)
-        self.simulate_model_bid(self.mcd, self.collateral, model, first_bid)
+        self.simulate_model_bid(self.geb, self.collateral, model, first_bid)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(first_bid * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(first_bid * bid_size)
 
         # when
         second_bid = Wad.from_number(20.0)
-        self.simulate_model_bid(self.mcd, self.collateral, model, second_bid)
+        self.simulate_model_bid(self.geb, self.collateral, model, second_bid)
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(second_bid * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(second_bid * bid_size)
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         bid_price = Wad.from_number(20.0)
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, bid_price * tend_lot * 2)
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, bid_price * bid_size * 2)
         simulate_model_output(model=model, price=bid_price, gas_price=10)
         # and
         self.start_ignoring_transactions()
@@ -607,20 +606,20 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(bid_price * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(bid_price * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, Wad.from_number(35.0) * tend_lot * 2)
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, Wad.from_number(35.0) * bid_size * 2)
         simulate_model_output(model=model, price=Wad.from_number(15.0), gas_price=10)
         # and
         self.start_ignoring_transactions()
@@ -635,24 +634,24 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(Wad.from_number(20.0) * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(20.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, kick):
         """ Assuming we want all bids to be submitted as soon as output from the model is parsed,
         this test seems impractical.  In real applications, the model would be unable to submit a lower bid. """
         # given
         (model, model_factory) = models(self.keeper, kick)
-        flipper = self.collateral.flipper
-        assert self.mcd.web3 == self.web3
+        collateral_auction_house = self.collateral.collateral_auction_house
+        assert self.geb.web3 == self.web3
 
         # when
         bid_price = Wad.from_number(20.0)
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, bid_price * tend_lot)
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, bid_price * bid_size)
         simulate_model_output(model=model, price=Wad.from_number(20.0), gas_price=10)
         # and
         self.start_ignoring_transactions()
@@ -667,27 +666,27 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(Wad.from_number(15.0) * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
-    def test_should_not_tend_on_rounding_errors_with_small_amounts(self, kick_small_lot):
+    def test_should_not_increase_bid_size_on_rounding_errors_with_small_amounts(self, auction_small):
         # given
-        (model, model_factory) = models(self.keeper, kick_small_lot)
-        flipper = self.collateral.flipper
+        (model, model_factory) = models(self.keeper, auction_small)
+        collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         bid_price = Wad.from_number(3.0)
-        self.simulate_model_bid(self.mcd, self.collateral, model, bid_price)
+        self.simulate_model_bid(self.geb, self.collateral, model, bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick_small_lot).bid == Rad(bid_price * tend_small_lot)
+        assert collateral_auction_house.bids(auction_small).bid_amount == Rad(bid_price * bid_size_small)
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -698,22 +697,22 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    def test_should_not_dent_on_rounding_errors_with_small_amounts(self):
+    def test_should_not_decrease_sold_amount_on_rounding_errors_with_small_amounts(self):
         # given
-        flipper = self.collateral.flipper
-        kick_small_lot = flipper.kicks()
-        (model, model_factory) = models(self.keeper, kick_small_lot)
+        collateral_auction_house = self.collateral.collateral_auction_house
+        auction_small = collateral_auction_house.auctions_started()
+        (model, model_factory) = models(self.keeper, auction_small)
 
         # when
-        auction = flipper.bids(kick_small_lot)
-        bid_price = Wad(auction.tab / Rad(tend_small_lot))
-        self.simulate_model_bid(self.mcd, self.collateral, model, bid_price)
+        auction = collateral_auction_house.bids(auction_small)
+        bid_price = Wad(auction.amount_to_raise / Rad(bid_size_small))
+        self.simulate_model_bid(self.geb, self.collateral, model, bid_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick_small_lot).lot == auction.lot
+        assert collateral_auction_house.bids(auction_small).lot == auction.lot
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -724,88 +723,88 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    def test_should_deal_when_we_won_the_auction(self):
+    def test_should_settle_auction_when_we_won_the_auction(self):
         # given
-        flipper = self.collateral.flipper
-        kick = flipper.kicks()
+        collateral_auction_house = self.collateral.collateral_auction_house
+        auction_id = collateral_auction_house.auctions_started()
 
         # when
-        collateral_before = self.collateral.gem.balance_of(self.keeper_address)
+        collateral_before = self.collateral.collateral.balance_of(self.keeper_address)
 
         # when
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        lot_won = flipper.bids(kick).lot
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        lot_won = collateral_auction_house.bids(auction_id).amount_to_sell
         assert lot_won > Wad(0)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         assert self.collateral.adapter.exit(self.keeper_address, lot_won).transact(from_address=self.keeper_address)
         # then
-        collateral_after = self.collateral.gem.balance_of(self.keeper_address)
+        collateral_after = self.collateral.collateral.balance_of(self.keeper_address)
         assert collateral_before < collateral_after
 
-    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self, kick, other_address):
+    def test_should_not_settle_auction_when_auction_finished_but_somebody_else_won(self, kick, other_address):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        bid = Rad.from_number(66)
-        self.tend_with_dai(self.mcd, self.collateral, flipper, kick, other_address, bid)
-        assert flipper.bids(kick).bid == bid
+        bid_amount = Rad.from_number(66)
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, bid_amount)
+        assert collateral_auction_house.bids(kick).bid_amount == bid_amount
 
         # when
-        time_travel_by(self.web3, flipper.ttl() + 1)
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then ensure the bid hasn't been deleted
-        assert flipper.bids(kick).bid == bid
+        assert collateral_auction_house.bids(kick).bid_amount == bid_amount
 
         # cleanup
-        assert flipper.deal(kick).transact()
-        assert flipper.bids(kick).bid == Rad(0)
+        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(0)
 
     def test_should_obey_gas_price_provided_by_the_model(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
 
         # when
-        self.simulate_model_bid(self.mcd, self.collateral, model, price=Wad.from_number(15.0), gas_price=175000)
+        self.simulate_model_bid(self.geb, self.collateral, model, price=Wad.from_number(15.0), gas_price=175000)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.collateral.flipper.bids(kick).bid == Rad(Wad.from_number(15.0) * tend_lot)
+        assert self.collateral.collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, kick):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         (model, model_factory) = models(self.keeper, kick)
 
         # when
-        self.simulate_model_bid(self.mcd, self.collateral, model, price=Wad.from_number(16.0))
+        self.simulate_model_bid(self.geb, self.collateral, model, price=Wad.from_number(16.0))
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(Wad.from_number(16.0) * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(16.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     def test_should_change_gas_strategy_when_model_output_changes(self, kick):
         # given
-        flipper = self.collateral.flipper
+        collateral_auction_house = self.collateral.collateral_auction_house
         (model, model_factory) = models(self.keeper, kick)
 
         # when
         first_bid = Wad.from_number(3)
-        self.simulate_model_bid(self.mcd, self.collateral, model=model, price=first_bid, gas_price=2000)
+        self.simulate_model_bid(self.geb, self.collateral, model=model, price=first_bid, gas_price=2000)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
@@ -815,32 +814,32 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
         # when
         second_bid = Wad.from_number(6)
-        self.simulate_model_bid(self.mcd, self.collateral, model=model, price=second_bid)
+        self.simulate_model_bid(self.geb, self.collateral, model=model, price=second_bid)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(second_bid * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(second_bid * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
         # when
         third_bid = Wad.from_number(9)
         new_gas_price = int(self.default_gas_price*1.25)
-        self.simulate_model_bid(self.mcd, self.collateral, model=model, price=third_bid, gas_price=new_gas_price)
+        self.simulate_model_bid(self.geb, self.collateral, model=model, price=third_bid, gas_price=new_gas_price)
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert flipper.bids(kick).bid == Rad(third_bid * tend_lot)
+        assert collateral_auction_house.bids(kick).bid_amount == Rad(third_bid * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
 
         # cleanup
-        time_travel_by(self.web3, flipper.ttl() + 1)
-        assert flipper.deal(kick).transact()
+        time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
+        assert collateral_auction_house.settle_auction(kick).transact()
 
     @classmethod
     def teardown_class(cls):
-        flog_and_heal(web3(), mcd(web3()), past_blocks=1200, require_heal=False)
+        pop_debt_and_settle_debt(web3(), geb(web3()), past_blocks=1200, require_settle_debt=False)

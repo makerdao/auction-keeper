@@ -26,7 +26,7 @@ from mock import MagicMock
 from web3 import Web3
 
 
-from pymaker import Receipt, Transact
+from pyflex import Receipt, Transact
 
 
 def args(arguments: str) -> list:

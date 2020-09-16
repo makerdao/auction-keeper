@@ -24,9 +24,9 @@ from babel.numbers import format_decimal
 from texttable import Texttable
 from web3 import Web3
 
-from pymaker.deployment import DssDeployment
-from pymaker.dss import Ilk, Collateral
-from pymaker import Address, Wad
+from pyflex.deployment import GfDeployment
+from pyflex.dss import Ilk, Collateral
+from pyflex import Address, Wad
 
 parser = argparse.ArgumentParser(prog='auction-keeper')
 parser.add_argument("--rpc-host", type=str, default="localhost", help="JSON-RPC host (default: `localhost')")
@@ -76,7 +76,7 @@ dss = """
 if arguments.json_from:
     with open(arguments.json_from) as file:
         dss = file.read()
-d = DssDeployment.from_json(web3=w3, conf=dss)
+d = GfDeployment.from_json(web3=w3, conf=dss)
 
 
 def format_amount(amount):
