@@ -83,7 +83,7 @@ def wrap_eth(geb: GfDeployment, address: Address, amount: Wad):
 
     collateral = geb.collaterals['ETH-A']
     assert isinstance(collateral.collateral, DSEthToken)
-    assert collateral.gem.deposit(amount).transact(from_address=address)
+    assert collateral.collateral.deposit(amount).transact(from_address=address)
 
 
 def mint_prot(prot: DSToken, recipient_address: Address, amount: Wad):
@@ -220,12 +220,12 @@ def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, 
 
     # Add collateral to gal vault if necessary
     c.approve(auction_income_recipient_address)
-    token = Token(c.collateral_type.name, c.gem.address, c.adapter.dec())
+    token = Token(c.collateral_type.name, c.collateral.address, c.adapter.decimals())
     print(f"collateral_amount={collateral_amount} ink={safe.locked_collateral}")
     delta_collateral = collateral_amount - safe.locked_collateral
     if delta_collateral > Wad(0):
-        safe_engine_balance = geb.safe_engine.gem(c.collateral_type, auction_income_recipient_address)
-        balance = token.normalize_amount(c.gem.balance_of(auction_income_recipient_address))
+        safe_engine_balance = geb.safe_engine.token_collateral(c.collateral_type, auction_income_recipient_address)
+        balance = token.normalize_amount(c.collateral.balance_of(auction_income_recipient_address))
         print(f"before join: delta_collateral={delta_collateral} safe_engine_balance={safe_engine_balance} balance={balance} safe_engine_gap={delta_collateral - safe_engine_balance}")
         if safe_engine_balance < delta_collateral:
             safe_engine_gap = delta_collateral - safe_engine_balance
@@ -238,7 +238,7 @@ def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, 
             if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
                 amount_to_join += token.unnormalize_amount(token.min_amount)
             assert c.adapter.join(auction_income_recipient_address, amount_to_join).transact(from_address=auction_income_recipient_address)
-        safe_engine_balance = geb.safe_engine.gem(c.collateral_type, auction_income_recipient_address)
+        safe_engine_balance = geb.safe_engine.token_collateral(c.collateral_type, auction_income_recipient_address)
         print(f"after join: delta_collateral={delta_collateral} safe_engine_balance={safe_engine_balance} balance={balance} safe_engine_gap={delta_collateral - safe_engine_balance}")
         assert safe_engine_balance >= delta_collateral
         assert geb.safe_engine.frob(c.collateral_type, auction_income_recipient_address, delta_collateral, Wad(0)).transact(from_address=auction_income_recipient_address)
@@ -321,7 +321,7 @@ def pop_debt_and_settle_debt(web3: Web3, geb: GfDeployment, past_blocks=8, cance
             assert geb.accounting_engine.debt_queue_of(era_liquidation) == Rad(0)
 
     # Ensure there is no on-auction debt which a previous test failed to clean up
-    if cancle_auctioned_debt and geb.accounting_engine.total_on_auction_debt() > Rad.from_number(0):
+    if cancel_auctioned_debt and geb.accounting_engine.total_on_auction_debt() > Rad.from_number(0):
         assert geb.accounting_engine.cancel_auctioned_debt_with_surplus(geb.accounting_engine.total_on_auction_debt()).transact()
         assert geb.accounting_engine.total_on_auction_debt() == Rad.from_number(0)
 

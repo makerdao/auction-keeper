@@ -38,19 +38,19 @@ bid_size_small = Wad(2000)
 
 
 @pytest.fixture()
-def auction_id(geb, c: Collateral, gal_address) -> int:
+def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
     # Ensure we start with a clean safe
-    safe = geb.safe_engine.safe(c.collateral_type, gal_address)
+    safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
     assert safe.collateral_type == Wad(0)
     assert safe.generated_debt == Wad(0)
 
     # liquidate gal SAFE
-    unsafe_safe = create_unsafe_safe(geb, c, bid_size, gal_address)
+    unsafe_safe = create_unsafe_safe(geb, c, bid_size, auction_income_recipient_address)
     return liquidate(geb, c, unsafe_safe)
 
 @pytest.fixture()
-def auction_small(geb, c: Collateral, gal_address) -> int:
-    unsafe_safe = create_unsafe_safe(geb, c, bid_size_small, gal_address)
+def auction_small(geb, c: Collateral, auction_income_recipient_address) -> int:
+    unsafe_safe = create_unsafe_safe(geb, c, bid_size_small, auction_income_recipient_address)
     return liquidate(geb, c, unsafe_safe)
 
 
@@ -150,23 +150,23 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
         assert self.keeper.collateral_auction_house.address == self.collateral.collateral_auction_house.address
 
-    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_start(self, auction_id, other_address):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
         self.keeper.check_all_auctions()
         wait_for_other_threads()
-        initial_bid = self.collateral.collateral_auction_house.bids(kick)
+        initial_bid = self.collateral.collateral_auction_house.bids(auction_id)
         # then
         model_factory.create_model.assert_called_once_with(Parameters(collateral_auction_house=collateral_auction_house.address,
                                                                       surplus_auction_house=None,
                                                                       debt_auction_house=None,
-                                                                      id=kick))
+                                                                      id=auction_id))
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == kick
+        assert status.id == auction_id
         assert status.collateral_auction_house == collateral_auction_house.address
         assert status.surplus_auction_house is None
         assert status.debt_auction_house is None
@@ -183,14 +183,14 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         self.keeper.check_all_auctions()
-        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address,
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address,
                                                Rad.from_number(80))
-        collateral_auction_house.settle_auction(kick).transact(from_address=other_address)
+        collateral_auction_house.settle_auction(auction_id).transact(from_address=other_address)
 
-    def test_should_provide_model_with_updated_info_after_our_own_bid(self, kick):
+    def test_should_provide_model_with_updated_info_after_our_own_bid(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -200,7 +200,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert model.send_status.call_count == 1
 
         # when
-        initial_bid = collateral_auction_house.bids(kick)
+        initial_bid = collateral_auction_house.bids(auction_id)
         our_price = Wad.from_number(30)
         our_bid = our_price * initial_bid.amount_to_sell
         reserve_system_coin(self.geb, self.collateral, self.keeper_address, our_bid)
@@ -217,7 +217,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert model.send_status.call_count > 1
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == kick
+        assert status.id == auction_id
         assert status.collateral_auction_house == collateral_auction_house.address
         assert status.surplus_auction_house is None
         assert status.debt_auction_house is None
@@ -233,12 +233,12 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, kick, other_address):
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, auction_id, other_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -248,7 +248,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
 
         # when
         collateral_auction_house.approve(collateral_auction_house.vat(), approval_function=approve_safe_modification_directly(from_address=other_address))
-        previous_bid = collateral_auction_house.bids(kick)
+        previous_bid = collateral_auction_house.bids(auction_id)
         new_bid_amount = Rad.from_number(80)
         self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, model.id, other_address, new_bid_amount)
         # and
@@ -258,7 +258,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert model.send_status.call_count > 1
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == kick
+        assert status.id == auction_id
         assert status.collateral_auction_house == collateral_auction_house.address
         assert status.surplus_auction_house is None
         assert status.debt_auction_house is None
@@ -272,10 +272,10 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert status.bid_expiry > status.era
         assert status.price == (Wad(new_bid_amount) / previous_bid.amount_to_sell)
 
-    def test_should_restart_if_auction_expired_due_to_total_auction_length(self, kick):
+    def test_should_restart_if_auction_expired_due_to_total_auction_length(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -294,7 +294,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         model.terminate.assert_not_called()
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(15.0), 2)
 
         # cleanup
@@ -302,9 +302,9 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
 
-    def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, kick, other_address):
+    def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, auction_id, other_address):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -317,7 +317,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # when
         collateral_auction_house.approve(collateral_auction_house.vat(), approval_function=approve_safe_modification_directly(from_address=other_address))
         new_bid_amount = Rad.from_number(85)
-        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, new_bid_amount)
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, new_bid_amount)
         # and
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
@@ -328,11 +328,11 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
         # cleanup
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_terminate_model_if_auction_is_settled(self, kick, other_address):
+    def test_should_terminate_model_if_auction_is_settled(self, auction_id, other_address):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -343,11 +343,11 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, Rad.from_number(90))
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(90))
         # and
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
-        collateral_auction_house.settle_auction(kick).transact(from_address=other_address)
+        collateral_auction_house.settle_auction(auction_id).transact(from_address=other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -355,17 +355,17 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    def test_should_not_instantiate_model_if_auction_is_settled(self, kick, other_address):
+    def test_should_not_instantiate_model_if_auction_is_settled(self, auction_id, other_address):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address,
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address,
                                                Rad.from_number(90))
         # and
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
-        collateral_auction_house.settle_auction(kick).transact(from_address=other_address)
+        collateral_auction_house.settle_auction(auction_id).transact(from_address=other_address)
 
         # when
         self.keeper.check_all_auctions()
@@ -385,9 +385,9 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # then
         assert self.web3.eth.blockNumber == previous_block_number
 
-    def test_should_make_initial_bid(self, kick):
+    def test_should_make_initial_bid(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -397,20 +397,20 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(16.0), 2)
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_bid_even_if_there_is_already_a_bidder(self, kick, other_address):
+    def test_should_bid_even_if_there_is_already_a_bidder(self, auction_id, other_address):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, Rad.from_number(21))
-        assert collateral_auction_house.bids(kick).bid == Rad.from_number(21)
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(21))
+        assert collateral_auction_house.bids(auction_id).bid == Rad.from_number(21)
 
         # when
         self.simulate_model_bid(self.geb, self.collateral, model, Wad.from_number(23))
@@ -419,17 +419,17 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(23), 2)
 
-    def test_should_sequentially_increase_bid_size_and_decrease_sold_amount_if_price_takes_us_to_the_decrease_sold_amount_phrase(self, kick, keeper_address):
+    def test_should_sequentially_increase_bid_size_and_decrease_sold_amount_if_price_takes_us_to_the_decrease_sold_amount_phrase(self, auction_id, keeper_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         our_bid_price = Wad.from_number(150)
-        assert our_bid_price * collateral_auction_house.bids(kick).amount_to_sell > Wad(collateral_auction_house.bids(1).amount_to_raise)
+        assert our_bid_price * collateral_auction_house.bids(auction_id).amount_to_sell > Wad(collateral_auction_house.bids(1).amount_to_raise)
 
         self.simulate_model_bid(self.geb, self.collateral, model, our_bid_price)
         # and
@@ -437,7 +437,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell == bid_size
 
@@ -447,18 +447,18 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell < bid_size
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad(our_bid_price), 2)
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_use_most_up_to_date_price_for_decrease_sold_amount_even_if_it_gets_updated_during_increase_bid_size(self, kick):
+    def test_should_use_most_up_to_date_price_for_decrease_sold_amount_even_if_it_gets_updated_during_increase_bid_size(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -469,7 +469,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell == bid_size
 
@@ -480,21 +480,21 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
         wait_for_other_threads()
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell == Wad(auction.bid_amount / Rad(second_bid_price))
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_only_increase_bid_size_if_bid_is_only_slightly_above_amount_to_raise(self, kick):
+    def test_should_only_increase_bid_size_if_bid_is_only_slightly_above_amount_to_raise(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         bid_price = Wad(auction.amount_to_raise) + Wad.from_number(0.1)
         self.simulate_model_bid(self.geb, self.collateral, model, bid_price)
         # and
@@ -502,7 +502,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell == bid_size
 
@@ -510,23 +510,23 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell == bid_size
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_increase_bid_size_up_to_exactly_amount_to_raise_if_bid_is_only_slightly_below_amount_to_raise(self, kick):
+    def test_should_increase_bid_size_up_to_exactly_amount_to_raise_if_bid_is_only_slightly_below_amount_to_raise(self, auction_id):
         """I assume the point of this test is that the bid increment should be ignored when `increase_bid_size`ing the `amount_to_raise`
         to transition the auction into _decrease_sold_amount_ phase."""
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == Rad(0)
         bid_price = Wad(auction.amount_to_raise / Rad(bid_size)) - Wad.from_number(0.01)
         self.simulate_model_bid(self.geb, self.collateral, model, bid_price)
@@ -535,7 +535,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount < auction.amount_to_raise
         assert round(auction.bid_amount, 2) == round(Rad(bid_price * bid_size), 2)
         assert auction.amount_to_sell == bid_size
@@ -548,17 +548,17 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = collateral_auction_house.bids(kick)
+        auction = collateral_auction_house.bids(auction_id)
         assert auction.bid_amount == auction.amount_to_raise
         assert auction.amount_to_sell == bid_size
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
+    def test_should_overbid_itself_if_model_has_updated_the_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -569,7 +569,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(first_bid * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(first_bid * bid_size)
 
         # when
         second_bid = Wad.from_number(20.0)
@@ -578,15 +578,15 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(second_bid * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(second_bid * bid_size)
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, kick):
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -606,16 +606,16 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(bid_price * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(bid_price * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, kick):
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
 
         # when
@@ -634,18 +634,18 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(20.0) * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(Wad.from_number(20.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, kick):
+    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, auction_id):
         """ Assuming we want all bids to be submitted as soon as output from the model is parsed,
         this test seems impractical.  In real applications, the model would be unable to submit a lower bid. """
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
         assert self.geb.web3 == self.web3
 
@@ -666,12 +666,12 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
     def test_should_not_increase_bid_size_on_rounding_errors_with_small_amounts(self, auction_small):
         # given
@@ -743,13 +743,13 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         collateral_after = self.collateral.collateral.balance_of(self.keeper_address)
         assert collateral_before < collateral_after
 
-    def test_should_not_settle_auction_when_auction_finished_but_somebody_else_won(self, kick, other_address):
+    def test_should_not_settle_auction_when_auction_finished_but_somebody_else_won(self, auction_id, other_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
         bid_amount = Rad.from_number(66)
-        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, kick, other_address, bid_amount)
-        assert collateral_auction_house.bids(kick).bid_amount == bid_amount
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, bid_amount)
+        assert collateral_auction_house.bids(auction_id).bid_amount == bid_amount
 
         # when
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
@@ -757,15 +757,15 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then ensure the bid hasn't been deleted
-        assert collateral_auction_house.bids(kick).bid_amount == bid_amount
+        assert collateral_auction_house.bids(auction_id).bid_amount == bid_amount
 
         # cleanup
-        assert collateral_auction_house.settle_auction(kick).transact()
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(0)
+        assert collateral_auction_house.settle_auction(auction_id).transact()
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(0)
 
-    def test_should_obey_gas_price_provided_by_the_model(self, kick):
+    def test_should_obey_gas_price_provided_by_the_model(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.simulate_model_bid(self.geb, self.collateral, model, price=Wad.from_number(15.0), gas_price=175000)
@@ -774,13 +774,13 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.collateral.collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
+        assert self.collateral.collateral_auction_house.bids(auction_id).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, kick):
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.simulate_model_bid(self.geb, self.collateral, model, price=Wad.from_number(16.0))
@@ -789,18 +789,18 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(Wad.from_number(16.0) * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(Wad.from_number(16.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+    def test_should_change_gas_strategy_when_model_output_changes(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         first_bid = Wad.from_number(3)
@@ -820,7 +820,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(second_bid * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(second_bid * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
@@ -833,12 +833,12 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(kick).bid_amount == Rad(third_bid * bid_size)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad(third_bid * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
 
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
-        assert collateral_auction_house.settle_auction(kick).transact()
+        assert collateral_auction_house.settle_auction(auction_id).transact()
 
     @classmethod
     def teardown_class(cls):
