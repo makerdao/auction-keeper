@@ -22,8 +22,8 @@ import sys
 from datetime import datetime, timedelta
 from web3 import Web3, HTTPProvider
 
-from auction_keeper.urn_history import UrnHistory
-from pymaker.deployment import DssDeployment
+from auction_keeper.safe_history import SAFEHistory
+from pyflex.deployment import GfDeployment
 
 
 logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s', level=logging.DEBUG)
@@ -35,18 +35,18 @@ logging.getLogger("requests").setLevel(logging.INFO)
 web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
 vulcanize_endpoint = sys.argv[1]
 vulcanize_key = sys.argv[2]
-mcd = DssDeployment.from_node(web3)
+geb = GfDeployment.from_node(web3)
 collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
-ilk = mcd.collaterals[collateral_type].ilk
+collateral_typre= geb.collaterals[collateral_type].collateral_type
 # on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
 from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
 
 
-def wait(minutes_to_wait: int, uh: UrnHistory):
+def wait(minutes_to_wait: int, sh: SAFEHistory):
     while minutes_to_wait > 0:
         print(f"Testing cache for another {minutes_to_wait} minutes")
         state_update_started = datetime.now()
-        uh.get_urns()
+        sh.get_safes()
         minutes_elapsed = int((datetime.now() - state_update_started).seconds / 60)
         minutes_to_wait -= minutes_elapsed
 
@@ -54,51 +54,51 @@ def wait(minutes_to_wait: int, uh: UrnHistory):
 # Retrieve data from chain
 started = datetime.now()
 print(f"Connecting to {sys.argv[1]}...")
-uh = UrnHistory(web3, mcd, ilk, from_block, None, None)
-urns_logs = uh.get_urns()
+sh = SAFEHistory(web3, geb, collateral_type, from_block, None, None)
+safes_logs = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-wait(30, uh)
+print(f"Found {len(safes_logs)} safes from block {from_block} in {elapsed.seconds} seconds")
+wait(30, sh)
 
 # Retrieve data from Vulcanize
 started = datetime.now()
 print(f"Connecting to {vulcanize_endpoint}...")
-uh = UrnHistory(web3, mcd, ilk, None, vulcanize_endpoint, vulcanize_key)
-urns_vdb = uh.get_urns()
+uh = SAFEHistory(web3, geb, collateral_type, None, vulcanize_endpoint, vulcanize_key)
+safes_vdb = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+print(f"Found {len(safes_vdb)} safes from Vulcanize in {elapsed.seconds} seconds")
 
 
 # Reconcile the data
 mismatches = 0
 missing = 0
-total_art_logs = 0
-total_art_vdb = 0
-csv = "Urn,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt\n"
+total_generated_debt_logs = 0
+total_generated_debt_vdb = 0
+csv = "SAFE,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt\n"
 
-for key, value in urns_logs.items():
-    assert value.ilk.name == ilk.name
-    if key in urns_vdb:
-        if value.ink != urns_vdb[key].ink or value.art != urns_vdb[key].art:
-            csv += f"{key.address},{value.ink},{value.art},{urns_vdb[key].ink},{urns_vdb[key].art}\n"
+for key, value in safes_logs.items():
+    assert value.collateral_type.name == collateral_type.name
+    if key in safes_vdb:
+        if value.locked_collateral != safes_vdb[key].locked_collateral or value.generated_debt != safes_vdb[key].generated_debt:
+            csv += f"{key.address},{value.locked_collateral},{value.generated_debt},{safes_vdb[key].ink},{safes_vdb[key].generated_debt}\n"
             mismatches += 1
     else:
-        print(f"vdb is missing urn {key}")
-        csv += f"{key.address},{value.ink},{value.art},,\n"
+        print(f"vdb is missing safe {key}")
+        csv += f"{key.address},{value.locked_collateral},{value.generated_debt},,\n"
         missing += 1
-    total_art_logs += float(value.art)
+    total_generated_debt_logs += float(value.generated_debt)
 
-for key, value in urns_vdb.items():
-    assert value.ilk.name == ilk.name
-    if key not in urns_logs:
-        print(f"logs is missing urn {key}")
+for key, value in safes_vdb.items():
+    assert value.collateral_type.name == collateral_type.name
+    if key not in safes_logs:
+        print(f"logs is missing safe {key}")
         missing += 1
-    total_art_vdb += float(value.art)
+    total_generated_debt_vdb += float(value.generated_debt)
 
-with open(f"urn-reconciliation-{collateral_type}.csv", "w") as file:
+with open(f"safe-reconciliation-{collateral_type}.csv", "w") as file:
     file.write(csv)
 
-total = max(len(urns_vdb), len(urns_logs))
-print(f'Observed {mismatches} mismatched urns ({mismatches/total:.0%}) and '
-      f'{missing} missing urns ({missing/total:.0%})')
-print(f"Total art from logs: {total_art_logs}, from vdb: {total_art_vdb}")
+total = max(len(safes_vdb), len(safes_logs))
+print(f'Observed {mismatches} mismatched safes ({mismatches/total:.0%}) and '
+      f'{missing} missing safes ({missing/total:.0%})')
+print(f"Total generated_debt from logs: {total_generated_debt_logs}, from vdb: {total_generated_debt_vdb}")

@@ -25,7 +25,7 @@ from pyflex.numeric import Wad, Ray, Rad
 from tests.conftest import keeper_address, geb, our_address, web3, wrap_eth, purchase_system_coin
 from tests.helper import args
 
-class TestSafeEngineSystemCoin:
+class TestSAFEEngineSystemCoin:
     def setup_method(self):
         self.web3 = web3()
         self.geb = geb(web3())
@@ -39,11 +39,11 @@ class TestSafeEngineSystemCoin:
         return self.geb.system_coin.balance_of(self.keeper_address)
 
     def get_system_coin_safe_engine_balance(self) -> Wad:
-        print("self.geb.safe_engine.system_coin(self.keeper_address)")
-        print(self.geb.safe_engine.system_coin(self.keeper_address))
-        print(type(self.geb.safe_engine.system_coin(self.keeper_address)))
-        Wad(self.geb.safe_engine.system_coin(self.keeper_address))
-        return Wad(self.geb.safe_engine.system_coin(self.keeper_address))
+        print("self.geb.safe_engine.coin_balance(self.keeper_address)")
+        print(self.geb.safe_engine.coin_balance(self.keeper_address))
+        print(type(self.geb.safe_engine.coin_balance(self.keeper_address)))
+        Wad(self.geb.safe_engine.coin_balance(self.keeper_address))
+        return Wad(self.geb.safe_engine.coin_balance(self.keeper_address))
 
     def get_collateral_token_balance(self) -> Wad:
         return self.collateral.collateral.balance_of(self.keeper_address)
@@ -57,7 +57,7 @@ class TestSafeEngineSystemCoin:
         assert self.geb.system_coin.transfer(self.our_address, self.get_system_coin_token_balance()).transact()
 
 
-class TestSafeEngineSystemCoinTarget(TestSafeEngineSystemCoin):
+class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
     def create_keeper(self, system_coin: float):
         assert isinstance(system_coin, float)
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
@@ -91,7 +91,7 @@ class TestSafeEngineSystemCoinTarget(TestSafeEngineSystemCoin):
         assert token_balance_before == self.get_system_coin_token_balance()
         assert safe_engine_balance_before == self.get_system_coin_safe_engine_balance()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_join_enough(self, keeper_address):
         # given purchasing some system_coin
         purchase_system_coin(Wad.from_number(237), keeper_address)
@@ -105,7 +105,7 @@ class TestSafeEngineSystemCoinTarget(TestSafeEngineSystemCoin):
         assert token_balance_before > self.get_system_coin_token_balance()
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(153)
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_join_not_enough(self):
         # given balances before
         assert self.get_system_coin_token_balance() == Wad.from_number(84)
@@ -118,7 +118,7 @@ class TestSafeEngineSystemCoinTarget(TestSafeEngineSystemCoin):
         assert self.get_system_coin_token_balance() == Wad(0)
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(237)
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_exit_some(self):
         # given balances before
         assert self.get_system_coin_token_balance() == Wad(0)
@@ -131,7 +131,7 @@ class TestSafeEngineSystemCoinTarget(TestSafeEngineSystemCoin):
         assert self.get_system_coin_token_balance() == Wad.from_number(37)
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(200)
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_exit_all(self):
         # given balances before
         assert self.get_system_coin_token_balance() == Wad.from_number(37)
@@ -159,7 +159,7 @@ class TestSafeEngineSystemCoinTarget(TestSafeEngineSystemCoin):
 
 
 @pytest.mark.skip("tmp")
-class TestEmptySafeEngineOnExit(TestSafeEngineSystemCoin):
+class TestEmptySAFEEngineOnExit(TestSAFEEngineSystemCoin):
     def create_keeper(self, exit_system_coin_on_shutdown: bool, exit_collateral_on_shutdown: bool):
         assert isinstance(exit_system_coin_on_shutdown, bool)
         assert isinstance(exit_collateral_on_shutdown, bool)
@@ -258,7 +258,7 @@ class TestEmptySafeEngineOnExit(TestSafeEngineSystemCoin):
 
 
 @pytest.mark.skip("tmp")
-class TestRebalance(TestSafeEngineSystemCoin):
+class TestRebalance(TestSAFEEngineSystemCoin):
     def create_keeper(self, mocker, system_coin_target="all"):
         # Create a keeper
         mocker.patch("web3.net.Net.peer_count", return_value=1)
@@ -284,7 +284,7 @@ class TestRebalance(TestSafeEngineSystemCoin):
         self.keeper.lifecycle.terminate("unit test completed")
         self.thread.join()
 
-        # HACK: Lifecycle leaks threads; this needs to be fixed in pymaker
+        # HACK: Lifecycle leaks threads; this needs to be fixed in pyflex
         import ctypes
         while threading.active_count() > 1:
             for thread in threading.enumerate():

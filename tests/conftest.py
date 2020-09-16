@@ -26,7 +26,7 @@ from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
 from pyflex import Address, web3_via_http
 from pyflex.deployment import GfDeployment
-from pyflex.gf import Collateral, CollateralType, Safe
+from pyflex.gf import Collateral, CollateralType, SAFE
 from pyflex.feed import DSValue
 from pyflex.gas import NodeAwareGasPrice
 from pyflex.keys import register_keys
@@ -37,7 +37,7 @@ from pyflex.token import DSEthToken, DSToken
 
 @pytest.fixture(scope="session")
 def web3():
-    # These details are specific to the MCD testchain used for pyflex unit tests.
+    # These details are specific to the GEB testchain used for pyflex unit tests.
     web3 = web3_via_http("http://0.0.0.0:8545", 3, 100)
     web3.eth.defaultAccount = "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
     register_keys(web3,
@@ -82,7 +82,7 @@ def wrap_eth(geb: GfDeployment, address: Address, amount: Wad):
     assert amount > Wad(0)
 
     collateral = geb.collaterals['ETH-A']
-    assert isinstance(collateral.gem, DSEthToken)
+    assert isinstance(collateral.collateral, DSEthToken)
     assert collateral.gem.deposit(amount).transact(from_address=address)
 
 
@@ -150,7 +150,7 @@ def max_delta_debt(geb: GfDeployment, collateral: Collateral, our_address: Addre
         delta_debt = Wad(collateral_type.delta_ceiling - Rad(safe.generated_debt))
 
     # prevent the change in debt from exceeding the total debt ceiling
-    debt = geb.safe_engine.debt() + Rad(collateral_type.accumulated_rate * delta_debt)
+    debt = geb.safe_engine.global_debt() + Rad(collateral_type.accumulated_rate * delta_debt)
     debt_ceiling = Rad(geb.safe_engine.debt_ceiling())
     if (debt + Rad(delta_debt)) >= debt_ceiling:
         print(f"debt {debt} + delta_debt {delta_debt} >= {debt_ceiling}; max_delta_debt is avoiding total debt ceiling")
@@ -198,18 +198,18 @@ def purchase_system_coin(amount: Wad, recipient: Address):
     assert m.system_coin.transfer_from(seller, recipient, amount).transact(from_address=seller)
 
 
-def is_safe_safe(collateral_type: CollateralType, safe: Safe) -> bool:
-    assert isinstance(safe, Safe)
+def is_safe_safe(collateral_type: CollateralType, safe: SAFE) -> bool:
+    assert isinstance(safe, SAFE)
     assert safe.generated_debt is not None
     assert collateral_type.accumulated_rate is not None
     assert safe.locked_collateral is not None
     assert collateral_type.safety_price is not None
 
     #print(f'art={safe.generated_debt} * rate={collateral_type.rate} <=? ink={safe.locked_collateral} * spot={collateral_type.spot}')
-    return (Ray(safe.generated_debt) * collateral_type.accumulated_rate) <= Ray(safe.safe_collateral) * collateral_type.safety_price
+    return (Ray(safe.generated_debt) * collateral_type.accumulated_rate) <= Ray(safe.locked_collateral) * collateral_type.safety_price
 
 def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
-                     draw_system_coin=True) -> Safe:
+                     draw_system_coin=True) -> SAFE:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(auction_income_recipient_address, Address)
@@ -258,7 +258,7 @@ def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, 
 
 
 def create_unsafe_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
-                      draw_system_coin=True) -> Safe:
+                      draw_system_coin=True) -> SAFE:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(auction_income_recipient_address, Address)
@@ -274,7 +274,7 @@ def create_unsafe_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad,
     assert not is_safe_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
     return safe
 
-def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_recipient_address: Address) -> Safe:
+def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_recipient_address: Address) -> SAFE:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(auction_income_recipient_address, Address)
@@ -298,22 +298,21 @@ def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_re
     return geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
 
 
-def bite(geb: GfDeployment, c: Collateral, unsafe_safe: Safe) -> int:
+def liquidate(geb: GfDeployment, c: Collateral, unsafe_safe: SAFE) -> int:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
-    assert isinstance(unsafe_safe, Safe)
+    assert isinstance(unsafe_safe, SAFE)
 
-    assert geb.cat.bite(unsafe_safe.collateral_type, unsafe_safe).transact()
-    bites = geb.cat.past_liquidations(1)
-    assert len(bites) == 1
+    assert geb.liquidation_engine.liquidate(unsafe_safe.collateral_type, unsafe_safe).transact()
+    liquidations = geb.liquidation_engine.past_liquidations(1)
+    assert len(liquidations) == 1
     return c.collateral_auction_house.auctions_started()
-
 
 def pop_debt_and_settle_debt(web3: Web3, geb: GfDeployment, past_blocks=8, cancel_auctioned_debt=True, require_settle_debt=True):
     # Raise debt from the queue (note that accounting_engine.wait is 0 on our testchain)
     liquidations = geb.liquidation_engine.past_liquidations(past_blocks)
     for liquidation in liquidations:
-        era_liquidation = bite.era(web3)
+        era_liquidation = liquidation.era(web3)
         debt_queue = geb.accounting_engine.debt_queue_of(era_liquidation)
         if debt_queue > Rad(0):
             print(f'popping debt era={era_liquidation} from block={liquidation.raw["blockNumber"]} '
@@ -322,7 +321,7 @@ def pop_debt_and_settle_debt(web3: Web3, geb: GfDeployment, past_blocks=8, cance
             assert geb.accounting_engine.debt_queue_of(era_liquidation) == Rad(0)
 
     # Ensure there is no on-auction debt which a previous test failed to clean up
-    if cancle_auctioned_debtt and geb.accounting_engine.total_on_auction_debt() > Rad.from_number(0):
+    if cancle_auctioned_debt and geb.accounting_engine.total_on_auction_debt() > Rad.from_number(0):
         assert geb.accounting_engine.cancel_auctioned_debt_with_surplus(geb.accounting_engine.total_on_auction_debt()).transact()
         assert geb.accounting_engine.total_on_auction_debt() == Rad.from_number(0)
 

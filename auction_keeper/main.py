@@ -39,7 +39,7 @@ from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy, EnglishCollateralAuctionStrategy
-from auction_keeper.safe_history import SafeHistory
+from auction_keeper.safe_history import SAFEHistory
 
 
 class AuctionKeeper:
@@ -69,7 +69,7 @@ class AuctionKeeper:
                             help="Do not take opportunities to create new auctions")
         parser.add_argument('--start-auctions-only', dest='bid_on_auctions', action='store_false',
                             help="Do not bid on auctions")
-        parser.add_argument('--settle-auction-for', type=str, nargs="+",
+        parser.add_argument('--settle-auctions-for', type=str, nargs="+",
                             help="List of addresses for which auctions will be settled")
 
         parser.add_argument('--min-auction', type=int, default=0,
@@ -98,11 +98,11 @@ class AuctionKeeper:
                                  "(set to block where MCD was deployed)")
 
         parser.add_argument('--safe-engine-system-coin-target', type=str,
-                            help="Amount of system coin to keep in the SafeEngine contract or ALL to join entire token balance")
+                            help="Amount of system coin to keep in the SAFEEngine contract or ALL to join entire token balance")
         parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
-                            help="Retain system coin in the Safe Engine on exit, saving gas when restarting the keeper")
+                            help="Retain system coin in the SAFE Engine on exit, saving gas when restarting the keeper")
         parser.add_argument('--keep-collateral-in-safe-engine-on-exit', dest='exit_colllateral_on_shutdown', action='store_false',
-                            help="Retain collateral in the Safe Engine on exit")
+                            help="Retain collateral in the SAFE Engine on exit")
         parser.add_argument('--return-collateral-interval', type=int, default=300,
                             help="Period of timer [in seconds] used to check and exit won collateral")
 
@@ -151,9 +151,9 @@ class AuctionKeeper:
         # Configure core and token contracts
         self.geb = GfDeployment.from_node(web3=self.web3)
         self.safe_engine = self.geb.safe_engine
-        self.liquidation_engine = self.geb.cat
-        self.accounting_engine = self.geb.vow
-        self.prot = self.geb.mkr
+        self.liquidation_engine = self.geb.liquidation_engine
+        self.accounting_engine = self.geb.accounting_engine
+        self.prot = self.geb.prot
         self.system_coin_join = self.geb.system_coin_adapter
         if self.arguments.type == 'collateral':
             self.collateral = self.geb.collaterals[self.arguments.collateral_type]
@@ -171,14 +171,14 @@ class AuctionKeeper:
         self.safe_history = None
         if self.collateral_auction_house:
             self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
-            self.strategy = FlipperStrategy(self.collateral_auction_house, self.min_collateral_lot)
+            self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
             if self.arguments.create_auctions:
-                self.safe_history = UrnHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
+                self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
                                               self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
         elif self.surplus_auction_house:
-            self.strategy = FlapperStrategy(self.surplus_auction_house, self.prot.address)
+            self.strategy = SurplusAuctionStrategy(self.surplus_auction_house, self.prot.address)
         elif self.debt_auction_house:
-            self.strategy = FlopperStrategy(self.debt_auction_house)
+            self.strategy = DebtAuctionStrategy(self.debt_auction_house)
         else:
             raise RuntimeError("Please specify auction type")
 
@@ -206,18 +206,18 @@ class AuctionKeeper:
         # Create gas strategy used for non-bids and bids which do not supply gas price
         self.gas_price = DynamicGasPrice(self.arguments, self.web3)
 
-        # Configure account(s) for which we'll deal auctions
-        self.deal_all = False
-        self.deal_for = set()
-        if self.arguments.deal_for is None:
-            self.deal_for.add(self.our_address)
-        elif len(self.arguments.deal_for) == 1 and self.arguments.deal_for[0].upper() in ["ALL", "NONE"]:
-            if self.arguments.deal_for[0].upper() == "ALL":
-                self.deal_all = True
-            # else no auctions will be dealt
-        elif len(self.arguments.deal_for) > 0:
-            for account in self.arguments.deal_for:
-                self.deal_for.add(Address(account))
+        # Configure account(s) for which we'll settle auctions
+        self.settle_all = False
+        self.settle_auctions_for = set()
+        if self.arguments.settle_auctions_for is None:
+            self.settle_auctions_for.add(self.our_address)
+        elif len(self.arguments.settle_auctions_for) == 1 and self.arguments.settle_auctions_for[0].upper() in ["ALL", "NONE"]:
+            if self.arguments.settle_auctions_for[0].upper() == "ALL":
+                self.settle_all = True
+            # else no auctions will be settled
+        elif len(self.arguments.settle_auctions_for) > 0:
+            for account in self.arguments.settle_auctions_for:
+                self.settle_auctions_for.add(Address(account))
 
         # reduce logspew
         logging.getLogger('urllib3').setLevel(logging.INFO)
@@ -236,7 +236,7 @@ class AuctionKeeper:
                 except (RequestException, ConnectionError, ValueError, AttributeError):
                     logging.exception("Error checking for opportunities to start an auction")
 
-            # Bid on and deal existing auctions
+            # Bid on and settle existing auctions
             try:
                 self.check_all_auctions()
             except (RequestException, ConnectionError, ValueError, AttributeError):
@@ -262,17 +262,17 @@ class AuctionKeeper:
 
     def auction_notice(self) -> str:
         if self.arguments.type == 'collateral':
-            return "--> Check all urns and kick off new auctions if any" + \
+            return "--> Check all safes and start new auctions if any" + \
                    " unsafe safes need to be bitten"
         else:
-            return "--> Check thresholds in Accounting Engine Contract and kick off new" + \
+            return "--> Check thresholds in Accounting Engine Contract and start new" + \
                   f" {self.arguments.type} auctions once reached"
 
     def startup(self):
         self.approve()
         self.rebalance_system_coin()
         if self.surplus_auction_house:
-            self.logger.info(f"MKR balance is {self.prot.balance_of(self.our_address)}")
+            self.logger.info(f"Prot balance is {self.prot.balance_of(self.our_address)}")
 
         notice_string = []
         if not self.arguments.create_auctions:
@@ -285,22 +285,22 @@ class AuctionKeeper:
             notice_string.append("--> Check all auctions being monitored and evaluate" + \
                                 f" bidding opportunity every {self.arguments.bid_check_interval} seconds")
 
-        if self.deal_all:
-            notice_string.append("--> Check all auctions and deal for any address")
-        elif len(self.deal_for) == 1:
-            notice_string.append(f"--> Check all auctions and deal for {list(self.deal_for)[0].address}")
-        elif len(self.deal_for) > 0:
-            notice_string.append(f"--> Check all auctions and deal for {[a.address for a in self.deal_for]} addresses")
+        if self.settle_all:
+            notice_string.append("--> Check all auctions and settle for any address")
+        elif len(self.settle_auctions_for) == 1:
+            notice_string.append(f"--> Check all auctions and settle for {list(self.settle_auctions_for)[0].address}")
+        elif len(self.settle_auctions_for) > 0:
+            notice_string.append(f"--> Check all auctions and settle auctions for {[a.address for a in self.settle_auctions_for]} addresses")
         else:
-            logging.info("Keeper will not deal auctions")
+            logging.info("Keeper will not settle auctions")
 
         if notice_string:
             logging.info("Keeper will perform the following operation(s) in parallel:")
             [logging.info(line) for line in notice_string]
 
             if self.collateral_auction_house and self.collateral_type and self.collateral_type.name == "ETH-A":
-                logging.info("*** When Keeper is dealing/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
-                logging.info("*** When Keeper is kicking, initializing safe history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
+                logging.info("*** When Keeper is settling/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
+                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
@@ -333,7 +333,7 @@ class AuctionKeeper:
         # Unlike rebalance_system_coin(), this doesn't join, and intentionally doesn't check debt_floor
         safe_engine_balance = Wad(self.safe_engine.coin_balance(self.our_address))
         if safe_engine_balance > Wad(0):
-            self.logger.info(f"Exiting {str(safe_engine_balance)} system coin from the Safe Engine before shutdown")
+            self.logger.info(f"Exiting {str(safe_engine_balance)} system coin from the SAFE Engine before shutdown")
             assert self.system_coin_join.exit(self.our_address, safe_engine_balance).transact(gas_price=self.gas_price)
 
     def auction_handled_by_this_shard(self, id: int) -> bool:
@@ -474,7 +474,7 @@ class AuctionKeeper:
         started = datetime.now()
         ignored_auctions = []
 
-        for id in range(self.arguments.min_auction, self.strategy.kicks() + 1):
+        for id in range(self.arguments.min_auction, self.strategy.auctions_started() + 1):
             if not self.auction_handled_by_this_shard(id):
                 continue
             with self.auctions_lock:
@@ -482,7 +482,7 @@ class AuctionKeeper:
                 if self.is_shutting_down():
                     return
 
-                # Check whether auction needs to be handled; deal the auction if appropriate
+                # Check whether auction needs to be handled; settle the auction if appropriate
                 if not self.check_auction(id):
                     continue
 
@@ -499,7 +499,7 @@ class AuctionKeeper:
         if len(ignored_auctions) > 0:
             logging.warning(f"Processing auctions {list(self.auctions.auctions.keys())}; ignoring {ignored_auctions}")
 
-        self.logger.info(f"Checked auctions {self.arguments.min_auction} to {self.strategy.kicks()} in " 
+        self.logger.info(f"Checked auctions {self.arguments.min_auction} to {self.strategy.auctions_started()} in " 
                          f"{(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
@@ -559,8 +559,8 @@ class AuctionKeeper:
             elif self.settle_auction_all or input.high_bidder in self.settle_auction_for:
                 self.strategy.settle_auction(id).transact(gas_price=self.gas_price)
 
-                # Upon winning a collateral or debt auction, we may need to replenish system coin to the Safe Engine.
-                # Upon winning a surplus auction, we may want to withdraw won system coin from the Safe Engine.
+                # Upon winning a collateral or debt auction, we may need to replenish system coin to the SAFE Engine.
+                # Upon winning a surplus auction, we may want to withdraw won system coin from the SAFE Engine.
                 self.rebalance_system_coin()
             else:
                 logging.debug(f"Not settling {id} with high_bidder={input.high_bidder}")
@@ -667,7 +667,7 @@ class AuctionKeeper:
         if self.collateral_auction_house or self.debt_auction_house:
             if not reservoir.check_bid_cost(id, cost):
                 if not already_rebalanced:
-                    # Try to synchronously join system coin the Safe Engine
+                    # Try to synchronously join system coin the SAFE Engine
                     if self.is_joining_system_coin:
                         self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                           "waiting for system coin to rebalance")
@@ -723,22 +723,22 @@ class AuctionKeeper:
         if system_coin_to_join >= debt_floor:
             # Join tokens to the safe_engine
             if token_balance >= system_coin_to_join:
-                self.logger.info(f"Joining {str(system_coin_to_join)} system coin to the Safe Engine")
+                self.logger.info(f"Joining {str(system_coin_to_join)} system coin to the SAFE Engine")
                 return self.join_system_coin(system_coin_to_join)
             elif token_balance > Wad(0):
                 self.logger.warning(f"Insufficient balance to maintain system coin target; joining {str(token_balance)} "
-                                    "system coin to the Safe Engine")
+                                    "system coin to the SAFE Engine")
                 return self.join_system_coin(token_balance)
             else:
-                self.logger.warning("Insufficient system coin is available to join to Safe Engine; cannot maintain Dai target")
+                self.logger.warning("Insufficient system coin is available to join to SAFE Engine; cannot maintain Dai target")
                 return Wad(0)
         elif system_coin_to_exit > debt_floor:
             # Exit system_coin from the safe_engine
-            self.logger.info(f"Exiting {str(system_coin_to_exit)} system coin from the Safe Engine")
+            self.logger.info(f"Exiting {str(system_coin_to_exit)} system coin from the SAFE Engine")
             assert self.system_coin_join.exit(self.our_address, system_coin_to_exit).transact(gas_price=self.gas_price)
             return system_coin_to_exit * -1
         self.logger.info(f"system coin token balance: {str(system_coin.balance_of(self.our_address))}, "
-                         f"Safe Engine balance: {self.safe_engine.coin_balance(self.our_address)}")
+                         f"SAFE Engine balance: {self.safe_engine.coin_balance(self.our_address)}")
 
     def join_system_coin(self, amount: Wad):
         assert isinstance(amount, Wad)
@@ -757,7 +757,7 @@ class AuctionKeeper:
         token = Token(self.collateral.collateral_type.name.split('-')[0], self.collateral.collateral.address, self.collateral.adapter.dec())
         safe_engine_balance = self.safe_engine.collateral(self.collateral_type, self.our_address)
         if safe_engine_balance > token.min_amount:
-            self.logger.info(f"Exiting {str(safe_engine_balance)} {self.collateral_type.name} from the Safe Engine")
+            self.logger.info(f"Exiting {str(safe_engine_balance)} {self.collateral_type.name} from the SAFE Engine")
             assert self.collateral_join.exit(self.our_address, token.unnormalize_amount(safe_engine_balance)).transact(gas_price=self.gas_price)
 
     @staticmethod

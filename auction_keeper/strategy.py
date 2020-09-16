@@ -64,7 +64,8 @@ class EnglishCollateralAuctionStrategy(Strategy):
 
     def approve(self, gas_price: GasPrice):
         assert isinstance(gas_price, GasPrice)
-        self.collateral_auction_house.approve(self.collateral_auction_house.safe_engine(), hope_directly(gas_price=gas_price))
+        #self.collateral_auction_house.approve(self.collateral_auction_house.safe_engine(), approve_safe_modification_directly(gas_price=gas_price))
+        self.collateral_auction_house.approve(self.collateral_auction_house.safe_engine(), approve_safe_modification_directly())
 
     def auctions_started(self) -> int:
         return self.collateral_auction_house.auctions_started()
@@ -181,11 +182,11 @@ class DebtAuctionStrategy(Strategy):
         assert isinstance(debt_auction_house, DebtAuctionHouse)
         super().__init__(debt_auction_house)
 
-        self.debt_auctoin_house = debt_auction_house
-        self.bid_increase = debt_auction_house.bid_increase()
+        self.debt_auction_house = debt_auction_house
+        self.bid_increase = debt_auction_house.bid_decrease()
 
     def approve(self, gas_price: GasPrice):
-        self.debt_auction_house.approve(self.debt_auction_house.safe_engine(), hope_directly(gas_price=gas_price))
+        self.debt_auction_house.approve(self.debt_auction_house.safe_engine(), approve_safe_modification_directly(gas_price=gas_price))
 
     def auctions_started(self) -> int:
         return self.debt_auction_house.auctions_started()

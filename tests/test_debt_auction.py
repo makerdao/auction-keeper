@@ -25,7 +25,7 @@ from auction_keeper.strategy import DebtAuctionStrategy
 from datetime import datetime, timezone
 from pyflex import Address
 from pyflex.approval import approve_safe_modification_directly
-from pyflex.auctions import DebtAuction
+from pyflex.auctions import DebtAuctionHouse
 from pyflex.deployment import GfDeployment
 from pyflex.numeric import Wad, Ray, Rad
 from tests.conftest import liquidate, create_unsafe_safe, pop_debt_and_settle_debt, auction_income_recipient_address, keeper_address, geb, \
@@ -41,7 +41,7 @@ def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, 
     print(f'joy={str(joy)[:6]}, woe={str(woe)[:6]}')
 
     if woe < joy:
-        # Liquidate Safe
+        # Liquidate SAFE
         c = geb.collaterals['ETH-B']
         unsafe_safe= create_unsafe_safe(geb, c, Wad.from_number(2), other_address, draw_system_coin=False)
         collateral_auction_id = liquidate(geb, c, unsafe_safe)
@@ -80,7 +80,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.debt_auction_house.approve(self.geb.safe_engine.address, approval_function=approve_safe_modification_directly(from_address=self.other_address))
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                              f"--type flop "
+                                              f"--type debt "
                                               f"--from-block 1 "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
@@ -115,9 +115,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         return round(Rad(self.debt_auction_house.bids(kick).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(price), 2)
 
     def test_should_detect_debt_auction(self, web3, c, geb, other_address, keeper_address):
-        # given a count of flop auctions
+        # given a count of debt auctions
         reserve_system_coin(geb, c, keeper_address, Wad.from_number(230))
-        kicks = geb.flopper.kicks()
+        auctions_started = geb.debt_auction_house.auctions_started()
 
         # and an undercollateralized CDP is bitten
         unsafe_cdp = create_unsafe_cdp(geb, c, Wad.from_number(1), other_address, draw_system_coin=False)
