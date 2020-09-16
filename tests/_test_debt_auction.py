@@ -124,7 +124,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert geb.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
 
         # when the auction ends without debt being covered
-        time_travel_by(web3, c.flipper.total_auction_length() + 1)
+        time_travel_by(web3, c.collateral_auction_house.total_auction_length() + 1)
 
         # then ensure testchain is in the appropriate state
         joy = geb.safe_engine.system_coin(geb.accounting_engine.address)
@@ -149,7 +149,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.decrease_sold_amount(auctions_started, self.other_address, Wad.from_number(0.000012), self.debt_auction_bid_size)
         time_travel_by(web3, geb.debt_auction_house.bid_duration() + 1)
 
-    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, kick)
 
@@ -157,16 +157,16 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=None,
-                                                                      flapper=None,
-                                                                      flopper=self.debt_auction_house.address,
-                                                                      id=kick))
+        model_factory.create_model.assert_called_once_with(Parameters(collateral_auction_house=None,
+                                                                      surplus_auction_house=None,
+                                                                      debt_auction_house=self.debt_auction_house.address,
+                                                                      id=auction_id))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper is None
-        assert status.flapper is None
-        assert status.flopper == self.debt_auction_house.address
+        assert status.collateral_auction_house is None
+        assert status.surplus_auction_house is None
+        assert status.debt_auction_house == self.debt_auction_house.address
         assert status.bid_amount > Rad.from_number(0)
         assert status.amount_to_sell == self.geb.accounting_engine.dump()
         assert status.tab is None
@@ -204,9 +204,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper is None
-        assert status.flapper is None
-        assert status.flopper == self.debt_auction_house.address
+        assert status.collateral_auction_house is None
+        assert status.surplus_auction_house is None
+        assert status.debt_auction_house == self.debt_auction_house.address
         assert status.bid_amount == last_bid.bid_amount
         assert status.amount_to_sell == Wad(last_bid.bid_amount / Rad(price))
         assert status.tab is None
@@ -242,9 +242,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
-        assert status.flipper is None
-        assert status.flapper is None
-        assert status.flopper == self.debt_auction_house.address
+        assert status.collateral_auction_house is None
+        assert status.surplus_auction_house is None
+        assert status.debt_auction_house == self.debt_auction_house.address
         assert status.bid_amount == self.debt_auction_bid_size
         assert status.amount_to_sell == lot
         assert status.tab is None
@@ -668,7 +668,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
     @classmethod
     def cleanup_debt(cls, web3, geb, address):
         # Cancel out surplus and debt
-        system_coin_vow = geb.safe_engine.system_coin(geb.accounting_engine.address)
+        system_coin_vow = geb.safe_engine.coin_balance(geb.accounting_engine.address)
         assert system_coin_vow <= geb.accounting_engine.woe()
         assert geb.accounting_engine.settle_debt(system_coin_vow).transact()
 
@@ -695,7 +695,7 @@ class MockDebtAuctionHouse:
 class TestDebtAuctionStrategy:
     def setup_class(self):
         self.geb = geb(web3())
-        self.strategy = DebtAuctionStrategy(self.geb.flopper)
+        self.strategy = DebtAuctionStrategy(self.geb.debt_auction_house)
         self.mock_debt_auction_house = MockDebtAuctionHouse()
 
     def test_price(self, mocker):

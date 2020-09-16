@@ -72,7 +72,7 @@ class Status:
         assert isinstance(surplus_auction_house, Address) or (surplus_auction_house is None)
         assert isinstance(debt_auction_house, Address) or (debt_auction_house is None)
         # Numeric type of bid and amount_to_sell depends on auction type; Dai values are bid in Rad, collateral and MKR in Wad.
-        assert isinstance(bid, Wad) or isinstance(bid, Rad)
+        assert isinstance(bid_amount, Wad) or isinstance(bid_amount, Rad)
         assert isinstance(amount_to_sell, Wad) or isinstance(amount_to_sell, Rad)
         assert isinstance(amount_to_raise, Rad) or (amount_to_raise is None)
         assert isinstance(bid_increase, Wad)
@@ -86,7 +86,7 @@ class Status:
         self.collateral_auction_house = collateral_auction_house
         self.surplus_auction_house = surplus_auction_house
         self.debt_auction_house = debt_auction_house
-        self.bid = bid
+        self.bid_amount = bid_amount
         self.amount_to_sell = amount_to_sell
         self.amount_to_raise = amount_to_raise
         self.bid_increase = bid_increase

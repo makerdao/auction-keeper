@@ -76,7 +76,7 @@ class TestTransactionMocking(TransactionIgnoringTest):
 
         # Wait for async tx threads to exit normally (should consider doing this after every async test)
         wait_for_other_threads()
-        balance_after = self.geb.safe_engine.collateral(self.collateral_type, self.keeper_address)
+        balance_after = self.geb.safe_engine.token_collateral(self.collateral_type, self.keeper_address)
         assert balance_before + amount2 == balance_after
 
         self.check_sync_transaction_still_works()
