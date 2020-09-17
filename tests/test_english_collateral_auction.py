@@ -41,7 +41,7 @@ bid_size_small = Wad(2000)
 def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
     # Ensure we start with a clean safe
     safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
-    assert safe.collateral_type == Wad(0)
+    assert safe.locked_collateral == Wad(0)
     assert safe.generated_debt == Wad(0)
 
     # liquidate gal SAFE
