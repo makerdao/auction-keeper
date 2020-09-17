@@ -39,17 +39,13 @@ class TestSAFEEngineSystemCoin:
         return self.geb.system_coin.balance_of(self.keeper_address)
 
     def get_system_coin_safe_engine_balance(self) -> Wad:
-        print("self.geb.safe_engine.coin_balance(self.keeper_address)")
-        print(self.geb.safe_engine.coin_balance(self.keeper_address))
-        print(type(self.geb.safe_engine.coin_balance(self.keeper_address)))
-        Wad(self.geb.safe_engine.coin_balance(self.keeper_address))
         return Wad(self.geb.safe_engine.coin_balance(self.keeper_address))
 
     def get_collateral_token_balance(self) -> Wad:
         return self.collateral.collateral.balance_of(self.keeper_address)
 
     def get_collateral_safe_engine_balance(self) -> Wad:
-        return self.geb.safe_engine.collateral(self.collateral.ilk, self.keeper_address)
+        return self.geb.safe_engine.token_collateral(self.collateral.collateral_type, self.keeper_address)
 
     def give_away_system_coin(self):
         assert self.geb.web3.eth.defaultAccount == self.keeper_address.address
@@ -63,7 +59,7 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type debt "
                                          f"--from-block 1 "
-                                         f"--safe_engine-system_coin-target {system_coin} "
+                                         f"--safe-engine-system-coin-target {system_coin} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
         keeper.startup()
@@ -73,7 +69,7 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type debt "
                                          f"--from-block 1 "
-                                         f"--safe_engine-system_coin-target all "
+                                         f"--safe-engine-system-coin-target all "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
         keeper.startup()
@@ -91,7 +87,6 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert token_balance_before == self.get_system_coin_token_balance()
         assert safe_engine_balance_before == self.get_system_coin_safe_engine_balance()
 
-    #@pytest.mark.skip("tmp")
     def test_join_enough(self, keeper_address):
         # given purchasing some system_coin
         purchase_system_coin(Wad.from_number(237), keeper_address)
@@ -105,7 +100,6 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert token_balance_before > self.get_system_coin_token_balance()
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(153)
 
-    #@pytest.mark.skip("tmp")
     def test_join_not_enough(self):
         # given balances before
         assert self.get_system_coin_token_balance() == Wad.from_number(84)
@@ -118,7 +112,6 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert self.get_system_coin_token_balance() == Wad(0)
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(237)
 
-    #@pytest.mark.skip("tmp")
     def test_exit_some(self):
         # given balances before
         assert self.get_system_coin_token_balance() == Wad(0)
@@ -131,7 +124,6 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert self.get_system_coin_token_balance() == Wad.from_number(37)
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(200)
 
-    #@pytest.mark.skip("tmp")
     def test_exit_all(self):
         # given balances before
         assert self.get_system_coin_token_balance() == Wad.from_number(37)
@@ -144,7 +136,6 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert self.get_system_coin_token_balance() == Wad.from_number(237)
         assert self.get_system_coin_safe_engine_balance() == Wad(0)
 
-    @pytest.mark.skip("tmp")
     def test_join_all(self):
         # given system_coin we just exited
         token_balance_before = self.get_system_coin_token_balance()
@@ -157,18 +148,16 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert self.get_system_coin_token_balance() == Wad(0)
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(237)
 
-
-@pytest.mark.skip("tmp")
 class TestEmptySAFEEngineOnExit(TestSAFEEngineSystemCoin):
     def create_keeper(self, exit_system_coin_on_shutdown: bool, exit_collateral_on_shutdown: bool):
         assert isinstance(exit_system_coin_on_shutdown, bool)
         assert isinstance(exit_collateral_on_shutdown, bool)
 
-        safe_engine_system_coin_behavior = "" if exit_system_coin_on_shutdown else "--keep-system_coin-in-safe_engine-on-exit"
-        safe_engine_collateral_behavior = "" if exit_collateral_on_shutdown else "--keep-collateral-in-safe_engine-on-exit"
+        safe_engine_system_coin_behavior = "" if exit_system_coin_on_shutdown else "--keep-system-coin-in-safe-engine-on-exit"
+        safe_engine_collateral_behavior = "" if exit_collateral_on_shutdown else "--keep-collateral-in-safe-engine-on-exit"
 
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flip --ilk {self.collateral.ilk.name} "
+                                         f"--type collateral --collateral-type {self.collateral.collateral_type.name} "
                                          f"--from-block 1 "
                                          f"{safe_engine_system_coin_behavior} "
                                          f"{safe_engine_collateral_behavior} "
@@ -256,15 +245,13 @@ class TestEmptySAFEEngineOnExit(TestSAFEEngineSystemCoin):
         # clean up
         self.give_away_system_coin()
 
-
-@pytest.mark.skip("tmp")
 class TestRebalance(TestSAFEEngineSystemCoin):
     def create_keeper(self, mocker, system_coin_target="all"):
         # Create a keeper
         mocker.patch("web3.net.Net.peer_count", return_value=1)
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flip --ilk ETH-C --bid-only "
-                                         f"--safe_engine-system_coin-target {system_coin_target} "
+                                         f"--type collateral --collateral-type ETH-C --bid-only "
+                                         f"--safe-engine-system-coin-target {system_coin_target} "
                                          f"--return-collateral-interval 3 "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
@@ -314,7 +301,7 @@ class TestRebalance(TestSAFEEngineSystemCoin):
             purchase_system_coin(Wad.from_number(77), self.keeper_address)
             assert self.get_system_coin_token_balance() == Wad.from_number(77)
             # and pretending there's a bid which requires SystemCoin
-            reservoir = Reservoir(self.keeper.safe_engine.system_coin(self.keeper_address))
+            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
             assert self.keeper.check_bid_cost(id=1, cost=Rad.from_number(20), reservoir=reservoir)
 
             # then ensure all SystemCoin is joined
@@ -324,7 +311,7 @@ class TestRebalance(TestSAFEEngineSystemCoin):
             # when adding more SystemCoin and pretending there's a bid we cannot cover
             purchase_system_coin(Wad.from_number(23), self.keeper_address)
             assert self.get_system_coin_token_balance() == Wad.from_number(23)
-            reservoir = Reservoir(self.keeper.safe_engine.system_coin(self.keeper_address))
+            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
             assert not self.keeper.check_bid_cost(id=2, cost=Rad(Wad.from_number(120)), reservoir=reservoir)
 
             # then ensure the added SystemCoin was joined anyway
@@ -352,14 +339,14 @@ class TestRebalance(TestSAFEEngineSystemCoin):
             assert self.keeper.system_coin_join.exit(self.keeper_address, Wad.from_number(22)).transact()
             assert self.get_system_coin_safe_engine_balance() == Wad.from_number(78)
             # and pretending there's a bid which requires more SystemCoin
-            reservoir = Reservoir(self.keeper.safe_engine.system_coin(self.keeper_address))
+            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
             assert self.keeper.check_bid_cost(id=3, cost=Rad.from_number(79), reservoir=reservoir)
 
             # then ensure SystemCoin was joined up to the target
             assert self.get_system_coin_safe_engine_balance() == target
 
             # when pretending there's a bid which we have plenty of SystemCoin to cover
-            reservoir = Reservoir(self.keeper.safe_engine.system_coin(self.keeper_address))
+            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
             assert self.keeper.check_bid_cost(id=4, cost=Rad(Wad.from_number(1)), reservoir=reservoir)
 
             # then ensure SystemCoin levels haven't changed

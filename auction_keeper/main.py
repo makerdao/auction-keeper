@@ -101,7 +101,7 @@ class AuctionKeeper:
                             help="Amount of system coin to keep in the SAFEEngine contract or ALL to join entire token balance")
         parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
                             help="Retain system coin in the SAFE Engine on exit, saving gas when restarting the keeper")
-        parser.add_argument('--keep-collateral-in-safe-engine-on-exit', dest='exit_colllateral_on_shutdown', action='store_false',
+        parser.add_argument('--keep-collateral-in-safe-engine-on-exit', dest='exit_collateral_on_shutdown', action='store_false',
                             help="Retain collateral in the SAFE Engine on exit")
         parser.add_argument('--return-collateral-interval', type=int, default=300,
                             help="Period of timer [in seconds] used to check and exit won collateral")
@@ -347,7 +347,7 @@ class AuctionKeeper:
     def check_safes(self):
         started = datetime.now()
         collateral_type = self.safe_engine.collateral_type(self.collateral_type.name)
-        rate = collateral_type.rate
+        rate = collateral_type.accumulated_rate
         available_system_coin = self.geb.system_coin.balance_of(self.our_address) + Wad(self.safe_engine.coin_balance(self.our_address))
 
         # Look for unsafe vaults and liquidation them
@@ -538,8 +538,8 @@ class AuctionKeeper:
 
         # Read auction information from the chain
         input = self.strategy.get_input(id)
-        auction_deleted = (input.end == 0)
-        auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
+        auction_deleted = (input.auction_deadline == 0)
+        auction_finished = (input.bid_expiry < input.era and input.bid_expiry != 0) or (input.auction_deadline < input.era)
 
         if auction_deleted:
             # Try to remove the auction so the model terminates and we stop tracking it.
@@ -691,24 +691,24 @@ class AuctionKeeper:
         return True
 
     def rebalance_system_coin(self) -> Optional[Wad]:
-        # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards safe_engine.coin_balance_target
+        # Returns amount joined (positive) or exited (negative) as a result of rebalancing towards safe_engine_system_coin_target
 
-        if self.arguments.safe_engine.coin_balance_target is None:
+        if self.arguments.safe_engine_system_coin_target is None:
             return None
 
         logging.info(f"Checking if internal system coin balance needs to be rebalanced")
         system_coin = self.system_coin_join.system_coin()
         token_balance = system_coin.balance_of(self.our_address)  # Wad
         # Prevent spending gas on small rebalances
-        debt_floopr = Wad(self.geb.safe_engine.collateral_type(self.collateral_type.name).debt_floor) if self.collateral_type else Wad.from_number(20)
+        debt_floor = Wad(self.geb.safe_engine.collateral_type(self.collateral_type.name).debt_floor) if self.collateral_type else Wad.from_number(20)
 
         system_coin_to_join = Wad(0)
         system_coin_to_exit = Wad(0)
         try:
-            if self.arguments.safe_engine.coin_balance_target.upper() == "ALL":
+            if self.arguments.safe_engine_system_coin_target.upper() == "ALL":
                 system_coin_to_join = token_balance
             else:
-                system_coin_target = Wad.from_number(float(self.arguments.safe_engine.coin_balance_target))
+                system_coin_target = Wad.from_number(float(self.arguments.safe_engine_system_coin_target))
                 if system_coin_target < debt_floor:
                     self.logger.warning(f"Dust cutoff of {debt_floor} exceeds system coin target {system_coin_target}; "
                                         "please adjust configuration accordingly")
@@ -718,7 +718,7 @@ class AuctionKeeper:
                 elif safe_engine_balance > system_coin_target:
                     system_coin_to_exit = safe_engine_balance - system_coin_target
         except ValueError:
-            raise ValueError("Unsupported --safe_engine.coin_balance-target")
+            raise ValueError("Unsupported --safe-engine-system-coin-target")
 
         if system_coin_to_join >= debt_floor:
             # Join tokens to the safe_engine
@@ -754,8 +754,8 @@ class AuctionKeeper:
         if not self.collateral:
             return
 
-        token = Token(self.collateral.collateral_type.name.split('-')[0], self.collateral.collateral.address, self.collateral.adapter.dec())
-        safe_engine_balance = self.safe_engine.collateral(self.collateral_type, self.our_address)
+        token = Token(self.collateral.collateral_type.name.split('-')[0], self.collateral.collateral.address, self.collateral.adapter.decimals())
+        safe_engine_balance = self.safe_engine.token_collateral(self.collateral_type, self.our_address)
         if safe_engine_balance > token.min_amount:
             self.logger.info(f"Exiting {str(safe_engine_balance)} {self.collateral_type.name} from the SAFE Engine")
             assert self.collateral_join.exit(self.our_address, token.unnormalize_amount(safe_engine_balance)).transact(gas_price=self.gas_price)
