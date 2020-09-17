@@ -7,3 +7,4 @@ _virtualenv
 .coverage
 
 .DS_Store
+*.swp
