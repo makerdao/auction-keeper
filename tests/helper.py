@@ -70,7 +70,8 @@ class TransactionIgnoringTest:
             super().__init__({
                 'transactionHash': '0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd',
                 'gasUsed': 12345,
-                'logs': []
+                'logs': [],
+                'status': '0x1'
             })
             self.successful = True
 
