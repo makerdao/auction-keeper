@@ -30,6 +30,7 @@ from web3 import Web3
 
 from pymaker import Address, get_pending_transactions, web3_via_http
 from pymaker.deployment import DssDeployment
+from pymaker.dss import Ilk, Urn
 from pymaker.keys import register_keys
 from pymaker.lifecycle import Lifecycle
 from pymaker.model import Token
@@ -269,6 +270,7 @@ class AuctionKeeper:
                   f" {self.arguments.type} auctions once reached"
 
     def startup(self):
+        self.plunge()
         self.approve()
         self.rebalance_dai()
         if self.flapper:
@@ -305,8 +307,6 @@ class AuctionKeeper:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
         logging.info(f"Keeper will use {self.gas_price} for transactions and bids unless model instructs otherwise")
-
-        self.plunge()
 
     def approve(self):
         self.strategy.approve(gas_price=self.gas_price)
@@ -356,21 +356,47 @@ class AuctionKeeper:
             logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
             return False
 
+    def can_bite(self, ilk: Ilk, urn: Urn, box: Rad, dunk: Rad, chop: Wad) -> bool:
+        # Typechecking intentionally omitted to improve performance
+        rate = ilk.rate
+
+        # Collateral value should be less than the product of our stablecoin debt and the debt multiplier
+        safe = Ray(urn.ink) * ilk.spot >= Ray(urn.art) * rate
+        if safe:
+            return False
+
+        # Ensure there's room in the litter box
+        litter = self.cat.litter()
+        room: Rad = box - litter
+        if litter >= box:
+            return False
+        if room < ilk.dust:
+            return False
+
+        # Prevent null auction (ilk.dunk [Rad], ilk.rate [Ray], ilk.chop [Wad])
+        dart: Wad = min(urn.art, Wad(min(dunk, room) / Rad(ilk.rate) / Rad(chop)))
+        dink: Wad = min(urn.ink, urn.ink * dart / urn.art)
+        return dart > Wad(0) and dink > Wad(0)
+
     def check_vaults(self):
         started = datetime.now()
-        ilk = self.vat.ilk(self.ilk.name)
-        rate = ilk.rate
         available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
+        box = self.cat.box()
+        dunk = self.cat.dunk(self.ilk)
+        chop = self.cat.chop(self.ilk)
 
         # Look for unsafe vaults and bite them
         urns = self.urn_history.get_urns()
         logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
 
-        for urn in urns.values():
-            if self.is_shutting_down():
-                return
+        for i, urn in enumerate(urns.values()):
+            if i % 500 == 0:  # Every 500 vaults, free some CPU and then update ilk.rate
+                if self.is_shutting_down():
+                    return
+                time.sleep(1)
+                ilk = self.vat.ilk(self.ilk.name)  # ilk.rate changes every block
 
-            if self.cat.can_bite(ilk, urn):
+            if self.can_bite(ilk, urn, box, dunk, chop):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")
