@@ -39,6 +39,8 @@ class UpdatableGasPrice(GasPrice):
 
 
 class DynamicGasPrice(NodeAwareGasPrice):
+    every_secs = 42
+
     def __init__(self, arguments, web3: Web3):
         assert isinstance(web3, Web3)
         self.gas_station = None
@@ -73,7 +75,7 @@ class DynamicGasPrice(NodeAwareGasPrice):
             initial_price = int(round(fast_price * self.initial_multiplier))
 
         return GeometricGasPrice(initial_price=initial_price,
-                                 every_secs=42,
+                                 every_secs=DynamicGasPrice.every_secs,
                                  coefficient=self.reactive_multiplier,
                                  max_price=self.gas_maximum).get_gas_price(time_elapsed)
 
@@ -86,8 +88,8 @@ class DynamicGasPrice(NodeAwareGasPrice):
             retval = f"Node gas price (currently {round(self.get_node_gas_price() / self.GWEI, 1)} Gwei, "\
                      "changes over time) "
 
-        retval += f"and will multiply by {self.reactive_multiplier} every 30s to a maximum of " \
-                  f"{round(self.gas_maximum / self.GWEI, 1)} Gwei"
+        retval += f"and will multiply by {self.reactive_multiplier} every {DynamicGasPrice.every_secs}s " \
+                  f"to a maximum of {round(self.gas_maximum / self.GWEI, 1)} Gwei"
         return retval
 
     def __repr__(self):
