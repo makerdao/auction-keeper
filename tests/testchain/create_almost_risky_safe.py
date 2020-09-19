@@ -18,10 +18,17 @@
 import sys
 
 from pyflex.numeric import Wad, Ray, Rad
-from tests.conftest import geb, set_collateral_price, web3
+from tests.conftest import create_almost_risky_safe, is_safe_critical, geb, auction_income_recipient_address, web3
 
 geb = geb(web3())
-price = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else Wad.from_number(200)
-collateral_type_name = str(sys.argv[2]) if len(sys.argv) > 2 else 'ETH-A'
-set_collateral_price(geb, geb.collaterals[collateral_type_name], price)
-print(f"safety_price={str(geb.safe_engine.collateral_type(collateral_type_name).safety_price)[:9]}")
+address = auction_income_recipient_address(web3())
+
+collateral_amount = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else 1.0
+collateral = geb.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else geb.collaterals['ETH-C']
+safe = geb.safe_engine.safe(collateral.collateral_type, address)
+
+if is_safe_critical(geb.safe_engine.collateral_type(collateral.collateral_type.name), safe):
+    print("Safe is already critical; no action taken")
+else:
+    create_almost_risky_safe(geb, collateral, Wad.from_number(collateral_amount), address, False)
+    print("Created almost risky safe")

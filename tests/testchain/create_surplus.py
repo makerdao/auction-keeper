@@ -17,27 +17,26 @@
 
 import sys
 
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import mcd, gal_address, web3, wrap_eth
+from pyflex.numeric import Wad, Ray, Rad
+from tests.conftest import geb, auction_income_recipient_address, web3, wrap_eth
 
 
-mcd = mcd(web3())
-address = gal_address(web3())
+geb = geb(web3())
+address = auction_income_recipient_address(web3())
 
+def create_safe_with_surplus():
+    c = geb.collaterals['ETH-A']
+    collateral_type = geb.safe_engine.collateral_type(c.collateral_type.name)
+    delta_collateral = Wad.from_number(float(sys.argv[1]))
 
-def create_cdp_with_surplus():
-    c = mcd.collaterals['ETH-A']
-    ilk = mcd.vat.ilk(c.ilk.name)
-    dink = Wad.from_number(float(sys.argv[1]))
-
-    wrap_eth(mcd, address, dink)
+    wrap_eth(mcd, address, delta_collateral)
     c.approve(address)
-    assert c.adapter.join(address, dink).transact(from_address=address)
+    assert c.adapter.join(address, delta_collateral).transact(from_address=address)
 
-    dart = (dink * Wad(ilk.spot)) * Wad.from_number(0.99)
-    assert mcd.vat.frob(c.ilk, address, dink=dink, dart=dart).transact(from_address=address)
+    delta_debt = (delta_collateral * Wad(collateral_type.spot)) * Wad.from_number(0.99)
+    assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, address, delta_collateral=delta_collateral, delta_debt=delta_debt).transact(from_address=address)
 
-    assert mcd.jug.drip(c.ilk).transact(from_address=address)
+    assert geb.tax_collector.tax_single(c.collateral_type).transact(from_address=address)
 
 
-create_cdp_with_surplus()
+create_safe_with_surplus()

@@ -65,7 +65,7 @@ class SAFEHistory:
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
         mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block, to_block=to_block, collateral_type=self.collateral_type)
-        for mods in mods:
+        for mod in mods:
             safe_addresses.add(mod.safe)
 
         # Update state of already-cached safes

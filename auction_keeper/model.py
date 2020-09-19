@@ -185,7 +185,7 @@ class Model:
 
         record = {
             "id": str(input.id),
-            "bid": str(input.bid),
+            "bid_amount": str(input.bid_amount),
             "amount_to_sell": str(input.amount_to_sell),
             "bid_increase": str(input.bid_increase),
             "high_bidder": str(input.high_bidder),

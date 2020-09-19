@@ -26,7 +26,7 @@ from pyflex.deployment import GfDeployment
 from pyflex.keys import register_keys
 from pyflex.model import Token
 from pyflex.numeric import Wad, Ray, Rad
-from tests.conftest import create_risky_safe, is_safe_safe
+from tests.conftest import create_almost_risky_safe, is_critical_safe
 
 
 web3 = Web3(HTTPProvider(endpoint_uri=os.environ['ETH_RPC_URL'], request_kwargs={"timeout": 30}))
@@ -43,11 +43,11 @@ logging.getLogger("requests").setLevel(logging.INFO)
 # Usage:
 # python3 tests/manual_test_create_unsafe_vault [ADDRESS] [KEY] [COLLATERAL_TYPE]
 
-geb = DssDeployment.from_node(web3)
+geb = GfDeployment.from_node(web3)
 our_address = Address(web3.eth.defaultAccount)
 collateral = geb.collaterals[str(sys.argv[3])] if len(sys.argv) > 3 else geb.collaterals['ETH-A']
-collateral_type = geb.vat.collateral_type(collateral.collateral_type.name)
-token = Token(collateral.collateral.symbol(), collateral.collateral.address, collateral.adapter.dec())
+collateral_type = geb.safe_engine.collateral_type(collateral.collateral_type.name)
+token = Token(collateral.collateral.symbol(), collateral.collateral.address, collateral.adapter.decimals())
 safe = geb.safe_engine.safe(collateral.collateral_type, our_address)
 # geb.approve_dai(our_address)
 # Transact.gas_estimate_for_bad_txs = 20000
@@ -58,7 +58,7 @@ action = sys.argv[4] if len(sys.argv) > 4 else "create"
 def r(value, decimals=1):
     return round(float(value), decimals)
 
-logging.info(f"{collateral_type.name:<6}: debt_floor={r(collateral_type.debt_floor)} osm_price={osm_price} mat={r(geb.oracle_relayer.safety_c_ratio(collateral_type))}")
+logging.info(f"{collateral_type.name:<6}: debt_floor={r(collateral_type.debt_floor)} osm_price={osm_price} safety_ratio={r(geb.oracle_relayer.safety_c_ratio(collateral_type))}")
 logging.info(f"{'':<7} stability_fee={geb.tax_collector.stability_fee(collateral_type)} min_amount={token.min_amount}")
 
 
@@ -68,21 +68,21 @@ def close_repaid_safe():
         assert geb.safe_engine.modify_safe_collateralization(collateral_type, our_address, delta_collateral, Wad(0)).transact()
     collateral_balance = Wad(geb.safe_engine.collateral(collateral_type, our_address))
     if collateral_balance > Wad(0):
-        assert collateral.adapter.exit(our_address, gem_balance).transact()
+        assert collateral.adapter.exit(our_address, collateral_balance).transact()
 
 
 # This accounts for several seconds of rate accumulation between time of calculation and the transaction being mined
 flub_amount = Wad(1000)
 
-def create_risky_safe():
+def create_almost_risky_safe():
     # Create a safe close to the liquidation ratio
-    if not is_safe_safe(geb.safe_engine.collateral_type(collateral.collateral_type.name), safe):
-        logging.info("SAFE is already unsafe; no action taken")
+    if is_critical_safe(geb.safe_engine.collateral_type(collateral.collateral_type.name), safe):
+        logging.info("SAFE is already critical; no action taken")
     else:
         collateral_amount = Wad(collateral_type.debt_floor / Rad(osm_price) * Rad(geb.oracle_relayer.safety_c_ratio(collateral_type)) * Rad(collateral_type.accumulated_rate)) + flub_amount
         logging.info(f"Opening/adjusting safe with {collateral_amount} {collateral_type.name}")
-        create_risky_safe(geb, collateral, collateral_amount, our_address, False)
-        logging.info("Created risky safe")
+        create_almost_risky_safe(geb, collateral, collateral_amount, our_address, False)
+        logging.info("Created almost risky safe")
 
 
 def handle_returned_collateral():
@@ -97,9 +97,7 @@ def handle_returned_collateral():
         geb.system_coin_adapter.exit(our_address, system_coin_balance).transact()
 
 
-create_risky_safe()
-
-
+create_almost_risky_safe()
 
 while True:
     time.sleep(6)

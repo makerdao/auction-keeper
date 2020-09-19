@@ -263,7 +263,7 @@ class AuctionKeeper:
     def auction_notice(self) -> str:
         if self.arguments.type == 'collateral':
             return "--> Check all safes and start new auctions if any" + \
-                   " unsafe safes need to be bitten"
+                   " critical safes need to be liquidated"
         else:
             return "--> Check thresholds in Accounting Engine Contract and start new" + \
                   f" {self.arguments.type} auctions once reached"
@@ -350,24 +350,24 @@ class AuctionKeeper:
         rate = collateral_type.accumulated_rate
         available_system_coin = self.geb.system_coin.balance_of(self.our_address) + Wad(self.safe_engine.coin_balance(self.our_address))
 
-        # Look for unsafe vaults and liquidation them
+        # Look for critical safes and liquidate them
         safes = self.safe_history.get_safes()
-        logging.debug(f"Evaluating {len(safes)} {self.collateral_type} safes to be bitten if any are unsafe")
+        logging.debug(f"Evaluating {len(safes)} {self.collateral_type} safes to be liquidated if any are critical")
 
         for safe in safes.values():
-            safe = safe.locked_collateral * collateral_type.spot >= safe.art * rate
-            if not safe:
+            is_safe = safe.locked_collateral * collateral_type.safety_price >= safe.generated_debt * rate
+            if not is_safe:
                 if self.arguments.bid_on_auctions and available_system_coin == Wad(0):
                     self.logger.warning(f"Skipping opportunity to liquidation safe {safe.address} "
                                         "because there is no system coin to bid")
                     break
 
                 if safe.locked_collateral < self.min_collateral_lot:
-                    self.logger.info(f"Ignoring safe {safe.address.address} with ink={safe.locked_collateral} < "
+                    self.logger.info(f"Ignoring safe {safe.address.address} with locked_collateral={safe.locked_collateral} < "
                                      f"min_lot={self.min_collateral_lot}")
                     continue
 
-                self._run_future(self.liquidation_engine.liquidate(collateral_type, safe).transact_async(gas_price=self.gas_price))
+                self._run_future(self.liquidation_engine.liquidate_safe(collateral_type, safe).transact_async(gas_price=self.gas_price))
 
         self.logger.info(f"Checked {len(safes)} safes in {(datetime.now()-started).seconds} seconds")
         # LiquidationEngine.liquidate implicitly starts the collateral auction; no further action needed.
@@ -556,7 +556,7 @@ class AuctionKeeper:
                     logging.info(f"Auction {id} ended without bids; resurrecting auction")
                     self.strategy.restart_auction(id).transact(gas_price=self.gas_price)
                     return True
-            elif self.settle_auction_all or input.high_bidder in self.settle_auction_for:
+            elif self.settle_all or input.high_bidder in self.settle_auctions_for:
                 self.strategy.settle_auction(id).transact(gas_price=self.gas_price)
 
                 # Upon winning a collateral or debt auction, we may need to replenish system coin to the SAFE Engine.

@@ -15,8 +15,8 @@ ID=$2
     --rpc-timeout 30 \
     --eth-from ${ACCOUNT_ADDRESS?:} \
     --eth-key ${ACCOUNT_KEY?:} \
-    --type flap \
-    --vat-dai-target 300 \
-    --keep-dai-in-vat-on-exit \
+    --type debt \
+    --safe-engine-system-coin-target 5000000 \
+    --keep-system-coin-in-safe-engine-on-exit \
     --model ${dir}/${MODEL} \
     2> >(tee -a ${LOGS_DIR?:}/auction-keeper-${ID}.log >&2)
