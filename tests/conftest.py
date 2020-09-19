@@ -140,6 +140,8 @@ def max_delta_debt(geb: GfDeployment, collateral: Collateral, our_address: Addre
 
     # change in debt = (collateral balance * collateral price with safety margin) - CDP's stablecoin debt
     delta_debt = safe.locked_collateral * collateral_type.safety_price - Wad(Ray(safe.generated_debt) * collateral_type.accumulated_rate)
+    print(f"max_delta_debt for collateral_type {collateral_type.name}")
+    print(f"delta debt: {delta_debt} = locked_collateral {safe.locked_collateral} * safety_price {collateral_type.safety_price} - debt {Ray(safe.generated_debt)}")
 
     # change in debt must also take the rate into account
     delta_debt = Wad(Ray(delta_debt) / collateral_type.accumulated_rate)
@@ -176,6 +178,7 @@ def reserve_system_coin(geb: GfDeployment, c: Collateral, usr: Address, amount: 
     safety_price = collateral_type.safety_price  # Ray
     assert accumulated_rate >= Ray.from_number(1)
     collateral_required = Wad((Ray(amount) / safety_price) * accumulated_rate) * extra_collateral + Wad(1)
+    print(f'current safety price {safety_price}')
     print(f'collateral_required for {str(amount)} system_coin is {str(collateral_required)}')
 
     wrap_eth(geb, usr, collateral_required)
@@ -205,10 +208,29 @@ def is_safe_safe(collateral_type: CollateralType, safe: SAFE) -> bool:
     assert safe.locked_collateral is not None
     assert collateral_type.safety_price is not None
 
-    #print(f'art={safe.generated_debt} * rate={collateral_type.rate} <=? ink={safe.locked_collateral} * spot={collateral_type.spot}')
+    #print(f'art={safe.generated_debt} * rate={collateral_type.rate} <=? locked_collateral={safe.locked_collateral} * spot={collateral_type.spot}')
     return (Ray(safe.generated_debt) * collateral_type.accumulated_rate) <= Ray(safe.locked_collateral) * collateral_type.safety_price
 
-def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
+def is_safe_critical(collateral_type: CollateralType, safe: SAFE) -> bool:
+    assert isinstance(safe, SAFE)
+    assert safe.generated_debt is not None
+    assert collateral_type.accumulated_rate is not None
+    assert safe.locked_collateral is not None
+    assert collateral_type.safety_price is not None
+
+    #print(f'art={safe.generated_debt} * rate={collateral_type.rate} <=? locked_collateral={safe.locked_collateral} * spot={collateral_type.spot}')
+    print("in is_safe_critical()")
+    print(f"debt: {Ray(safe.generated_debt)}")
+    print(f"rate: {collateral_type.accumulated_rate}")
+    print(f"locked collateral: {Ray(safe.locked_collateral)}")
+    print(f"liq price: {collateral_type.liquidation_price}")
+
+    return (Ray(safe.generated_debt) * collateral_type.accumulated_rate) > Ray(safe.locked_collateral) * collateral_type.liquidation_price
+
+def is_safe_risky(collateral_type: CollateralType, safe: SAFE) -> bool:
+    return not is_safe_safe(collateral_type, safe) and not is_safe_critical(collateral_type, safe)
+
+def create_almost_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
                      draw_system_coin=True) -> SAFE:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
@@ -218,10 +240,10 @@ def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, 
     safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
     assert is_safe_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
 
-    # Add collateral to gal vault if necessary
+    # Add collateral to auction_income_recipient vault if necessary
     c.approve(auction_income_recipient_address)
     token = Token(c.collateral_type.name, c.collateral.address, c.adapter.decimals())
-    print(f"collateral_amount={collateral_amount} ink={safe.locked_collateral}")
+    print(f"collateral_amount={collateral_amount} locked_collateral={safe.locked_collateral}")
     delta_collateral = collateral_amount - safe.locked_collateral
     if delta_collateral > Wad(0):
         safe_engine_balance = geb.safe_engine.token_collateral(c.collateral_type, auction_income_recipient_address)
@@ -243,7 +265,7 @@ def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, 
         assert safe_engine_balance >= delta_collateral
         assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, auction_income_recipient_address, delta_collateral, Wad(0)).transact(from_address=auction_income_recipient_address)
 
-    # Put gal CDP at max possible debt
+    # Put auction_income_recipient CDP at max possible debt
     delta_debt = max_delta_debt(geb, c, auction_income_recipient_address) - Wad(1)
     if delta_debt > Wad(0):
         print(f"Attempting to modify safe collateralization with delta_debt={delta_debt}")
@@ -257,21 +279,24 @@ def create_risky_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, 
         print(f"Exited {safe.generated_debt} System coin from safe")
 
 
-def create_unsafe_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
-                      draw_system_coin=True) -> SAFE:
+def create_critical_safe(geb: GfDeployment, c: Collateral, collateral_amount: Wad, auction_income_recipient_address: Address,
+                       draw_system_coin=True) -> SAFE:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(auction_income_recipient_address, Address)
 
-    create_risky_safe(geb, c, collateral_amount, auction_income_recipient_address, draw_system_coin)
+    create_almost_risky_safe(geb, c, collateral_amount, auction_income_recipient_address, draw_system_coin)
     safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
+    print(f"Risk safe locked_collateral: {safe.locked_collateral}, debt: {safe.generated_debt}")
 
-    # Manipulate price to make gal CDP underwater
+    # Manipulate price to make auction_income_recipient CDP underwater
+    # This might not be enough if safety ratio != liquidation ratio
+    # Need to calc exact amount based on safety_ratio - liquidation_ratio
     to_price = Wad(c.osm.read()) - Wad.from_number(1)
     set_collateral_price(geb, c, to_price)
 
-    # Ensure the SAFE is unsafe
-    assert not is_safe_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
+    # Ensure the SAFE is 
+    assert is_safe_critical(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
     return safe
 
 def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_recipient_address: Address) -> SAFE:
@@ -298,12 +323,12 @@ def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_re
     return geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
 
 
-def liquidate(geb: GfDeployment, c: Collateral, unsafe_safe: SAFE) -> int:
+def liquidate(geb: GfDeployment, c: Collateral, critical_safe: SAFE) -> int:
     assert isinstance(geb, GfDeployment)
     assert isinstance(c, Collateral)
-    assert isinstance(unsafe_safe, SAFE)
+    assert isinstance(critical_safe, SAFE)
 
-    assert geb.liquidation_engine.liquidate_safe(unsafe_safe.collateral_type, unsafe_safe).transact()
+    assert geb.liquidation_engine.liquidate_safe(critical_safe.collateral_type, critical_safe).transact()
     liquidations = geb.liquidation_engine.past_liquidations(1)
     assert len(liquidations) == 1
     return c.collateral_auction_house.auctions_started()

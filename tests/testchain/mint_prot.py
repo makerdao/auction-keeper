@@ -17,18 +17,16 @@
 
 import sys
 
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import create_unsafe_cdp, is_cdp_safe, mcd, gal_address, web3
+from pyflex.numeric import Wad, Ray, Rad
+from tests.conftest import keeper_address, geb, mint_prot, web3
 
-mcd = mcd(web3())
-address = gal_address(web3())
+geb = geb(web3())
+collateral = geb.collaterals['ETH-C']
+keeper_address = keeper_address(web3())
 
-collateral_amount = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else 1.0
-collateral = mcd.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else mcd.collaterals['ETH-C']
-urn = mcd.vat.urn(collateral.ilk, address)
+amount = Wad.from_number(float(sys.argv[1]))
+assert amount > Wad(0)
 
-if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
-    print("CDP is already unsafe; no action taken")
-else:
-    create_unsafe_cdp(mcd, collateral, Wad.from_number(collateral_amount), address, False)
-    print("Created unsafe CDP")
+mint_prot(geb.prot, keeper_address, amount)
+
+print(f'Minted {str(amount)} protocol tokens, keeper token balance is {str(geb.prot.balance_of(keeper_address))}')

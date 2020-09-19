@@ -60,15 +60,6 @@ elapsed: timedelta = datetime.now() - started
 print(f"Found {len(safes_logs)} safes from block {from_block} in {elapsed.seconds} seconds")
 wait(30, sh)
 
-# Retrieve data from Vulcanize
-started = datetime.now()
-print(f"Connecting to {vulcanize_endpoint}...")
-uh = SAFEHistory(web3, geb, collateral_type, None, vulcanize_endpoint, vulcanize_key)
-safes_vdb = sh.get_safes()
-elapsed: timedelta = datetime.now() - started
-print(f"Found {len(safes_vdb)} safes from Vulcanize in {elapsed.seconds} seconds")
-
-
 # Reconcile the data
 mismatches = 0
 missing = 0

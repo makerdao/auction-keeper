@@ -19,49 +19,48 @@ import argparse
 import sys
 
 from pprint import pprint
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import flog_and_heal, mcd, gal_address, web3
+from pyflex.numeric import Wad, Ray, Rad
+from tests.conftest import pop_debt_and_settle_debt, geb, auction_income_recipient_address, web3
 
 
 parser = argparse.ArgumentParser(prog='print')
 parser.add_argument('--balances', dest='balances', action='store_true', default=False,
-                    help="Print surplus and debt balances in the Vow")
+                    help="Print surplus and debt balances in the Accounting Engine")
 parser.add_argument('--auctions', dest='auctions', action='store_true', default=False,
                     help="Dump auction details")
-parser.add_argument('--missed-flops', dest='missed_flops', action='store_true', default=False,
-                    help="List flops which were not bid upon")
+parser.add_argument('--missed-debt-auctions', dest='missed_debt_auctions', action='store_true', default=False,
+                    help="List debt auctions which were not bid upon")
 arguments = parser.parse_args(sys.argv[1:])
 
-mcd = mcd(web3())
-address = gal_address(web3())
+geb = geb(web3())
+address = auction_income_recipient_address(web3())
 
 
 def print_balances():
-    joy = mcd.vat.dai(mcd.vow.address)
-    awe = mcd.vat.sin(mcd.vow.address)
-    woe = (awe - mcd.vow.sin()) - mcd.vow.ash()
+    joy = geb.safe_engine.coin_balance(geb.accounting_engine.address)
+    awe = geb.safe_engine.debt_balance(geb.accounting_engine.address)
+    woe = (awe - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
     print(f"joy={str(joy)[:6]}, awe={str(awe)[:9]}, woe={str(woe)[:9]}, "
-          f"Sin={str(mcd.vow.sin())[:9]}, Ash={str(mcd.vow.ash())[:9]}, "
-          f"debt={str(mcd.vat.debt())[:9]}, vice={str(mcd.vat.vice())[:9]}")
-          #f"bump={str(mcd.vow.bump())[:9]}, sump={str(mcd.vow.sump())[:9]}")
-
+          f"debt_queue={str(geb.accounting_engine.debt_queue())[:9]}, "
+          f"total_on_auction_debt={str(geb.accounting_engine.total_on_auction_debt())[:9]}, "
+          f"global_debt={str(geb.safe_engine.global_debt())[:9]}, "
+          f"global_unbacked_debt={str(geb.safe_engine.global_unbacked_debt())[:9]}")
 
 def print_auctions():
-    pprint(mcd.active_auctions())
+    pprint(geb.active_auctions())
 
-
-def print_missed_flops():
+def print_missed_debt_auctions():
     total = 0
-    for i in range(mcd.flopper.kicks()):
-        auction = mcd.flopper.bids(i)
-        if auction.bid != Rad(0):
+    for i in range(geb.debt_auction_house.auctions_started()):
+        auction = geb.debt_auction_house.bids(i)
+        if auction.bid_amount != Rad(0):
             total += 1
             print(f"id={i}, bid={auction.bid}, lot={auction.lot}, guy={auction.guy}")
-    print(f"{total} flops were missed, accounting for {str(mcd.vow.sump()*total)[:9]} Dai in debt")
+    print(f"{total} debt auctions were missed, accounting for {str(geb.accounting_engine.debt_auction_bid_size()*total)[:9]} system coin in debt")
 
 if arguments.balances:
     print_balances()
 if arguments.auctions:
     print_auctions()
-if arguments.missed_flops:
-    print_missed_flops()
+if arguments.missed_debt_auctions:
+    print_missed_debt_auctions()
