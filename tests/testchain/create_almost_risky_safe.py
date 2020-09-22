@@ -24,7 +24,7 @@ geb = geb(web3())
 address = auction_income_recipient_address(web3())
 
 collateral_amount = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else 1.0
-collateral = geb.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else geb.collaterals['ETH-C']
+collateral = geb.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else geb.collaterals['ETH-A']
 safe = geb.safe_engine.safe(collateral.collateral_type, address)
 
 if is_safe_critical(geb.safe_engine.collateral_type(collateral.collateral_type.name), safe):

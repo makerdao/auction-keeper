@@ -25,3 +25,4 @@ price = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else Wad.from_n
 collateral_type_name = str(sys.argv[2]) if len(sys.argv) > 2 else 'ETH-A'
 set_collateral_price(geb, geb.collaterals[collateral_type_name], price)
 print(f"safety_price={str(geb.safe_engine.collateral_type(collateral_type_name).safety_price)[:9]}")
+print(f"liquidation_price={str(geb.safe_engine.collateral_type(collateral_type_name).liquidation_price)[:9]}")
