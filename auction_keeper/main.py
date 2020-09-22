@@ -407,7 +407,7 @@ class AuctionKeeper:
                                      f"min_lot={self.min_flip_lot}")
                     continue
 
-                self._run_future(self.cat.bite(ilk, urn).transact_async(gas_price=self.gas_price))
+                self.cat.bite(ilk, urn).transact(gas_price=self.gas_price)
 
         self.logger.info(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
