@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #CONFIG="testchain-value-fixed-discount-governance-median-multisig"
-CONFIG="testchain-value-english-governance-median-multisig"
+CONFIG="testchain-value-english-governance-median-multisig-basic"
 while getopts :c:f: option
 do
 case "${option}"

@@ -40,15 +40,7 @@ bid_size_small = Wad(2000)
 @pytest.fixture()
 def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
     # set to pymaker price
-    print(f"auction_id collateral_type {c.collateral_type.name}")
-
     set_collateral_price(geb, c, Wad.from_number(200))
-
-    print("Collateral Type at Price 200")
-    print(geb.safe_engine.collateral_type(c.collateral_type.name))
-
-    _, safe_ratio, liq_ratio = geb.oracle_relayer.collateral_type(c.collateral_type.name)
-    print(f"oracle safe ratio {safe_ratio} liq_ratio {liq_ratio}")
 
     # Ensure we start with a clean safe
     safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
@@ -57,7 +49,6 @@ def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
 
     # liquidate SAFE
     critical_safe = create_critical_safe(geb, c, bid_size, auction_income_recipient_address)
-    #print(f"critical safe locked_collateral {critical_safe.locked_collateral} debt {Ray(critical_safe.generated_debt)}")
     return liquidate(geb, c, critical_safe)
 
 @pytest.fixture()
@@ -107,7 +98,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         simulate_model_output(model=model, price=price, gas_price=gas_price)
 
     @staticmethod
-    def increase_bid_size(geb, web3, collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, amount_to_sell: Wad, bid_amount: Rad):
+    def increase_bid_size(collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, amount_to_sell: Wad, bid_amount: Rad):
         assert (isinstance(collateral_auction_house, EnglishCollateralAuctionHouse))
         assert (isinstance(id, int))
         assert (isinstance(amount_to_sell, Wad))
@@ -122,40 +113,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert bid_amount <= current_bid.amount_to_raise
         assert bid_amount > current_bid.bid_amount
         assert (bid_amount >= Rad(collateral_auction_house.bid_increase()) * current_bid.bid_amount) or (bid_amount == current_bid.amount_to_raise)
-
-        if current_bid.bid_amount == Rad(0):
-            from pyflex.feed import DSValue
-            osm_addr = Address(collateral_auction_house._contract.functions.osm().call())
-            osm = DSValue(web3, osm_addr)
-            if  osm.has_value():
-                feed_value = osm.read()
-                redemption_price = geb.oracle_relayer.redemption_price()
-                bid_to_market_ratio = collateral_auction_house.bid_to_market_price_ratio()
-
-                market_price = Ray(Wad(feed_value)) / redemption_price *  Ray(amount_to_sell)
-                print("current_bid.amount_to_raise")
-                print(current_bid.amount_to_raise)
-                print("amount_to_sell")
-                print(amount_to_sell)
-                print("feed value")
-                print(feed_value)
-                print("redemption price")
-                print(redemption_price)
-                print("market_price")
-                print(market_price)
-                print("bid_amount")
-                print(bid_amount)
-                print("bid_to_market_ratio")
-                print(bid_to_market_ratio)
-                #import sys; sys.exit()
-                #market_price = wmultiply(rdivide(uint256(priceFeedValue), redemptionPrice), amountToBuy
-                assert bid_amount >= (((Ray(feed_value) / redemption_price) * amount_to_sell) / Ray(Wad(10 ** 18))) * bid_to_market_ratio
-                """
-                require(rad >= multiply(wmultiply(rdivide(priceFeedValue, redemptionPrice), amountToBuy), bidToMarketPriceRatio), "EnglishCollateralAuctionHouse/first-bid-too-low");
-                """
-                """
-                require(rad >= multiply(wmultiply(rdivide(uint256(priceFeedValue), redemptionPrice), amountToBuy), bidToMarketPriceRatio), "EnglishCollateralAuctionHouse/first-bid-too-low");
-                """
 
         assert collateral_auction_house.increase_bid_size(id, amount_to_sell, bid_amount).transact(from_address=address)
 
@@ -179,7 +136,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert collateral_auction_house.decrease_sold_amount(id, amount_to_sell, bid_amount).transact(from_address=address)
 
     @staticmethod
-    def increase_bid_size_with_system_coin(geb: GfDeployment, web3, c: Collateral, collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, bid_amount: Rad):
+    def increase_bid_size_with_system_coin(geb: GfDeployment, c: Collateral, collateral_auction_house: EnglishCollateralAuctionHouse, id: int, address: Address, bid_amount: Rad):
         assert (isinstance(geb, GfDeployment))
         assert (isinstance(c, Collateral))
         assert (isinstance(collateral_auction_house, EnglishCollateralAuctionHouse))
@@ -190,7 +147,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         previous_bid = collateral_auction_house.bids(id)
         c.approve(address)
         reserve_system_coin(geb, c, address, Wad(bid_amount), extra_collateral=Wad.from_number(2))
-        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size(geb, web3, collateral_auction_house, id, address, previous_bid.amount_to_sell, bid_amount)
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size(collateral_auction_house, id, address, previous_bid.amount_to_sell, bid_amount)
 
     def test_collateral_auction_house_address(self):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
@@ -229,10 +186,9 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # cleanup
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         self.keeper.check_all_auctions()
-        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.web3, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(31))
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(30))
         collateral_auction_house.settle_auction(auction_id).transact(from_address=other_address)
 
-    @pytest.mark.skip("tmp")
     def test_should_provide_model_with_updated_info_after_our_own_bid(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -247,7 +203,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
 
         # when
         initial_bid = collateral_auction_house.bids(auction_id)
-        our_price = Wad.from_number(30)
+        our_price = Wad.from_number(20)
         our_bid = our_price * initial_bid.amount_to_sell
         reserve_system_coin(self.geb, self.collateral, self.keeper_address, our_bid)
         simulate_model_output(model=model, price=our_price)
@@ -281,7 +237,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, auction_id, other_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -296,7 +251,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # when
         collateral_auction_house.approve(collateral_auction_house.safe_engine(), approval_function=approve_safe_modification_directly(from_address=other_address))
         previous_bid = collateral_auction_house.bids(auction_id)
-        new_bid_amount = Rad.from_number(80)
+        new_bid_amount = Rad.from_number(30)
         self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, model.id, other_address, new_bid_amount)
         # and
         self.keeper.check_all_auctions()
@@ -319,7 +274,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert status.bid_expiry > status.era
         assert status.price == (Wad(new_bid_amount) / previous_bid.amount_to_sell)
 
-    @pytest.mark.skip("tmp")
     def test_should_restart_if_auction_expired_due_to_total_auction_length(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -350,7 +304,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
 
-    @pytest.mark.skip("tmp")
     def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, auction_id, other_address):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -365,7 +318,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
 
         # when
         collateral_auction_house.approve(collateral_auction_house.safe_engine(), approval_function=approve_safe_modification_directly(from_address=other_address))
-        new_bid_amount = Rad.from_number(85)
+        new_bid_amount = Rad.from_number(30)
         self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, new_bid_amount)
         # and
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
@@ -379,7 +332,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # cleanup
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_terminate_model_if_auction_is_settled(self, auction_id, other_address):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -393,7 +345,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(90))
+        self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(30))
         # and
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
@@ -405,14 +357,12 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    @pytest.mark.skip("tmp")
     def test_should_not_instantiate_model_if_auction_is_settled(self, auction_id, other_address):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address,
-                                               Rad.from_number(90))
+        TestAuctionKeeperEnglishCollateralAuctionHouse.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(30))
         # and
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         # and
@@ -424,7 +374,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # then
         model_factory.create_model.assert_not_called()
 
-    @pytest.mark.skip("tmp")
     def test_should_not_do_anything_if_no_output_from_model(self):
         # given
         previous_block_number = self.web3.eth.blockNumber
@@ -437,7 +386,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # then
         assert self.web3.eth.blockNumber == previous_block_number
 
-    @pytest.mark.skip("tmp")
     def test_should_make_initial_bid(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -457,14 +405,13 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_bid_even_if_there_is_already_a_bidder(self, auction_id, other_address):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
         self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(21))
-        assert collateral_auction_house.bids(auction_id).bid == Rad.from_number(21)
+        assert collateral_auction_house.bids(auction_id).bid_amount == Rad.from_number(21)
 
         # when
         self.simulate_model_bid(self.geb, self.collateral, model, Wad.from_number(23))
@@ -474,9 +421,9 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = collateral_auction_house.bids(auction_id)
+
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(23), 2)
 
-    @pytest.mark.skip("tmp")
     def test_should_sequentially_increase_bid_size_and_decrease_sold_amount_if_price_takes_us_to_the_decrease_sold_amount_phrase(self, auction_id, keeper_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -511,7 +458,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_use_most_up_to_date_price_for_decrease_sold_amount_even_if_it_gets_updated_during_increase_bid_size(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -544,7 +490,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_only_increase_bid_size_if_bid_is_only_slightly_above_amount_to_raise(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -575,7 +520,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_increase_bid_size_up_to_exactly_amount_to_raise_if_bid_is_only_slightly_below_amount_to_raise(self, auction_id):
         """I assume the point of this test is that the bid increment should be ignored when `increase_bid_size`ing the `amount_to_raise`
         to transition the auction into _decrease_sold_amount_ phase."""
@@ -614,7 +558,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_overbid_itself_if_model_has_updated_the_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -643,7 +586,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -673,7 +615,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -702,7 +643,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, auction_id):
         """ Assuming we want all bids to be submitted as soon as output from the model is parsed,
         this test seems impractical.  In real applications, the model would be unable to submit a lower bid. """
@@ -735,7 +675,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_not_increase_bid_size_on_rounding_errors_with_small_amounts(self, auction_small):
         # given
         (model, model_factory) = models(self.keeper, auction_small)
@@ -760,7 +699,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip("tmp")
     def test_should_not_decrease_sold_amount_on_rounding_errors_with_small_amounts(self):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -776,7 +714,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert collateral_auction_house.bids(auction_small).lot == auction.lot
+        assert collateral_auction_house.bids(auction_small).amount_to_sell == auction.amount_to_sell
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -787,7 +725,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip("tmp")
     def test_should_settle_auction_when_we_won_the_auction(self):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -808,12 +745,11 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         collateral_after = self.collateral.collateral.balance_of(self.keeper_address)
         assert collateral_before < collateral_after
 
-    @pytest.mark.skip("tmp")
     def test_should_not_settle_auction_when_auction_finished_but_somebody_else_won(self, auction_id, other_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
-        bid_amount = Rad.from_number(66)
+        bid_amount = Rad.from_number(30)
         self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, bid_amount)
         assert collateral_auction_house.bids(auction_id).bid_amount == bid_amount
 
@@ -829,7 +765,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert collateral_auction_house.settle_auction(auction_id).transact()
         assert collateral_auction_house.bids(auction_id).bid_amount == Rad(0)
 
-    @pytest.mark.skip("tmp")
     def test_should_obey_gas_price_provided_by_the_model(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -844,7 +779,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         assert self.collateral.collateral_auction_house.bids(auction_id).bid_amount == Rad(Wad.from_number(15.0) * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    @pytest.mark.skip("tmp")
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -865,7 +799,6 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
     def test_should_change_gas_strategy_when_model_output_changes(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house

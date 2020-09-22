@@ -503,7 +503,7 @@ class AuctionKeeper:
                          f"{(datetime.now() - started).seconds} seconds")
 
     def check_for_bids(self):
-        # Initialize the reservoir with system coin/MKR balance for this round of bid submissions.
+        # Initialize the reservoir with system coin/prot balance for this round of bid submissions.
         # This isn't a perfect solution as it omits the cost of bids submitted from the last round.
         # Recreating the reservoir preserves the stateless design of this keeper.
         if self.collateral_auction_house or self.debt_auction_house:
