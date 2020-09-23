@@ -28,7 +28,7 @@ from pyflex.approval import approve_safe_modification_directly
 from pyflex.auctions import DebtAuctionHouse
 from pyflex.deployment import GfDeployment
 from pyflex.numeric import Wad, Ray, Rad
-from tests.conftest import liquidate, create_unsafe_safe, pop_debt_and_settle_debt, auction_income_recipient_address, keeper_address, geb, \
+from tests.conftest import liquidate, create_critical_safe, pop_debt_and_settle_debt, auction_income_recipient_address, keeper_address, geb, \
     models, our_address, other_address, reserve_system_coin, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
@@ -36,14 +36,14 @@ from web3 import Web3
 
 @pytest.fixture()
 def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, other_address) -> int:
-    joy = geb.safe_engine.system_coin(geb.accounting_engine.address)
-    woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_balance()) - geb.accounting_engine.total_on_auction_debt()
+    joy = geb.safe_engine.coin_balance(geb.accounting_engine.address)
+    woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
     print(f'joy={str(joy)[:6]}, woe={str(woe)[:6]}')
 
     if woe < joy:
         # Liquidate SAFE
         c = geb.collaterals['ETH-B']
-        unsafe_safe= create_unsafe_safe(geb, c, Wad.from_number(2), other_address, draw_system_coin=False)
+        unsafe_safe= create_critical_safe(geb, c, Wad.from_number(2), other_address, draw_system_coin=False)
         collateral_auction_id = liquidate(geb, c, unsafe_safe)
 
         # Generate some Dai, bid on and win the collateral auction without covering all the debt
@@ -51,17 +51,17 @@ def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, 
         c.collateral_auction_house.approve(geb.safe_engine.address, approval_function=approve_safe_modification_directly(from_address=auction_income_recipient_address))
         current_bid = c.collateral_auction_house.bids(collateral_auction_id)
         bid_amount = Rad.from_number(1.9)
-        assert geb.safe_engine.system_coin(auction_income_recipient_address) > bid_amount
+        assert geb.safe_engine.coin_balance(auction_income_recipient_address) > bid_amount
         assert c.collateral_auction_house.increase_bid_size(collateral_auction_id, current_bid.amount_to_sell, bid_amount).transact(from_address=auction_income_recipient_address)
         time_travel_by(web3, c.collateral_auction_house.bid_duration()+1)
         assert c.collateral_auction_house.settle_auction(collateral_auction_id).transact()
 
-    pop_debt_and_settle_debt(web3, geb, past_blocks=1200, kiss=False)
+    pop_debt_and_settle_debt(web3, geb, past_blocks=1200, cancel_auctioned_debt=False)
 
     # Start the debt auction
-    woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_balance()) - geb.accounting_engine.total_on_auction_debt()
+    woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
     assert geb.accounting_engine.debt_auction_bid_size() <= woe
-    assert geb.safe_engine.system_coin(geb.accounting_engine.address) == Rad(0)
+    assert geb.safe_engine.coin_balance(geb.accounting_engine.address) == Rad(0)
     assert geb.accounting_engine.auction_debt().transact(from_address=auction_income_recipient_address)
     return geb.debt_auction_house.auctions_started()
 
@@ -98,47 +98,47 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert (isinstance(amount_to_sell, Wad))
         assert (isinstance(bid_amount, Rad))
 
-        assert self.debt_auction_house.live() == 1
+        assert self.debt_auction_house.contract_enabled() == 1
 
         current_bid = self.debt_auction_house.bids(id)
         assert current_bid.high_bidder != Address("0x0000000000000000000000000000000000000000")
-        assert current_bid.bid_expiry > datetime.now().timestamp() or current_bid.tic == 0
+        assert current_bid.bid_expiry > datetime.now().timestamp() or current_bid.bid_expiry == 0
         assert current_bid.auction_deadline > datetime.now().timestamp()
 
         assert bid_amount == current_bid.bid_amount
-        assert Wad(0) < amount_to_sell < current_bid.lot
-        assert self.debt_auction_house.beg() * amount_to_sell <= current_bid.lot
+        assert Wad(0) < amount_to_sell < current_bid.amount_to_sell
+        assert self.debt_auction_house.bid_increase() * amount_to_sell <= current_bid.amount_to_sell
 
         assert self.debt_auction_house.decrease_sold_amount(id, amount_to_sell, bid_amount).transact(from_address=address)
 
-    def amount_to_sell_implies_price(self, kick: int, price: Wad) -> bool:
-        return round(Rad(self.debt_auction_house.bids(kick).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(price), 2)
+    def amount_to_sell_implies_price(self, auction_id: int, price: Wad) -> bool:
+        return round(Rad(self.debt_auction_house.bids(auction_id).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(price), 2)
 
     def test_should_detect_debt_auction(self, web3, c, geb, other_address, keeper_address):
         # given a count of debt auctions
         reserve_system_coin(geb, c, keeper_address, Wad.from_number(230))
         auctions_started = geb.debt_auction_house.auctions_started()
 
-        # and an undercollateralized CDP is bitten
-        unsafe_cdp = create_unsafe_cdp(geb, c, Wad.from_number(1), other_address, draw_system_coin=False)
-        assert geb.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
+        # and an undercollateralized SAFE is liquidated
+        unsafe_safe = create_critical_safe(geb, c, Wad.from_number(1), other_address, draw_system_coin=False)
+        assert geb.liquidation_engine.liquidate_safe(unsafe_safe.collateral_type, unsafe_safe).transact()
 
         # when the auction ends without debt being covered
         time_travel_by(web3, c.collateral_auction_house.total_auction_length() + 1)
 
         # then ensure testchain is in the appropriate state
-        joy = geb.safe_engine.system_coin(geb.accounting_engine.address)
+        joy = geb.safe_engine.coin_balance(geb.accounting_engine.address)
         awe = geb.safe_engine.debt_balance(geb.accounting_engine.address)
-        woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_balance()) - geb.accounting_engine.total_on_auction_debt()
-        debt_balance = geb.accounting_engine.debt_balance()
+        woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+        debt_queue = geb.accounting_engine.debt_queue()
         debt_auction_bid_size = geb.accounting_engine.debt_auction_bid_size()
-        wait = geb.accounting_engine.wait()
+        wait = geb.accounting_engine.pop_debt_delay()
         assert joy < awe
-        assert woe + debt_balance >= debt_auction_bid_size
+        assert woe + debt_queue >= debt_auction_bid_size
         assert wait == 0
 
         # when
-        self.keeper.check_flop()
+        self.keeper.check_debt()
         wait_for_other_threads()
 
         # then ensure another debt auction was started
@@ -149,9 +149,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.decrease_sold_amount(auctions_started, self.other_address, Wad.from_number(0.000012), self.debt_auction_bid_size)
         time_travel_by(web3, geb.debt_auction_house.bid_duration() + 1)
 
-    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, auction_id):
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_start(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -163,14 +163,14 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
                                                                       id=auction_id))
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == kick
+        assert status.id == auction_id
         assert status.collateral_auction_house is None
         assert status.surplus_auction_house is None
         assert status.debt_auction_house == self.debt_auction_house.address
         assert status.bid_amount > Rad.from_number(0)
-        assert status.amount_to_sell == self.geb.accounting_engine.dump()
-        assert status.tab is None
-        assert status.beg > Wad.from_number(1)
+        assert status.amount_to_sell == self.geb.accounting_engine.initial_debt_auction_minted_tokens()
+        assert status.amount_to_raise is None
+        assert status.bid_increase > Wad.from_number(1)
         assert status.high_bidder == self.geb.accounting_engine.address
         assert status.era > 0
         assert status.auction_deadline < status.era + self.debt_auction_house.total_auction_length() + 1
@@ -179,8 +179,8 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
 
     def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
-        kick = self.debt_auction_house.kicks()
-        (model, model_factory) = models(self.keeper, kick)
+        auction_id = self.debt_auction_house.auctions_started()
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -200,16 +200,16 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         assert model.send_status.call_count > 1
-        last_bid = self.debt_auction_house.bids(kick)
+        last_bid = self.debt_auction_house.bids(auction_id)
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == kick
+        assert status.id == auction_id
         assert status.collateral_auction_house is None
         assert status.surplus_auction_house is None
         assert status.debt_auction_house == self.debt_auction_house.address
         assert status.bid_amount == last_bid.bid_amount
         assert status.amount_to_sell == Wad(last_bid.bid_amount / Rad(price))
-        assert status.tab is None
+        assert status.amount_to_raise is None
         assert status.beg > Wad.from_number(1)
         assert status.high_bidder == self.keeper_address
         assert status.era > 0
@@ -219,11 +219,11 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.settle_auction(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, kick):
+    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -233,7 +233,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
 
         # when
         amount_to_sell = Wad.from_number(0.0000001)
-        assert self.debt_auction_house.decrease_sold_amount(kick, amount_to_sell, self.debt_auction_bid_size).transact(from_address=self.other_address)
+        assert self.debt_auction_house.decrease_sold_amount(auction_id, amount_to_sell, self.debt_auction_bid_size).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -241,13 +241,13 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert model.send_status.call_count > 1
         # and
         status = model.send_status.call_args[0][0]
-        assert status.id == kick
+        assert status.id == auction_id
         assert status.collateral_auction_house is None
         assert status.surplus_auction_house is None
         assert status.debt_auction_house == self.debt_auction_house.address
         assert status.bid_amount == self.debt_auction_bid_size
-        assert status.amount_to_sell == lot
-        assert status.tab is None
+        assert status.amount_to_sell == amount_to_sell
+        assert status.amount_to_raise is None
         assert status.beg > Wad.from_number(1)
         assert status.high_bidder == self.other_address
         assert status.era > 0
@@ -257,11 +257,11 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.settle_auction(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_restart_auction_if_auction_expired_due_to_total_auction_length(self, kick):
+    def test_should_restart_auction_if_auction_expired_due_to_total_auction_length(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -280,7 +280,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         model.terminate.assert_not_called()
-        auction = self.debt_auction_house.bids(kick)
+        auction = self.debt_auction_house.bids(auction_id)
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(555.0), 2)
 
         # cleanup
@@ -289,9 +289,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
 
-    def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, kick):
+    def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -301,7 +301,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.decrease_sold_amount(kick, self.other_address, Wad.from_number(0.000015), self.debt_auction_bid_size)
+        self.decrease_sold_amount(auction_id, self.other_address, Wad.from_number(0.000015), self.debt_auction_bid_size)
         # and
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         # and
@@ -312,11 +312,11 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         model.terminate.assert_called_once()
 
         # cleanup
-        assert self.debt_auction_house.settle_auction(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_terminate_model_if_auction_is_settled(self, kick):
+    def test_should_terminate_model_if_auction_is_settled(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
@@ -326,11 +326,11 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         model.terminate.assert_not_called()
 
         # when
-        self.decrease_sold_amount(kick, self.other_address, Wad.from_number(0.000016), self.debt_auction_bid_size)
+        self.decrease_sold_amount(auction_id, self.other_address, Wad.from_number(0.000016), self.debt_auction_bid_size)
         # and
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         # and
-        self.debt_auction_house.deal(kick).transact(from_address=self.other_address)
+        self.debt_auction_house.settle_auction(auction_id).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -338,15 +338,15 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    def test_should_not_instantiate_model_if_auction_is_dealt(self, kick):
+    def test_should_not_instantiate_model_if_auction_is_settled(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
         # and
-        self.decrease_sold_amount(kick, self.other_address, Wad.from_number(0.000017), self.debt_auction_bid_size)
+        self.decrease_sold_amount(auction_id, self.other_address, Wad.from_number(0.000017), self.debt_auction_bid_size)
         # and
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         # and
-        assert self.debt_auction_house.deal(kick).transact(from_address=self.other_address)
+        assert self.debt_auction_house.settle_auction(auction_id).transact(from_address=self.other_address)
 
         # when
         self.keeper.check_all_auctions()
@@ -354,7 +354,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # then
         model_factory.create_model.assert_not_called()
 
-    def test_should_not_do_anything_if_no_output_from_model(self, kick):
+    def test_should_not_do_anything_if_no_output_from_model(self, auction_id):
         # given
         previous_block_number = self.web3.eth.blockNumber
 
@@ -369,9 +369,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
 
     def test_should_make_initial_bid(self):
         # given
-        kick = self.debt_auction_house.kicks()
-        (model, model_factory) = models(self.keeper, kick)
-        mkr_before = self.geb.mkr.balance_of(self.keeper_address)
+        auction_id = self.debt_auction_house.auctions_started()
+        (model, model_factory) = models(self.keeper, auction_id)
+        prot_before = self.geb.prot.balance_of(self.keeper_address)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(575.0))
@@ -380,23 +380,23 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.debt_auction_house.bids(kick)
+        auction = self.debt_auction_house.bids(auction_id)
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(575.0), 2)
-        mkr_after = self.geb.mkr.balance_of(self.keeper_address)
-        assert mkr_before == mkr_after
+        prot_after = self.geb.prot.balance_of(self.keeper_address)
+        assert prot_before == prot_after
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_bid_even_if_there_is_already_a_bidder(self, kick):
+    def test_should_bid_even_if_there_is_already_a_bidder(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
-        mkr_before = self.geb.mkr.balance_of(self.keeper_address)
+        (model, model_factory) = models(self.keeper, auction_id)
+        prot_before = self.geb.prot.balance_of(self.keeper_address)
         # and
         amount_to_sell = Wad.from_number(0.000016)
-        assert self.debt_auction_house.decrease_sold_amount(kick, amount_to_sell, self.debt_auction_bid_size).transact(from_address=self.other_address)
-        assert self.debt_auction_house.bids(kick).amount_to_sell == lot
+        assert self.debt_auction_house.decrease_sold_amount(auction_id, amount_to_sell, self.debt_auction_bid_size).transact(from_address=self.other_address)
+        assert self.debt_auction_house.bids(auction_id).amount_to_sell == amount_to_sell
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(825.0))
@@ -405,19 +405,19 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        auction = self.debt_auction_house.bids(kick)
-        assert auction.amount_to_sell != lot
+        auction = self.debt_auction_house.bids(auction_id)
+        assert auction.amount_to_sell != amount_to_sell
         assert round(auction.bid_amount / Rad(auction.amount_to_sell), 2) == round(Rad.from_number(825.0), 2)
-        mkr_after = self.geb.mkr.balance_of(self.keeper_address)
-        assert mkr_before == mkr_after
+        prot_after = self.geb.prot.balance_of(self.keeper_address)
+        assert prot_before == prot_after
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
+    def test_should_overbid_itself_if_model_has_updated_the_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(100.0))
@@ -426,7 +426,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert round(Rad(self.debt_auction_house.bids(kick).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad.from_number(100.0), 2)
+        assert round(Rad(self.debt_auction_house.bids(auction_id).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad.from_number(100.0), 2)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(110.0))
@@ -434,15 +434,15 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.amount_to_sell_implies_price(kick, Wad.from_number(110.0))
+        assert self.amount_to_sell_implies_price(auction_id, Wad.from_number(110.0))
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, kick):
+    def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(120.0), gas_price=10)
@@ -459,16 +459,16 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.amount_to_sell_implies_price(kick, Wad.from_number(120.0))
+        assert self.amount_to_sell_implies_price(auction_id, Wad.from_number(120.0))
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, kick):
+    def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(50.0), gas_price=10)
@@ -487,16 +487,16 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.amount_to_sell_implies_price(kick, Wad.from_number(60.0))
+        assert self.amount_to_sell_implies_price(auction_id, Wad.from_number(60.0))
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, kick):
+    def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(80.0), gas_price=10)
@@ -514,16 +514,16 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.amount_to_sell_implies_price(kick, Wad.from_number(70.0))
+        assert self.amount_to_sell_implies_price(auction_id, Wad.from_number(70.0))
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_not_bid_on_rounding_errors_with_small_amounts(self, kick):
+    def test_should_not_bid_on_rounding_errors_with_small_amounts(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(1400.0))
@@ -532,7 +532,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.debt_auction_house.bids(kick).amount_to_sell == Wad(self.debt_auction_bid_size / Rad.from_number(1400.0))
+        assert self.debt_auction_house.bids(auction_id).amount_to_sell == Wad(self.debt_auction_bid_size / Rad.from_number(1400.0))
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -543,9 +543,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    def test_should_deal_when_we_won_the_auction(self, kick):
+    def test_should_settle_when_we_won_the_auction(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(825.0))
@@ -554,8 +554,8 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.amount_to_sell_implies_price(kick, Wad.from_number(825.0))
-        mkr_before = self.geb.mkr.balance_of(self.keeper_address)
+        assert self.amount_to_sell_implies_price(auction_id, Wad.from_number(825.0))
+        prot_before = self.geb.prot.balance_of(self.keeper_address)
 
         # when
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
@@ -563,15 +563,15 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        mkr_after = self.geb.mkr.balance_of(self.keeper_address)
-        assert mkr_before < mkr_after
+        prot_after = self.geb.prot.balance_of(self.keeper_address)
+        assert prot_before < prot_after
 
-    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self, kick):
+    def test_should_not_settle_when_auction_finished_but_somebody_else_won(self, auction_id):
         # given
-        mkr_before = self.geb.mkr.balance_of(self.keeper_address)
+        prot_before = self.geb.prot.balance_of(self.keeper_address)
         # and
-        self.decrease_sold_amount(kick, self.other_address, Wad.from_number(0.000015), self.debt_auction_bid_size)
-        assert self.debt_auction_house.bids(kick).amount_to_sell == Wad.from_number(0.000015)
+        self.decrease_sold_amount(auction_id, self.other_address, Wad.from_number(0.000015), self.debt_auction_bid_size)
+        assert self.debt_auction_house.bids(auction_id).amount_to_sell == Wad.from_number(0.000015)
 
         # when
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
@@ -579,12 +579,12 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        mkr_after = self.geb.mkr.balance_of(self.keeper_address)
-        assert mkr_before == mkr_after
+        prot_after = self.geb.prot.balance_of(self.keeper_address)
+        assert prot_before == prot_after
 
-    def test_should_obey_gas_price_provided_by_the_model(self, kick):
+    def test_should_obey_gas_price_provided_by_the_model(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(800.0), gas_price=175000)
@@ -593,16 +593,16 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.debt_auction_house.bids(kick).high_bidder == self.keeper_address
+        assert self.debt_auction_house.bids(auction_id).high_bidder == self.keeper_address
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, kick):
+    def test_should_use_default_gas_price_if_not_provided_by_the_model(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(850.0))
@@ -611,17 +611,17 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.debt_auction_house.bids(kick).high_bidder == self.keeper_address
+        assert self.debt_auction_house.bids(auction_id).high_bidder == self.keeper_address
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_change_gas_strategy_when_model_output_changes(self, kick):
+    def test_should_change_gas_strategy_when_model_output_changes(self, auction_id):
         # given
-        (model, model_factory) = models(self.keeper, kick)
+        (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         first_bid = Wad.from_number(90)
@@ -641,7 +641,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert round(Rad(self.debt_auction_house.bids(kick).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(second_bid), 2)
+        assert round(Rad(self.debt_auction_house.bids(auction_id).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(second_bid), 2)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
@@ -654,12 +654,12 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert round(Rad(self.debt_auction_house.bids(kick).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(third_bid), 2)
+        assert round(Rad(self.debt_auction_house.bids(auction_id).amount_to_sell), 2) == round(self.debt_auction_bid_size / Rad(third_bid), 2)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
 
         # cleanup
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
-        assert self.debt_auction_house.deal(kick).transact()
+        assert self.debt_auction_house.settle_auction(auction_id).transact()
 
     @classmethod
     def teardown_class(cls):
@@ -668,9 +668,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
     @classmethod
     def cleanup_debt(cls, web3, geb, address):
         # Cancel out surplus and debt
-        system_coin_vow = geb.safe_engine.coin_balance(geb.accounting_engine.address)
-        assert system_coin_vow <= geb.accounting_engine.woe()
-        assert geb.accounting_engine.settle_debt(system_coin_vow).transact()
+        system_coin_accounting_engine = geb.safe_engine.coin_balance(geb.accounting_engine.address)
+        assert system_coin_accounting_engine <= geb.accounting_engine.unqueued_unauctioned_debt()
+        assert geb.accounting_engine.settle_debt(system_coin_accounting_engine).transact()
 
 
 class MockDebtAuctionHouse:
@@ -686,7 +686,7 @@ class MockDebtAuctionHouse:
     def bids(self, id: int):
         return DebtAuctionHouse.Bid(id=id,
                            bid_amount=self.bid_amount,
-                           amount_to_sell=self.lot,
+                           amount_to_sell=self.amount_to_sell,
                            high_bidder=Address("0x0000000000000000000000000000000000000000"),
                            bid_expiry=0,
                            auction_deadline=int(datetime.now(tz=timezone.utc).timestamp()) + self.total_auction_length)
@@ -702,15 +702,15 @@ class TestDebtAuctionStrategy:
         mocker.patch("pyflex.auctions.DebtAuctionHouse.bids", return_value=self.mock_debt_auction_house.bids(1))
         mocker.patch("pyflex.auctions.DebtAuctionHouse.decrease_sold_amount", return_value="tx goes here")
         model_price = Wad.from_number(190.0)
-        (price, tx, bid) = self.strategy.bid(1, model_price)
+        (price, tx, bid_amount) = self.strategy.bid(1, model_price)
         assert price == model_price
-        assert bid == MockDebtAuctionHouse.bid
+        assert bid_amount == MockDebtAuctionHouse.bid_amount
         amount_to_sell1 = MockDebtAuctionHouse.debt_auction_bid_size / model_price
-        DebtAuctionHouse.decrease_sold_amount.assert_called_once_with(1, amount_to_sell1, MockDebtAuctionHouse.bid)
+        DebtAuctionHouse.decrease_sold_amount.assert_called_once_with(1, amount_to_sell1, MockDebtAuctionHouse.bid_amount)
 
         # When bid price increases, amount_to_sell should decrease
         model_price = Wad.from_number(200.0)
         (price, tx, bid) = self.strategy.bid(1, model_price)
         amount_to_sell2 = DebtAuctionHouse.decrease_sold_amount.call_args[0][1]
-        assert amount_to_sell2 < lot1
+        assert amount_to_sell2 < amount_to_sell1
         assert amount_to_sell2 == MockDebtAuctionHouse.debt_auction_bid_size / model_price

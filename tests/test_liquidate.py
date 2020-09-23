@@ -21,7 +21,7 @@ from auction_keeper.main import AuctionKeeper
 from pyflex.approval import approve_safe_modification_directly
 from pyflex.numeric import Wad, Ray, Rad
 
-from tests.conftest import web3, geb, create_unsafe_safe, keeper_address, reserve_system_coin, purchase_system_coin
+from tests.conftest import web3, geb, create_critical_safe, keeper_address, reserve_system_coin, purchase_system_coin
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -36,7 +36,7 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
                                          f"--collateral-type {c.collateral_type.name} "
                                          f"--model ./bogus-model.sh"), web3=geb.web3)
         keeper.approve()
-        unsafe_safe = create_unsafe_safe(geb, c, Wad.from_number(1.2), auction_income_recipient_address)
+        unsafe_safe = create_critical_safe(geb, c, Wad.from_number(1.2), auction_income_recipient_address)
         assert len(geb.active_auctions()["collateral_auctions"][c.collateral_type.name]) == 0
         # Keeper won't bid with a 0 system coin balance
         purchase_system_coin(Wad.from_number(20), keeper_address)

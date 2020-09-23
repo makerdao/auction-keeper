@@ -210,7 +210,7 @@ class DebtAuctionStrategy(Strategy):
                       era=era(self.debt_auction_house.web3),
                       bid_expiry=bid.bid_expiry,
                       auction_deadline=bid.auction_deadline,
-                      price=Wad(bid.bid_amount / Rad(bid.amount_to_sell)) if bid.bid_amount != Wad(0) else None)
+                      price=Wad(bid.bid_amount / Rad(bid.amount_to_sell)) if Wad(bid.bid_amount) != Wad(0) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
