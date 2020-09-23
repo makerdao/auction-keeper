@@ -375,24 +375,24 @@ class AuctionKeeper:
     def check_surplus(self):
         # Check if Accounting Engine has a surplus of system coin compared to bad debt
         joy = self.safe_engine.coin_balance(self.accounting_engine.address)
-        awe = self.safe_engine.sin(self.accounting_engine.address)
+        awe = self.safe_engine.debt_balance(self.accounting_engine.address)
 
         # Check if Accounting Engine has system coin in excess
         if joy > awe:
-            bump = self.accounting_engine.bump()
-            hump = self.accounting_engine.hump()
+            surplus_auction_amount_to_sell = self.accounting_engine.surplus_auction_amount_to_sell()
+            surplus_buffer = self.accounting_engine.surplus_buffer()
 
             # Check if Accounting Engine has enough system coin surplus to start an auction and that we have enough prot balance
-            if (joy - awe) >= (bump + hump):
+            if (joy - awe) >= (surplus_auction_amount_to_sell + surplus_buffer):
 
                 if self.arguments.bid_on_auctions and self.prot.balance_of(self.our_address) == Wad(0):
-                    self.logger.warning("Skipping opportunity to heal/surplus because there is no MKR to bid")
+                    self.logger.warning("Skipping opportunity to settle debt/surplus because there is no prot to bid")
                     return
 
                 unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
                 # Heal the system to bring Woe to 0
                 if unqueued_unauctioned_debt > Rad(0):
-                    self.accounting_engine.heal(unqueued_unauctioned_debt).transact(gas_price=self.gas_price)
+                    self.accounting_engine.settle_debt(unqueued_unauctioned_debt).transact(gas_price=self.gas_price)
                 self.accounting_engine.auction_surplus().transact(gas_price=self.gas_price)
 
     def reconcile_debt(self, joy: Rad, total_on_auction_debt: Rad, unqueued_unauctioned_debt: Rad):
@@ -402,21 +402,21 @@ class AuctionKeeper:
 
         if total_on_auction_debt > Rad(0):
             if joy > total_on_auction_debt:
-                self.accounting_engine.kiss(total_on_auction_debt).transact(gas_price=self.gas_price)
+                self.accounting_engine.cancel_auctioned_debt_with_surplus(total_on_auction_debt).transact(gas_price=self.gas_price)
             else:
-                self.accounting_engine.kiss(joy).transact(gas_price=self.gas_price)
+                self.accounting_engine.cancel_auctioned_debt_with_surplus(joy).transact(gas_price=self.gas_price)
                 return
         if unqueued_unauctioned_debt > Rad(0):
             joy = self.safe_engine.coin_balance(self.accounting_engine.address)
             if joy > unqueued_unauctioned_debt:
-                self.accounting_engine.heal(unqueued_unauctioned_debt).transact(gas_price=self.gas_price)
+                self.accounting_engine.settle_debt(unqueued_unauctioned_debt).transact(gas_price=self.gas_price)
             else:
-                self.accounting_engine.heal(joy).transact(gas_price=self.gas_price)
+                self.accounting_engine.settle_debt(joy).transact(gas_price=self.gas_price)
 
     def check_debt(self):
         # Check if Accounting Engine has a surplus of bad debt compared to system coin
         joy = self.safe_engine.coin_balance(self.accounting_engine.address)
-        awe = self.safe_engine.sin(self.accounting_engine.address)
+        awe = self.safe_engine.debt_balance(self.accounting_engine.address)
 
         # Check if Accounting Engine has bad debt in excess
         excess_debt = joy < awe
@@ -450,7 +450,7 @@ class AuctionKeeper:
                     now = self.web3.eth.getBlock('latest')['timestamp']
                     debt_queue = self.accounting_engine.debt_queue_of(era)
                     # If the liquidation hasn't already been popped from queue and has aged past the `wait`
-                    if sin > Rad(0) and era + wait <= now:
+                    if debt_queue > Rad(0) and era + wait <= now:
                         self.accounting_engine.pop_debt_from_queue(era).transact(gas_price=self.gas_price)
 
                         # pop debt from queue until unqueued_unauctioned_debt is above debt_auction_bid_size + joy
