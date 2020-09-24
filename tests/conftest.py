@@ -307,8 +307,8 @@ def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_re
     # Ensure there is no debt which a previous test failed to clean up
     assert geb.safe_engine.debt_balance(geb.accounting_engine.address) == Rad(0)
 
-    safe_collateral = Wad.from_number(1)
-    safe_debt = Wad.from_number(50)
+    safe_collateral = Wad.from_number(60)
+    safe_debt = Wad.from_number(1000)
     wrap_eth(geb, auction_income_recipient_address, safe_collateral)
     c.approve(auction_income_recipient_address)
     assert c.adapter.join(auction_income_recipient_address, safe_collateral).transact(
@@ -319,7 +319,7 @@ def create_safe_with_surplus(geb: GfDeployment, c: Collateral, auction_income_re
     # total surplus > total debt + surplus auction lot size + surplus buffer
     print(f"system_coin(accounting_engine)={str(geb.safe_engine.coin_balance(geb.accounting_engine.address))} >? debt_balance(accounting_engine)={str(geb.safe_engine.debt_balance(geb.accounting_engine.address))} " 
           f"+ accounting_engine.surplus_auction_amount_to_sell={str(geb.accounting_engine.surplus_auction_amount_to_sell())} + accounting_engine.surplus_buffer={str(geb.accounting_engine.surplus_buffer())}")
-    assert geb.safe_engine.coin_balance(geb.accounting_engine.address) > mcd.safe_engine.sin(geb.accounting_engine.address) + geb.accounting_engine.bump() + geb.accounting_engine.hump()
+    assert geb.safe_engine.coin_balance(geb.accounting_engine.address) > geb.safe_engine.debt_balance(geb.accounting_engine.address) + geb.accounting_engine.surplus_auction_amount_to_sell() + geb.accounting_engine.surplus_buffer()
     return geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
 
 

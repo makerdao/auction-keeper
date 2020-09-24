@@ -26,12 +26,17 @@ from pyflex.gf import Collateral
 from pyflex.numeric import Wad, Ray, Rad
 from tests.conftest import c, geb, mint_prot, reserve_system_coin, set_collateral_price, web3, \
     our_address, keeper_address, other_address, auction_income_recipient_address, get_node_gas_price, \
-    max_delta_debt, is_safe_safe, liquidate, create_safe_with_surplus, simulate_model_output, models
+    max_delta_debt, is_safe_safe, liquidate, create_safe_with_surplus, simulate_model_output, models, set_collateral_price
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
 @pytest.fixture()
 def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
+    safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
+    assert safe.locked_collateral == Wad(0)
+    assert safe.generated_debt == Wad(0)
+
+    set_collateral_price(geb, c, Wad.from_number(200))
     create_safe_with_surplus(geb, c, auction_income_recipient_address)
 
     assert geb.accounting_engine.auction_surplus().transact(from_address=auction_income_recipient_address)
@@ -45,7 +50,7 @@ def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
 
 
 @pytest.mark.timeout(380)
-class TestAuctionKeeperFlapper(TransactionIgnoringTest):
+class TestAuctionKeeperSurplus(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = web3()
         self.our_address = our_address(self.web3)
@@ -69,14 +74,16 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # Since no args were assigned, gas strategy should return a GeometricGasPrice starting at the node gas price
         self.default_gas_price = get_node_gas_price(self.web3)
 
+
+
     def test_should_detect_surplus_auction(self, web3, geb, c, auction_income_recipient_address, keeper_address):
-        # given some PROT is available to the keeper and a count of flap auctions
+        # given some PROT is available to the keeper and a count of surplus auctions
         mint_prot(geb.prot, keeper_address, Wad.from_number(50000))
         auctions_started = geb.surplus_auction_house.auctions_started()
 
         # when surplus is generated
         create_safe_with_surplus(geb, c, auction_income_recipient_address)
-        self.keeper.check_flap()
+        self.keeper.check_surplus()
         wait_for_other_threads()
 
         # then ensure another surplus auction was auction_ided off
@@ -109,7 +116,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.bid_amount == Wad(0)
         assert status.amount_to_sell == self.geb.accounting_engine.surplus_auction_amount_to_sell()
         assert status.amount_to_raise is None
-        assert status.bid_increase == Wad.from_number(1.05)
+        assert status.bid_increase == self.geb.surplus_auction_house.bid_increase()
         assert status.high_bidder == self.geb.accounting_engine.address
         assert status.era > 0
         assert status.auction_deadline < status.era + self.surplus_auction_house.total_auction_length() + 1
@@ -147,7 +154,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.bid_amount == Wad(self.surplus_auction_house.bids(auction_id).amount_to_sell / Rad.from_number(9))
         assert status.amount_to_sell == self.geb.accounting_engine.surplus_auction_amount_to_sell()
         assert status.amount_to_raise is None
-        assert status.bid_increase == Wad.from_number(1.05)
+        assert status.bid_increase == self.geb.surplus_auction_house.bid_increase()
         assert status.high_bidder == self.keeper_address
         assert status.era > 0
         assert status.auction_deadline > status.era
@@ -156,7 +163,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, auction_id):
         # given
@@ -171,8 +178,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # when
         auction = self.surplus_auction_house.bids(auction_id)
-        assert Wad.from_number(40) > auction.bid
-        assert self.surplus_auction_house.tend(auction_id, auction.lot, Wad.from_number(40)).transact(from_address=self.other_address)
+        assert Wad.from_number(40) > auction.bid_amount
+        assert self.surplus_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, Wad.from_number(40)).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -185,19 +192,19 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert status.collateral_auction_house is None
         assert status.surplus_auction_house == self.surplus_auction_house.address
         assert status.debt_auction_house is None
-        assert status.bid == Wad.from_number(40)
-        assert status.lot == auction.lot
+        assert status.bid_amount == Wad.from_number(40)
+        assert status.amount_to_sell == auction.amount_to_sell
         assert status.amount_to_raise is None
-        assert status.beg == Wad.from_number(1.05)
-        assert status.guy == self.other_address
+        assert status.bid_increase == self.geb.surplus_auction_house.bid_increase()
+        assert status.high_bidder == self.other_address
         assert status.era > 0
-        assert status.end > status.era
+        assert status.auction_deadline > status.era
         assert status.bid_expiry > status.era
-        assert status.price == Wad(auction.lot / Rad(auction.bid))
+        assert status.price == Wad(auction.amount_to_sell / Rad(auction.bid_amount))
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_restart_auction_if_auction_expired_due_to_total_auction_length(self, auction_id):
         # given
@@ -221,7 +228,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         # then
         model.terminate.assert_not_called()
         auction = self.surplus_auction_house.bids(auction_id)
-        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(9.0), 2)
+        assert round(Wad(auction.amount_to_sell) / auction.bid_amount, 2) == round(Wad.from_number(9.0), 2)
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
@@ -242,7 +249,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # when
         auction = self.surplus_auction_house.bids(auction_id)
-        assert self.surplus_auction_house.tend(auction_id, auction.lot, Wad.from_number(40)).transact(from_address=self.other_address)
+        assert self.surplus_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, Wad.from_number(40)).transact(from_address=self.other_address)
         # and
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
         # and
@@ -252,7 +259,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    def test_should_terminate_model_if_auction_is_dealt(self, auction_id):
+    def test_should_terminate_model_if_auction_is_settled(self, auction_id):
         # given
         auction_id = self.surplus_auction_house.auctions_started()
         (model, model_factory) = models(self.keeper, auction_id)
@@ -266,11 +273,11 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # when
         auction = self.surplus_auction_house.bids(auction_id)
-        assert self.surplus_auction_house.tend(auction_id, auction.lot, Wad.from_number(40)).transact(from_address=self.other_address)
+        assert self.surplus_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, Wad.from_number(40)).transact(from_address=self.other_address)
         # and
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
         # and
-        assert self.surplus_auction_house.deal(auction_id).transact(from_address=self.other_address)
+        assert self.surplus_auction_house.settle_auction(auction_id).transact(from_address=self.other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -278,16 +285,16 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    def test_should_not_instantiate_model_if_auction_is_dealt(self, auction_id):
+    def test_should_not_instantiate_model_if_auction_is_settled(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
         # and
         auction = self.surplus_auction_house.bids(auction_id)
-        self.surplus_auction_house.tend(auction_id, auction.lot, Wad.from_number(40)).transact(from_address=self.other_address)
+        self.surplus_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, Wad.from_number(40)).transact(from_address=self.other_address)
         # and
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
         # and
-        self.surplus_auction_house.deal(auction_id).transact(from_address=self.other_address)
+        self.surplus_auction_house.settle_auction(auction_id).transact(from_address=self.other_address)
 
         # when
         self.keeper.check_all_auctions()
@@ -320,19 +327,19 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = self.surplus_auction_house.bids(auction_id)
-        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(10.0), 2)
+        assert round(Wad(auction.amount_to_sell) / auction.bid_amount, 2) == round(Wad.from_number(10.0), 2)
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_bid_even_if_there_is_already_a_bidder(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
         # and
         auction = self.surplus_auction_house.bids(auction_id)
-        assert self.surplus_auction_house.tend(auction_id, auction.lot, Wad.from_number(16)).transact(from_address=self.other_address)
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad.from_number(16)
+        assert self.surplus_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, Wad.from_number(16)).transact(from_address=self.other_address)
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad.from_number(16)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(0.0000005))
@@ -342,16 +349,16 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = self.surplus_auction_house.bids(auction_id)
-        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(0.0000005), 2)
+        assert round(Wad(auction.amount_to_sell) / auction.bid_amount, 2) == round(Wad.from_number(0.0000005), 2)
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_overbid_itself_if_model_has_updated_the_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
 
         # when
         first_bid = Wad.from_number(0.0000004)
@@ -361,7 +368,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot / Rad(first_bid))
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell / Rad(first_bid))
 
         # when
         second_bid = Wad.from_number(0.0000003)
@@ -370,16 +377,16 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot / Rad(second_bid))
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell / Rad(second_bid))
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(10.0), gas_price=10)
@@ -396,17 +403,17 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot) / Wad.from_number(10.0)
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell) / Wad.from_number(10.0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(9.0), gas_price=10)
@@ -423,17 +430,17 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert round(self.surplus_auction_house.bids(auction_id).bid, 2) == round(Wad(lot / Rad.from_number(8.0)), 2)
+        assert round(self.surplus_auction_house.bids(auction_id).bid_amount, 2) == round(Wad(amount_to_sell / Rad.from_number(8.0)), 2)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(10.0), gas_price=10)
@@ -450,17 +457,17 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot) / Wad.from_number(8.0)
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell) / Wad.from_number(8.0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_not_bid_on_rounding_errors_with_small_amounts(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
 
         # when
         price = Wad.from_number(9.0)-Wad(5)
@@ -470,7 +477,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot) / Wad(price)
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell) / Wad(price)
 
         # when
         tx_count = self.web3.eth.getTransactionCount(self.keeper_address.address)
@@ -483,9 +490,9 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_deal_when_we_won_the_auction(self, auction_id):
+    def test_should_settle_when_we_won_the_auction(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
 
@@ -497,26 +504,26 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = self.surplus_auction_house.bids(auction_id)
-        assert auction.bid > Wad(0)
-        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(8.0), 2)
-        dai_before = self.geb.safe_engine.dai(self.keeper_address)
+        assert auction.bid_amount > Wad(0)
+        assert round(Wad(auction.amount_to_sell) / auction.bid_amount, 2) == round(Wad.from_number(8.0), 2)
+        system_coin_before = self.geb.safe_engine.coin_balance(self.keeper_address)
 
         # when
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
-        dai_after = self.geb.safe_engine.dai(self.keeper_address)
+        system_coin_after = self.geb.safe_engine.coin_balance(self.keeper_address)
         # then
-        assert dai_before < dai_after
+        assert system_coin_before < system_coin_after
 
-    def test_should_not_deal_when_auction_finished_but_somebody_else_won(self, auction_id):
+    def test_should_not_settle_when_auction_finished_but_somebody_else_won(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
         # and
-        assert self.surplus_auction_house.tend(auction_id, lot, Wad.from_number(16)).transact(from_address=self.other_address)
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad.from_number(16)
+        assert self.surplus_auction_house.increase_bid_size(auction_id, amount_to_sell, Wad.from_number(16)).transact(from_address=self.other_address)
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad.from_number(16)
 
         # when
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
@@ -524,7 +531,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad.from_number(16)
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad.from_number(16)
 
     def test_should_obey_gas_price_provided_by_the_model(self, auction_id):
         # given
@@ -541,7 +548,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, auction_id):
         # given
@@ -555,8 +562,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         wait_for_other_threads()
         # then
         auction = self.surplus_auction_house.bids(auction_id)
-        assert auction.guy == self.keeper_address
-        assert auction.bid > Wad(0)
+        assert auction.high_bidder == self.keeper_address
+        assert auction.bid_amount > Wad(0)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
@@ -564,12 +571,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     def test_should_change_gas_strategy_when_model_output_changes(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
-        lot = self.surplus_auction_house.bids(auction_id).lot
+        amount_to_sell = self.surplus_auction_house.bids(auction_id).amount_to_sell
 
         # when
         first_bid = Wad.from_number(0.0000009)
@@ -589,7 +596,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot / Rad(second_bid))
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell / Rad(second_bid))
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
@@ -602,12 +609,12 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
-        assert self.surplus_auction_house.bids(auction_id).bid == Wad(lot / Rad(third_bid))
+        assert self.surplus_auction_house.bids(auction_id).bid_amount == Wad(amount_to_sell / Rad(third_bid))
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == new_gas_price
 
         # cleanup
         time_travel_by(self.web3, self.surplus_auction_house.bid_duration() + 1)
-        assert self.surplus_auction_house.deal(auction_id).transact()
+        assert self.surplus_auction_house.settle_auction(auction_id).transact()
 
     @classmethod
     def teardown_class(cls):
@@ -616,30 +623,30 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
     @classmethod
     def liquidate_safe(cls, web3, geb, c, auction_income_recipient_address, our_address):
-        # Ensure the CDP isn't safe
+        # Ensure the SAFE isn't safe
         safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
         delta_debt = max_delta_debt(geb, c, auction_income_recipient_address) - Wad.from_number(1)
         assert geb.safe_engine.modify_safe_collateralization(c.collateral_type, auction_income_recipient_address, Wad(0), delta_debt).transact(from_address=auction_income_recipient_address)
-        set_collateral_price(geb, c, Wad.from_number(66))
+        set_collateral_price(geb, c, Wad.from_number(1))
         assert not is_safe_safe(geb.safe_engine.collateral_type(c.collateral_type.name), safe)
 
         # Determine how many liquidations will be required
-        lump = geb.cat.lump(c.collateral_type)
+        liquidation_quantity = Wad(geb.liquidation_engine.liquidation_quantity(c.collateral_type))
         safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
-        liquidations_required = math.ceil(safe.locked_collateral / lump)
-        print(f"locked_collateral={safe.locked_collateral} so {liquidations_required} bites are required")
+        liquidations_required = math.ceil(safe.locked_collateral / liquidation_quantity)
+        print(f"locked_collateral={safe.locked_collateral} so {liquidations_required} liquidations are required")
         c.collateral_auction_house.approve(geb.safe_engine.address, approval_function=approve_safe_modification_directly(from_address=our_address))
         first_auction_id = c.collateral_auction_house.auctions_started() + 1
 
-        # Bite and bid on each auction
+        # liquidate and bid on each auction
         for i in range(liquidations_required):
-            auction_id = liquidation(geb, c, safe)
+            auction_id = liquidate(geb, c, safe)
             assert auction_id > 0
             auction = c.collateral_auction_house.bids(auction_id)
             print(f"liquidating {i} of {liquidations_required} and bidding amount_to_raise of {auction.amount_to_raise}")
-            bid = Wad(auction.amount_to_raise) + Wad(1)
-            reserve_system_coin(geb, c, our_address, bid)
-            assert c.collateral_auction_house.increase_bid_amount(auction_id, auction.amount_to_sell, auction.amount_to_raise).transact(from_address=our_address)
+            bid_amount = Wad(auction.amount_to_raise) + Wad(1)
+            reserve_system_coin(geb, c, our_address, bid_amount)
+            assert c.collateral_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, auction.amount_to_raise).transact(from_address=our_address)
 
         time_travel_by(web3, c.collateral_auction_house.bid_duration())
         for auction_id in range(first_auction_id, c.collateral_auction_house.auctions_started()):

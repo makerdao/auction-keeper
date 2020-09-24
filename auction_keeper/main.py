@@ -681,9 +681,9 @@ class AuctionKeeper:
                 self.logger.info(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                   "bid will not be submitted")
                 return False
-        # If this is an auction where we bid with MKR...
+        # If this is an auction where we bid with prot...
         elif self.surplus_auction_house:
-            prot_balance = self.mkr.balance_of(self.our_address)
+            prot_balance = self.prot.balance_of(self.our_address)
             if cost > Rad(prot_balance):
                 self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "
                                   "bid will not be submitted")

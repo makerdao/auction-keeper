@@ -151,11 +151,11 @@ class SurplusAuctionStrategy(Strategy):
         # Prepare the model input from auction state
         return Status(id=id,
                       collateral_auction_house=None,
-                      surplus_auction_house=self.flapper.address,
+                      surplus_auction_house=self.surplus_auction_house.address,
                       debt_auction_house=None,
                       bid_amount=bid.bid_amount,
                       amount_to_sell=bid.amount_to_sell,
-                      tab=None,
+                      amount_to_raise=None,
                       bid_increase=self.bid_increase,
                       high_bidder=bid.high_bidder,
                       era=era(self.surplus_auction_house.web3),
