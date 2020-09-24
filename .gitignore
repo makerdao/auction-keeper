@@ -8,3 +8,4 @@ _virtualenv
 
 .DS_Store
 *.swp
+tests/logs
