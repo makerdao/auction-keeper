@@ -6,8 +6,8 @@ The purpose of `auction-keeper` is to:
  * Bid on auctions by converting token prices into bids
 
 `auction-keeper` can participate in collateral, surplus and debt auctions. Its unique feature is the ability to plug in external
-_bidding models_, which tell the keeper when and how high to bid. This keeper can be safely left running in background. The moment it nobidExpiryes or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
-be automabidExpiryally terminated by the keeper the moment the auction expires.  The keeper also automabidExpiryally settles expired auctions if it's us who won them.
+_bidding models_, which tell the keeper when and how high to bid. This keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
+be automatically terminated by the keeper the moment the auction expires.  The keeper also automatically settles expired auctions if it's us who won them.
 
 This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to
 develop your own auction trading bot.
@@ -29,7 +29,7 @@ The main task of this keeper, as already outlined above, is to constantly monito
 discover new ones, ensure that an instance of _bidding model_ is running for each auction, provide
 these instances of the current status of their auctions and bid according to decisions taken by them.
 
-The way the auction discovery and monitoring mechanism works at the moment is simplisbidExpiry for illustration purposes.
+The way the auction discovery and monitoring mechanism works at the moment is simplistic for illustration purposes.
 It basically operates as a loop which kicks in on every new block enumerating all auctions from `1` to `auctionsStarted`.
 Bidding models are checked every 2 seconds and submitted where appropriate.
 
@@ -37,10 +37,10 @@ Bidding models are checked every 2 seconds and submitted where appropriate.
 
 `auction-keeper` maintains a collection of child processes, as each _bidding model_ is its own dedicated
 process. New processes (new _bidding model_ instances) are spawned by executing a command according to the
-`--model` commandline parameter. These processes are automabidExpiryally terminated (via `SIGKILL`) by the keeper
+`--model` commandline parameter. These processes are automatically terminated (via `SIGKILL`) by the keeper
 shortly after their associated auction expires.
 
-Whenever the _bidding model_ process dies, it gets automabidExpiryally respawned by the keeper.
+Whenever the _bidding model_ process dies, it gets automatically respawned by the keeper.
 
 Example:
 ```bash
@@ -302,5 +302,5 @@ See [COPYING](https://github.com/makerdao/auction-keeper/blob/master/COPYING) fi
 ### Disclaimer
 
 YOU (MEANING ANY INDIVIDUAL OR ENTITY ACCESSING, USING OR BOTH THE SOFTWARE INCLUDED IN THIS GITHUB REPOSITORY) EXPRESSLY UNDERSTAND AND AGREE THAT YOUR USE OF THE SOFTWARE IS AT YOUR SOLE RISK.
-THE SOFTWARE IN THIS GITHUB REPOSITORY IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARbidExpiryULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IN THIS GITHUB REPOSITORY IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 YOU RELEASE AUTHORS OR COPYRIGHT HOLDERS FROM ALL LIABILITY FOR YOU HAVING ACQUIRED OR NOT ACQUIRED CONTENT IN THIS GITHUB REPOSITORY. THE AUTHORS OR COPYRIGHT HOLDERS MAKE NO REPRESENTATIONS CONCERNING ANY CONTENT CONTAINED IN OR ACCESSED THROUGH THE SERVICE, AND THE AUTHORS OR COPYRIGHT HOLDERS WILL NOT BE RESPONSIBLE OR LIABLE FOR THE ACCURACY, COPYRIGHT COMPLIANCE, LEGALITY OR DECENCY OF MATERIAL CONTAINED IN OR ACCESSED THROUGH THIS GITHUB REPOSITORY.
