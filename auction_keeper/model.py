@@ -167,6 +167,8 @@ class Status(AuctionStatus):
         if self.debt_auction_house:
             record['debt_auction_house'] = str(self.debt_auction_house)
 
+        return record
+
 class FixedDiscountStatus(AuctionStatus):
     """ WIP """
     def __init__(self,
@@ -270,6 +272,8 @@ class FixedDiscountStatus(AuctionStatus):
 
         if self.debt_auction_house:
             record['debt_auction_house'] = str(self.debt_auction_house)
+
+        return record
 
 class Stance:
     def __init__(self, price: Wad, gas_price: Optional[int]):
