@@ -40,13 +40,13 @@ def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, 
     woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
     print(f'joy={str(joy)[:6]}, woe={str(woe)[:6]}')
 
-    if woe < joy:
+    if woe < joy or (woe == Rad(0) and joy == Rad(0)):
         # Liquidate SAFE
         c = geb.collaterals['ETH-B']
-        unsafe_safe= create_critical_safe(geb, c, Wad.from_number(2), other_address, draw_system_coin=False)
-        collateral_auction_id = liquidate(geb, c, unsafe_safe)
+        critical_safe= create_critical_safe(geb, c, Wad.from_number(2), other_address, draw_system_coin=False)
+        collateral_auction_id = liquidate(geb, c, critical_safe)
 
-        # Generate some Dai, bid on and win the collateral auction without covering all the debt
+        # Generate some system coin, bid on and win the collateral auction without covering all the debt
         reserve_system_coin(geb, c, auction_income_recipient_address, Wad.from_number(100), extra_collateral=Wad.from_number(1.1))
         c.collateral_auction_house.approve(geb.safe_engine.address, approval_function=approve_safe_modification_directly(from_address=auction_income_recipient_address))
         current_bid = c.collateral_auction_house.bids(collateral_auction_id)
@@ -107,7 +107,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
 
         assert bid_amount == current_bid.bid_amount
         assert Wad(0) < amount_to_sell < current_bid.amount_to_sell
-        assert self.debt_auction_house.bid_increase() * amount_to_sell <= current_bid.amount_to_sell
+        assert self.debt_auction_house.bid_decrease() * amount_to_sell <= current_bid.amount_to_sell
 
         assert self.debt_auction_house.decrease_sold_amount(id, amount_to_sell, bid_amount).transact(from_address=address)
 
@@ -120,8 +120,8 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         auctions_started = geb.debt_auction_house.auctions_started()
 
         # and an undercollateralized SAFE is liquidated
-        unsafe_safe = create_critical_safe(geb, c, Wad.from_number(1), other_address, draw_system_coin=False)
-        assert geb.liquidation_engine.liquidate_safe(unsafe_safe.collateral_type, unsafe_safe).transact()
+        critical_safe = create_critical_safe(geb, c, Wad.from_number(1), other_address, draw_system_coin=False)
+        assert geb.liquidation_engine.liquidate_safe(critical_safe.collateral_type, critical_safe).transact()
 
         # when the auction ends without debt being covered
         time_travel_by(web3, c.collateral_auction_house.total_auction_length() + 1)
@@ -142,11 +142,11 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         wait_for_other_threads()
 
         # then ensure another debt auction was started
-        auctions_started = geb.debt_auction_house.auctions_started()
-        assert auctions_started == auctions_started + 1
+        auction_id = geb.debt_auction_house.auctions_started()
+        assert auction_id == auctions_started + 1
 
         # clean up by letting someone else bid and waiting until the auction ends
-        self.decrease_sold_amount(auctions_started, self.other_address, Wad.from_number(0.000012), self.debt_auction_bid_size)
+        self.decrease_sold_amount(auction_id, self.other_address, Wad.from_number(0.000012), self.debt_auction_bid_size)
         time_travel_by(web3, geb.debt_auction_house.bid_duration() + 1)
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_start(self, auction_id):
@@ -210,7 +210,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert status.bid_amount == last_bid.bid_amount
         assert status.amount_to_sell == Wad(last_bid.bid_amount / Rad(price))
         assert status.amount_to_raise is None
-        assert status.beg > Wad.from_number(1)
+        assert status.bid_increase > Wad.from_number(1)
         assert status.high_bidder == self.keeper_address
         assert status.era > 0
         assert status.auction_deadline > status.era
@@ -248,7 +248,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert status.bid_amount == self.debt_auction_bid_size
         assert status.amount_to_sell == amount_to_sell
         assert status.amount_to_raise is None
-        assert status.beg > Wad.from_number(1)
+        assert status.bid_increase > Wad.from_number(1)
         assert status.high_bidder == self.other_address
         assert status.era > 0
         assert status.auction_deadline > status.era

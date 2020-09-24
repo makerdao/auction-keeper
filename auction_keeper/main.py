@@ -426,7 +426,7 @@ class AuctionKeeper:
         unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
         debt_queue = self.accounting_engine.debt_queue()
         debt_auction_bid_size = self.accounting_engine.debt_auction_bid_size()
-        wait = self.accounting_engine.wait()
+        pop_debt_delay = self.accounting_engine.pop_debt_delay()
 
         # Check if Accounting Engine has enough bad debt to start an auction and that we have enough system_coin balance
         if unqueued_unauctioned_debt + debt_queue >= debt_auction_bid_size:
@@ -446,11 +446,11 @@ class AuctionKeeper:
             if unqueued_unauctioned_debt < (debt_auction_bid_size + joy) and self.liquidation_engine is not None:
                 past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
                 for liquidation_event in self.liquidation_engine.past_liquidations(past_blocks):  # TODO: cache ?
-                    era = bite_event.era(self.web3)
+                    era = liquidation_event.era(self.web3)
                     now = self.web3.eth.getBlock('latest')['timestamp']
                     debt_queue = self.accounting_engine.debt_queue_of(era)
-                    # If the liquidation hasn't already been popped from queue and has aged past the `wait`
-                    if debt_queue > Rad(0) and era + wait <= now:
+                    # If the liquidation hasn't already been popped from queue and has aged past the `pop_debt_delay`
+                    if debt_queue > Rad(0) and era + pop_debt_delay <= now:
                         self.accounting_engine.pop_debt_from_queue(era).transact(gas_price=self.gas_price)
 
                         # pop debt from queue until unqueued_unauctioned_debt is above debt_auction_bid_size + joy
