@@ -1,6 +1,5 @@
 #!/bin/bash
 
-#CONFIG="testchain-value-fixed-discount-governance-median-multisig"
 CONFIG="testchain-value-english-governance-median-multisig-basic"
 while getopts :c:f: option
 do
@@ -15,7 +14,6 @@ done
 docker pull reflexer/testchain-pyflex:${CONFIG}
 
 # Start the docker image and wait for parity to initialize
-#pushd ./lib/pymaker
 pushd ./lib/pyflex
 docker-compose -f config/${CONFIG}.yml up -d
 sleep 2
