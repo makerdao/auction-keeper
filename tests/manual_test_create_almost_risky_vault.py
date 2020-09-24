@@ -49,9 +49,10 @@ collateral = geb.collaterals[str(sys.argv[3])] if len(sys.argv) > 3 else geb.col
 collateral_type = geb.safe_engine.collateral_type(collateral.collateral_type.name)
 token = Token(collateral.collateral.symbol(), collateral.collateral.address, collateral.adapter.decimals())
 safe = geb.safe_engine.safe(collateral.collateral_type, our_address)
-# geb.approve_dai(our_address)
+# geb.approve_system_coin(our_address)
 # Transact.gas_estimate_for_bad_txs = 20000
 osm_price = collateral.osm.peek()
+redemption_price = geb.oracle_relayer.redemption_price()
 action = sys.argv[4] if len(sys.argv) > 4 else "create"
 
 
@@ -79,7 +80,7 @@ def create_almost_risky_safe():
     if is_critical_safe(geb.safe_engine.collateral_type(collateral.collateral_type.name), safe):
         logging.info("SAFE is already critical; no action taken")
     else:
-        collateral_amount = Wad(collateral_type.debt_floor / Rad(osm_price) * Rad(geb.oracle_relayer.safety_c_ratio(collateral_type)) * Rad(collateral_type.accumulated_rate)) + flub_amount
+        collateral_amount = Wad(collateral_type.debt_floor / (Rad(osm_price)/Rad(redemption_price)) * Rad(geb.oracle_relayer.safety_c_ratio(collateral_type)) * Rad(collateral_type.accumulated_rate)) + flub_amount
         logging.info(f"Opening/adjusting safe with {collateral_amount} {collateral_type.name}")
         create_almost_risky_safe(geb, collateral, collateral_amount, our_address, False)
         logging.info("Created almost risky safe")

@@ -33,12 +33,13 @@ logging.getLogger("asyncio").setLevel(logging.INFO)
 logging.getLogger("requests").setLevel(logging.INFO)
 
 web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
-vulcanize_endpoint = sys.argv[1]
-vulcanize_key = sys.argv[2]
+graph_endpoint = sys.argv[1]
+graph_key = sys.argv[2]
 geb = GfDeployment.from_node(web3)
 collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
 collateral_typre= geb.collaterals[collateral_type].collateral_type
 # on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
+# TODO update this default from_block
 from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
 
 
@@ -58,38 +59,48 @@ sh = SAFEHistory(web3, geb, collateral_type, from_block, None, None)
 safes_logs = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(safes_logs)} safes from block {from_block} in {elapsed.seconds} seconds")
+
 wait(30, sh)
+
+# Retrieve data from the Graph
+started = datetime.now()
+print(f"Connecting to {vulcanize_endpoint}...")
+sh = SafeHistory(web3, geb, collateral_type, None, graph_endpoint, graph_key)
+safes_graph = sh.get_urns()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(safes_graph)} safes from the Graph in {elapsed.seconds} seconds")
+
 
 # Reconcile the data
 mismatches = 0
 missing = 0
 total_generated_debt_logs = 0
-total_generated_debt_vdb = 0
-csv = "SAFE,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt\n"
+total_generated_debt_graph = 0
+csv = "SAFE,ChainLockedCollateral,ChainGeneratedDebt,GraphLockedCollateral,GraphGeneratedDebt\n"
 
 for key, value in safes_logs.items():
     assert value.collateral_type.name == collateral_type.name
-    if key in safes_vdb:
-        if value.locked_collateral != safes_vdb[key].locked_collateral or value.generated_debt != safes_vdb[key].generated_debt:
-            csv += f"{key.address},{value.locked_collateral},{value.generated_debt},{safes_vdb[key].ink},{safes_vdb[key].generated_debt}\n"
+    if key in safes_graph:
+        if value.locked_collateral != safes_graph[key].locked_collateral or value.generated_debt != safes_graph[key].generated_debt:
+            csv += f"{key.address},{value.locked_collateral},{value.generated_debt},{safes_graph[key].locked_collateral},{safes_graph[key].generated_debt}\n"
             mismatches += 1
     else:
-        print(f"vdb is missing safe {key}")
+        print(f"the graph is missing safe {key}")
         csv += f"{key.address},{value.locked_collateral},{value.generated_debt},,\n"
         missing += 1
     total_generated_debt_logs += float(value.generated_debt)
 
-for key, value in safes_vdb.items():
+for key, value in safes_graph.items():
     assert value.collateral_type.name == collateral_type.name
     if key not in safes_logs:
         print(f"logs is missing safe {key}")
         missing += 1
-    total_generated_debt_vdb += float(value.generated_debt)
+    total_generated_debt_graph += float(value.generated_debt)
 
 with open(f"safe-reconciliation-{collateral_type}.csv", "w") as file:
     file.write(csv)
 
-total = max(len(safes_vdb), len(safes_logs))
+total = max(len(safes_graph), len(safes_logs))
 print(f'Observed {mismatches} mismatched safes ({mismatches/total:.0%}) and '
       f'{missing} missing safes ({missing/total:.0%})')
-print(f"Total generated_debt from logs: {total_generated_debt_logs}, from vdb: {total_generated_debt_vdb}")
+print(f"Total generated_debt from logs: {total_generated_debt_logs}, from graph: {total_generated_debt_graph}")
