@@ -40,6 +40,9 @@ target_art = Rad.from_number(float(sys.argv[2])) if len(sys.argv) > 2 else ilk.d
 osm_price = collateral.pip.peek()
 print(f"{ilk.name} price={osm_price}, mat={r(mcd.spotter.mat(ilk),2)}, spot={ilk.spot}, rate={ilk.rate}")
 
+if osm_price == Wad(0):
+    raise ValueError("OSM price is 0; a valid spot price cannot be poked.")
+
 # This accounts for several seconds of rate accumulation between time of calculation and the transaction being mined
 flub_amount = Wad(1000)
 ink_osm = Wad(target_art / Rad(osm_price) * Rad(mcd.spotter.mat(ilk)) * Rad(ilk.rate)) + flub_amount
