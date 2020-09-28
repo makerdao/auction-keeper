@@ -26,6 +26,7 @@ from pymaker.deployment import DssDeployment
 from pymaker.keys import register_keys
 from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
+from pymaker.oracles import OSM
 from tests.conftest import create_risky_cdp, is_cdp_safe
 
 
@@ -51,9 +52,7 @@ token = Token(collateral.gem.symbol(), collateral.gem.address, collateral.adapte
 urn = mcd.vat.urn(collateral.ilk, our_address)
 # mcd.approve_dai(our_address)                  # Uncomment upon first execution for the account
 # Transact.gas_estimate_for_bad_txs = 20000     # Uncomment to debug transaction failures onchain
-# mcd.spotter.poke(ilk).transact()              # Uncomment if the Kovan spot price is out-of-sync
 osm_price = collateral.pip.peek()
-action = sys.argv[4] if len(sys.argv) > 4 else "create"
 
 
 def r(value, decimals=1):
@@ -62,6 +61,18 @@ def r(value, decimals=1):
 
 logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={r(osm_price)} mat={r(mcd.spotter.mat(ilk))} spot={r(ilk.spot)} ")
 logging.info(f"{'':<7} duty={mcd.jug.duty(ilk)} min_amount={token.min_amount}")
+
+
+if osm_price == Wad(0) and isinstance(collateral.pip, OSM):
+    logging.warning("OSM price is 0; poking")
+    osm: OSM = collateral.pip
+    osm.poke().transact()
+    osm_price = collateral.pip.peek()
+
+if ilk.spot == Ray(0):
+    logging.warning("Spot price is 0; poking")
+    mcd.spotter.poke(ilk).transact()
+    ilk = mcd.vat.ilk(collateral.ilk.name)
 
 
 def close_repaid_urn():
@@ -101,7 +112,6 @@ def handle_returned_collateral():
 
 
 create_risky_vault()
-
 
 
 while True:
