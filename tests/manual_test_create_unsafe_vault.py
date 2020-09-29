@@ -64,13 +64,13 @@ logging.info(f"{'':<7} duty={mcd.jug.duty(ilk)} min_amount={token.min_amount}")
 
 
 if osm_price == Wad(0) and isinstance(collateral.pip, OSM):
-    logging.warning("OSM price is 0; poking")
+    logging.warning("OSM price is 0; poking OSM")
     osm: OSM = collateral.pip
     osm.poke().transact()
     osm_price = collateral.pip.peek()
 
 if ilk.spot == Ray(0):
-    logging.warning("Spot price is 0; poking")
+    logging.warning("Spot price is 0; poking Spotter")
     mcd.spotter.poke(ilk).transact()
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
