@@ -25,7 +25,7 @@ from texttable import Texttable
 from web3 import Web3
 
 from pyflex.deployment import GfDeployment
-from pyflex.dss import Ilk, Collateral
+from pyflex.gf import Collateral_Type, Collateral
 from pyflex import Address, Wad
 
 parser = argparse.ArgumentParser(prog='auction-keeper')
@@ -33,7 +33,7 @@ parser.add_argument("--rpc-host", type=str, default="localhost", help="JSON-RPC 
 parser.add_argument("--rpc-port", type=int, default=8545, help="JSON-RPC port (default: `8545')")
 parser.add_argument("--rpc-timeout", type=int, default=10, help="JSON-RPC timeout (in seconds, default: 10)")
 parser.add_argument("--eth-from", type=str, help="Ethereum account from which to send transactions")
-parser.add_argument("--json-from", type=str, help="JSON file containing dss deployment addresses")
+parser.add_argument("--json-from", type=str, help="JSON file containing geb deployment addresses")
 arguments = parser.parse_args()
 
 w3 = Web3(Web3.HTTPProvider(endpoint_uri=f"http://{arguments.rpc_host}:{arguments.rpc_port}",
@@ -42,34 +42,11 @@ w3.eth.defaultAccount = arguments.eth_from or w3.eth.accounts[0]
 our_address = Address(w3.eth.defaultAccount)
 
 ## Default Kovan deployment
-dss = """
+# TODO Add config
+geb = """
     {
-       "MCD_DEPLOY": "0xDb255f9481938127bFD55ea3F409140c0a22aa9D",
-       "MCD_GOV": "0x6052632c8F977eDeF616A31D67Ce504Fb474BB77",
-       "MCD_VAT": "0xCD726790550aFcd77e9a7a47e86A3F9010af126B",
-       "MCD_PIT": "0xE7CF3198787C9A4daAc73371A38f29aAeECED87e",
-       "MCD_DRIP": "0x891C04639a5edcaE088E546FA125B5d7FB6A2b9D",
-       "MCD_CAT": "0x2F34f22a00eE4b7a8F8BBC4eAee1658774c624e0",
-       "MCD_VOW": "0x3728e9777B2a0a611ee0F89e00E01044ce4736d1",
-       "MCD_DAI": "0x444254706E8F1FB62a6EC26A7FA2b942ef672495",
-       "MCD_JOIN_DAI": "0xfCbecd1A2AC11A260f6fF9De400F815F2906A2Bd",
-       "MCD_MOVE_DAI": "0xC579CdF20dB327F4c191C7F25e0710e3d0c02195",
-       "MCD_FLAP": "0x8868BAd8e74FcA4505676D1B5B21EcC23328d132",
-       "MCD_FLOP": "0x6191C9b0086c2eBF92300cC507009b53996FbFFa",
-       "MCD_MOM": "0x2D13FF37CdBcdB60b5C298B95B3E360BEC147e7E",
-       "PIP_ETH": "0x9FfFE440258B79c5d6604001674A4722FfC0f7Bc",
-       "MCD_JOIN_ETH": "0x3Ccd75157dc0Ec69141294eDa7a3657a4db8a399",
-       "MCD_MOVE_ETH": "0xeFE0A31B90C3a81E18E329Dba100F96B7bC01860",
-       "MCD_FLIP_ETH": "0x32D496Ad866D110060866B7125981C73642cc509",
-       "MCD_SPOT_ETH": "0x0a787b0c65A6b4ffDE2C10c01eb4AC7409606533",
-       "MCD_DAI_GUARD": "0x3ae1854375fFe3E4aba159529f19064E6940DFB7",
-       "REP": "0x6FDc84f76093FA02facfB08844f5Fb240A08C1d6",
-       "PIP_REP": "0xf88bBDc1E2718F8857F30A180076ec38d53cf296",
-       "MCD_JOIN_REP": "0x5DF073FEb82b95Af2b3C90AE458201b997512ff7",
-       "MCD_MOVE_REP": "0x32B9C412e8c0055Fb74f723B5b17c253f911d389",
-       "MCD_FLIP_REP": "0xC0851F73CC8DD5c0765E71980eC7E7Fd1EF74434",
-       "MCD_SPOT_REP": "0x6639d21C843eAAdF72c9eEC8108b6F6faE569490",
-       "COLLATERALS": ["ETH", "REP"],
+       "GEB_DEPLOY": "0xDb255f9481938127bFD55ea3F409140c0a22aa9D",
+       "COLLATERALS": ["ETH"],
        "ETH": "0x0000000000000000000000000000000000000000"
     }
 """
@@ -95,63 +72,63 @@ def print_balances():
         table.set_cols_dtype(['t', 't', 't', 't', 't'])
         table.set_cols_align(['r', 'r', 'r', 'r', 'r'])
         table.set_cols_width([8, 12, 12, 12, 12])
-        table.add_rows([["    name", "       ERC20", " Adapter/Vat", "         ink", "         art"]] + table_data)
+        table.add_rows([["    name", "       ERC20", " Adapter/SAFEEngine", "         collateral", "         debt"]] + table_data)
         return table.draw()
 
     datas = []
-    datas.append(["DAI",
-                  format_amount(d.dai.balance_of(our_address)),
-                  format_amount(d.vat.dai(our_address)),
+    datas.append(["SystemCoin",
+                  format_amount(d.system_coin.balance_of(our_address)),
+                  format_amount(d.safe_engine.coin_balance(our_address)),
                   "", ""])
-    datas.append(["MKR", format_amount(d.mkr.balance_of(our_address)),
+    datas.append(["PROT", format_amount(d.prot.balance_of(our_address)),
                   "", "", ""])
     datas.append(["ETH",
                   format_amount(Wad(w3.eth.getBalance(our_address.address))),
-                  format_amount(d.vat.gem(Ilk('ETH'), our_address)),
-                  format_amount(d.vat.urn(Ilk('ETH'), our_address).ink),
-                  format_amount(d.vat.urn(Ilk('ETH'), our_address).art),
+                  format_amount(d.safe_engine.token_collateral(CollateralType('ETH'), our_address)),
+                  format_amount(d.safe_engine.safe(CollateralType('ETH'), our_address).locked_collateral),
+                  format_amount(d.safe_engine.safe(CollateralType('ETH'), our_address).generated_debt),
                   ])
-    for c in [c for c in d.collaterals if c.ilk.name != 'ETH']:
-        datas.append([c.ilk.name,
-                      format_amount(c.gem.balance_of(our_address)),
-                      format_amount(d.vat.gem(c.ilk, our_address)),
-                      format_amount(d.vat.urn(c.ilk, our_address).ink),
-                      format_amount(d.vat.urn(c.ilk, our_address).art),
+    for c in [c for c in d.collaterals if c.collateral_type.name != 'ETH']:
+        datas.append([c.collateral_type.name,
+                      format_amount(c.collateral.balance_of(our_address)),
+                      format_amount(d.safe_engine.token_collateral(c.collateral_type, our_address)),
+                      format_amount(d.safe_engine.safe(c.collateral_type, our_address).ink),
+                      format_amount(d.safe_engine.safe(c.collateral_type, our_address).art),
                       ])
     return draw_table(datas)
 
 
-def print_unsafe_cdp():
+def print_unsafe_safe():
     def draw_table(table_data):
         table = Texttable(max_width=250)
         table.set_deco(Texttable.HEADER)
         table.set_cols_dtype(['t', 't', 't', 't'])
         table.set_cols_align(['c', 'r', 'r', 'r'])
         table.set_cols_width([6, 12, 12, 42])
-        table.add_rows([["ilk", "ink", "tab", "guy"]] + table_data)
+        table.add_rows([["collateral_type", "locked_collateral", "amount_to_raise", "high_bidder"]] + table_data)
         return table.draw()
 
-    last_frob_event = {}
-    for frob_event in d.pit.past_frob(w3.eth.blockNumber):
-        last_frob_event[frob_event.urn.address] = frob_event
+    last_safe_mod_event = {}
+    for safe_mod_event in d.safe_engine.past_safe_modifications(w3.eth.blockNumber):
+        last_safe_mod_event[safe_mode_event.safe.address] = frob_event
 
     datas = []
-    for urn_addr in last_frob_event:
-        ilk = last_frob_event[urn_addr].ilk
-        current_urn = d.vat.urn(ilk, urn_addr)
-        safe = current_urn.ink * d.pit.spot(ilk) >= current_urn.art * d.vat.ilk(ilk.name).rate
+    for safe_addr in last_safe_mode_event:
+        collateral_type = last_safe_mod_event[safe_addr].collateral_type
+        current_safe = d.safe_engine.safe(collateral_type, safe_addr)
+        safe = current_safe.locked_collateral * d.pit.spot(collateral_type) >= current_safe.art * d.safe_engine.collateral_type(collateral_type.name).rate
         if not safe:
             datas.append([
-                ilk.name,
-                format_amount(current_urn.ink),
-                format_amount(current_urn.art),
-                current_urn.address,
+                collateral_type.name,
+                format_amount(current_safe.locked_collateral),
+                format_amount(current_safe.art),
+                current_safe.address,
             ])
 
     if datas:
         return draw_table(datas)
     else:
-        return ' No unsfe CDP'
+        return ' No unsafe SAFE'
 
 
 def print_flips():
@@ -161,18 +138,18 @@ def print_flips():
         table.set_cols_dtype(['t', 't', 't', 't'])
         table.set_cols_align(['c', 'r', 'r', 'r'])
         table.set_cols_width([11, 6, 12, 12])
-        table.add_rows([["Cat.Flip.id", "ilk", "ink", "tab"]] + table_data)
+        table.add_rows([["Cat.Flip.id", "collateral_type", "ink", "tab"]] + table_data)
         return table.draw()
 
     datas = []
     for c in d.collaterals:
-        for i in range(d.cat.nflip()):
-            flip = d.cat.flips(i)
+        for i in range(d.liquidation_engine.nflip()):
+            flip = d.liquidation_engine.flips(i)
             if flip.tab > Wad(0):
                 datas.append([
                     flip.id,
-                    flip.urn.ilk.name,
-                    format_amount(flip.urn.ink),
+                    flip.safe.collateral_type.name,
+                    format_amount(flip.safe.locked_collateral),
                     format_amount(flip.tab),
                 ])
 
@@ -205,7 +182,7 @@ def fetch_auctions():
             bid = c.flipper.bids(i)
             if bid.end > 0:
                 auctions.append([
-                    f"Flip[{c.ilk.name}]",
+                    f"Flip[{c.collateral_type.name}]",
                     i,
                     format_amount(bid.bid),
                     format_amount(bid.lot),
@@ -261,20 +238,20 @@ def print_auctions_parameters(table_data):
 def fetch_auction_parameters():
     params = []
     for c in d.collaterals:
-        params.append([f"Flip[{c.ilk.name}]",
+        params.append([f"Flip[{c.collateral_type.name}]",
                        f"{c.flipper.ttl()/3600}h",
                        f"{c.flipper.tau()/3600}h",
-                       format_amount(d.cat.lump(c.ilk)),
+                       format_amount(d.liquidation_engine.lump(c.collateral_type)),
                        ])
     params.append([f"Flap",
                    f"{d.flap.ttl()/3600}h",
                    f"{d.flap.tau()/3600}h",
-                   format_amount(d.vow.bump()),
+                   format_amount(d.accounting_engine.bump()),
                    ])
     params.append([f"Flop",
                    f"{d.flop.ttl()/3600}h",
                    f"{d.flop.tau()/3600}h",
-                   format_amount(d.vow.sump()),
+                   format_amount(d.accounting_engine.sump()),
                    ])
     return params
 
@@ -290,15 +267,15 @@ def print_vow():
         return table.draw()
 
     datas = []
-    datas.append(["", "Sin=", format_amount(d.vow.sin())])
-    datas.append(["", "Ash=", format_amount(d.vow.ash())])
+    datas.append(["", "Sin=", format_amount(d.accounting_engine.sin())])
+    datas.append(["", "Ash=", format_amount(d.accounting_engine.ash())])
     datas.append(["", "", ""])
-    datas.append(["If", "Joy=", format_amount(d.vow.joy())])
-    datas.append([">", "Sin+Woe+Ash+bump+hump=", format_amount(d.vow.awe() + d.vow.bump() + d.vow.hump())])
+    datas.append(["If", "Joy=", format_amount(d.accounting_engine.joy())])
+    datas.append([">", "Sin+Woe+Ash+bump+hump=", format_amount(d.accounting_engine.awe() + d.vow.bump() + d.vow.hump())])
     datas.append(["then", "flap() when Woe=", 0])
     datas.append(["", "", ""])
-    datas.append(["If", "Woe=", format_amount(d.vow.woe())])
-    datas.append([">", "sump=", format_amount(d.vow.sump())])
+    datas.append(["If", "Woe=", format_amount(d.accounting_engine.woe())])
+    datas.append([">", "sump=", format_amount(d.accounting_engine.sump())])
     datas.append(["then", "flop() when Joy=", 0])
     datas.append(["", "", ""])
     return draw_table(datas)
@@ -315,13 +292,13 @@ def print_debt_queue():
         return table.draw()
 
     datas = []
-    for bite_event in d.cat.past_bite(100000):
-        era = bite_event.era(w3)
-        sin = d.vow.sin_of(era)
+    for liquidation_event in d.liquidation_engine.past_liquidations(100000):
+        era = liquidation_event.era(w3)
+        sin = d.accounting_engine.sin_of(era)
         if sin > Wad(0):
             datas.append([era,
                           datetime.fromtimestamp(era),
-                          datetime.fromtimestamp(era + d.vow.wait()),
+                          datetime.fromtimestamp(era + d.accounting_engine.wait()),
                           format_amount(sin)])
 
     if datas:
@@ -334,7 +311,7 @@ print(f"\nBalances of {our_address}"
       f"\n{print_balances()}"
       f"\n\n"
       f"\nUnsafe CDPs:"
-      f"\n{print_unsafe_cdp()}\n"
+      f"\n{print_unsafe_safe()}\n"
       f"\nAuctions in progress:"
       f"\n{print_flips()}\n"
       f"\n{print_auctions(fetch_auctions())}\n"
@@ -345,5 +322,5 @@ print(f"\nBalances of {our_address}"
       f"\n{print_vow()}"
       f"\nPending debt queue:"
       f"\n{print_debt_queue()}\n"
-      f"Vow parameters: wait={d.vow.wait()/3600}h "
-      f"bump={format_amount(d.vow.bump())} hump={format_amount(d.vow.hump())}\n")
+      f"Vow parameters: wait={d.accounting_engine.wait()/3600}h "
+      f"bump={format_amount(d.accounting_engine.bump())} hump={format_amount(d.vow.hump())}\n")

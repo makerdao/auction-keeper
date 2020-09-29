@@ -29,6 +29,7 @@ from pyflex.gf import Collateral
 from pyflex.numeric import Wad, Ray, Rad
 from tests.conftest import liquidate, create_critical_safe, pop_debt_and_settle_debt, keeper_address, geb, models, \
                            reserve_system_coin, simulate_model_output, web3, set_collateral_price
+from tests.conftest import is_safe_safe
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from typing import Optional
 
@@ -40,8 +41,7 @@ bid_size_small = Wad(2000)
 @pytest.fixture()
 def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
     # set to pymaker price
-    set_collateral_price(geb, c, Wad.from_number(200))
-
+    set_collateral_price(geb, c, Wad.from_number(500))
     # Ensure we start with a clean safe
     safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
     assert safe.locked_collateral == Wad(0)
@@ -59,6 +59,8 @@ def auction_small(geb, c: Collateral, auction_income_recipient_address) -> int:
 
 @pytest.mark.timeout(500)
 class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
+    def teardown_method(self, test_method):
+        pass
     def setup_class(self):
         """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
         to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
@@ -75,6 +77,7 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
 
         assert isinstance(self.keeper.gas_price, DynamicGasPrice)
         self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
+        #assert is_safe_safe(self.geb.safe_engine.collateral_type(self.collateral.collateral_type.name), self.geb.safe_engine.safe(self.collateral.collateral_type, self.keeper_address))
 
     @staticmethod
     def collateral_balance(address: Address, c: Collateral) -> Wad:
@@ -405,14 +408,15 @@ class TestAuctionKeeperEnglishCollateralAuctionHouse(TransactionIgnoringTest):
         time_travel_by(self.web3, collateral_auction_house.bid_duration() + 1)
         assert collateral_auction_house.settle_auction(auction_id).transact()
 
-    def test_should_bid_even_if_there_is_already_a_bidder(self, auction_id, other_address):
+    def test_should_bid_even_if_there_is_already_a_bidder(self, geb, auction_id, other_address):
+
         # given
         (model, model_factory) = models(self.keeper, auction_id)
         collateral_auction_house = self.collateral.collateral_auction_house
         # and
         self.increase_bid_size_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Rad.from_number(21))
         assert collateral_auction_house.bids(auction_id).bid_amount == Rad.from_number(21)
-
+      
         # when
         self.simulate_model_bid(self.geb, self.collateral, model, Wad.from_number(23))
         # and
