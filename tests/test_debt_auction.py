@@ -30,17 +30,19 @@ from pyflex.deployment import GfDeployment
 from pyflex.numeric import Wad, Ray, Rad
 from tests.conftest import liquidate, create_critical_safe, pop_debt_and_settle_debt, auction_income_recipient_address, keeper_address, geb, \
     models, our_address, other_address, reserve_system_coin, simulate_model_output, web3
+from tests.conftest import is_safe_safe
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
 
 
 @pytest.fixture()
 def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, other_address) -> int:
-    joy = geb.safe_engine.coin_balance(geb.accounting_engine.address)
-    woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
-    print(f'joy={str(joy)[:6]}, woe={str(woe)[:6]}')
 
-    if woe < joy or (woe == Rad(0) and joy == Rad(0)):
+    total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
+    unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+    print(f'total_surplus={str(total_surplus)[:6]}, unqueued_unauctioned_debt={str(unqueued_unauctioned_debt)[:6]}')
+
+    if unqueued_unauctioned_debt < total_surplus or (unqueued_unauctioned_debt == Rad(0) and total_surplus == Rad(0)):
         # Liquidate SAFE
         c = geb.collaterals['ETH-B']
         critical_safe= create_critical_safe(geb, c, Wad.from_number(2), other_address, draw_system_coin=False)
@@ -59,8 +61,8 @@ def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, 
     pop_debt_and_settle_debt(web3, geb, past_blocks=1200, cancel_auctioned_debt=False)
 
     # Start the debt auction
-    woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
-    assert geb.accounting_engine.debt_auction_bid_size() <= woe
+    unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+    assert geb.accounting_engine.debt_auction_bid_size() <= unqueued_unauctioned_debt
     assert geb.safe_engine.coin_balance(geb.accounting_engine.address) == Rad(0)
     assert geb.accounting_engine.auction_debt().transact(from_address=auction_income_recipient_address)
     return geb.debt_auction_house.auctions_started()
@@ -127,14 +129,14 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(web3, c.collateral_auction_house.total_auction_length() + 1)
 
         # then ensure testchain is in the appropriate state
-        joy = geb.safe_engine.coin_balance(geb.accounting_engine.address)
-        awe = geb.safe_engine.debt_balance(geb.accounting_engine.address)
-        woe = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+        total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
+        total_debt = geb.safe_engine.debt_balance(geb.accounting_engine.address)
+        unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
         debt_queue = geb.accounting_engine.debt_queue()
         debt_auction_bid_size = geb.accounting_engine.debt_auction_bid_size()
         wait = geb.accounting_engine.pop_debt_delay()
-        assert joy < awe
-        assert woe + debt_queue >= debt_auction_bid_size
+        assert total_surplus < total_debt
+        assert unqueued_unauctioned_debt + debt_queue >= debt_auction_bid_size
         assert wait == 0
 
         # when

@@ -178,6 +178,8 @@ def reserve_system_coin(geb: GfDeployment, c: Collateral, usr: Address, amount: 
     safety_price = collateral_type.safety_price  # Ray
     assert accumulated_rate >= Ray.from_number(1)
     collateral_required = Wad((Ray(amount) / safety_price) * accumulated_rate) * extra_collateral + Wad(1)
+    print(f'accumulated_rate {accumulated_rate}')
+    print(f'extra_collateral {extra_collateral}')
     print(f'current safety price {safety_price}')
     print(f'collateral_required for {str(amount)} system_coin is {str(collateral_required)}')
 
@@ -351,12 +353,12 @@ def pop_debt_and_settle_debt(web3: Web3, geb: GfDeployment, past_blocks=8, cance
         assert geb.accounting_engine.total_on_auction_debt() == Rad.from_number(0)
 
     # Cancel out surplus and debt
-    joy = geb.safe_engine.coin_balance(geb.accounting_engine.address)
+    total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
     unqueued_unauctioned_debt = geb.accounting_engine.unqueued_unauctioned_debt()
     if require_settle_debt:
-        assert joy <= unqueued_unauctioned_debt
-    if joy <= unqueued_unauctioned_debt:
-        assert geb.accounting_engine.settle_debt(joy).transact()
+        assert total_surplus <= unqueued_unauctioned_debt
+    if total_surplus <= unqueued_unauctioned_debt:
+        assert geb.accounting_engine.settle_debt(total_surplus).transact()
 
 
 def models(keeper: AuctionKeeper, id: int):

@@ -1,6 +1,3 @@
-[submodule "lib/pymaker"]
-	path = lib/pymaker
-	url = https://github.com/makerdao/pymaker.git
 [submodule "lib/pygasprice-client"]
 	path = lib/pygasprice-client
 	url = https://github.com/makerdao/pygasprice-client.git
