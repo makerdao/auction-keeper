@@ -2,8 +2,6 @@
 
 cd "$(dirname "$0")"
 
-set -e
-
 rm -rf _virtualenv
 virtualenv _virtualenv
 source _virtualenv/bin/activate

@@ -635,7 +635,7 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
     @classmethod
     def teardown_class(cls):
         cls.geb = geb(web3())
-        cls.liquidate_safe(web3(), cls.geb, c(cls.geb), auction_income_recipient_address(web3()), our_address(web3()))
+        #cls.liquidate_safe(web3(), cls.geb, c(cls.geb), auction_income_recipient_address(web3()), our_address(web3()))
 
     @classmethod
     def liquidate_safe(cls, web3, geb, c, auction_income_recipient_address, our_address):
