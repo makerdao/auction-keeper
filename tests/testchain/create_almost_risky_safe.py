@@ -17,18 +17,18 @@
 
 import sys
 
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import create_unsafe_cdp, is_cdp_safe, mcd, gal_address, web3
+from pyflex.numeric import Wad, Ray, Rad
+from tests.conftest import create_almost_risky_safe, is_safe_critical, geb, auction_income_recipient_address, web3
 
-mcd = mcd(web3())
-address = gal_address(web3())
+geb = geb(web3())
+address = auction_income_recipient_address(web3())
 
 collateral_amount = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else 1.0
-collateral = mcd.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else mcd.collaterals['ETH-C']
-urn = mcd.vat.urn(collateral.ilk, address)
+collateral = geb.collaterals[str(sys.argv[2])] if len(sys.argv) > 2 else geb.collaterals['ETH-A']
+safe = geb.safe_engine.safe(collateral.collateral_type, address)
 
-if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
-    print("CDP is already unsafe; no action taken")
+if is_safe_critical(geb.safe_engine.collateral_type(collateral.collateral_type.name), safe):
+    print("Safe is already critical; no action taken")
 else:
-    create_unsafe_cdp(mcd, collateral, Wad.from_number(collateral_amount), address, False)
-    print("Created unsafe CDP")
+    create_almost_risky_safe(geb, collateral, Wad.from_number(collateral_amount), address, False)
+    print("Created almost risky safe")

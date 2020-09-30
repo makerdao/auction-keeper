@@ -26,7 +26,7 @@ from mock import MagicMock
 from web3 import Web3
 
 
-from pymaker import Receipt, Transact
+from pyflex import Receipt, Transact
 
 
 def args(arguments: str) -> list:
@@ -70,7 +70,8 @@ class TransactionIgnoringTest:
             super().__init__({
                 'transactionHash': '0xaaaaaaaaaabbbbbbbbbbccccccccccdddddddddd',
                 'gasUsed': 12345,
-                'logs': []
+                'logs': [],
+                'status': '0x1'
             })
             self.successful = True
 

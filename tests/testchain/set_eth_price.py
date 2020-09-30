@@ -17,11 +17,12 @@
 
 import sys
 
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import mcd, set_collateral_price, web3
+from pyflex.numeric import Wad, Ray, Rad
+from tests.conftest import geb, set_collateral_price, web3
 
-mcd = mcd(web3())
+geb = geb(web3())
 price = Wad.from_number(float(sys.argv[1])) if len(sys.argv) > 1 else Wad.from_number(200)
-ilk_name = str(sys.argv[2]) if len(sys.argv) > 2 else 'ETH-A'
-set_collateral_price(mcd, mcd.collaterals[ilk_name], price)
-print(f"spot={str(mcd.vat.ilk(ilk_name).spot)[:9]}")
+collateral_type_name = str(sys.argv[2]) if len(sys.argv) > 2 else 'ETH-A'
+set_collateral_price(geb, geb.collaterals[collateral_type_name], price)
+print(f"safety_price={str(geb.safe_engine.collateral_type(collateral_type_name).safety_price)[:9]}")
+print(f"liquidation_price={str(geb.safe_engine.collateral_type(collateral_type_name).liquidation_price)[:9]}")

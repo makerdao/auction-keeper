@@ -283,7 +283,7 @@ it does not support the `eth_sendTransaction` RPC method which is used in pyflex
 ## Testing
 
 This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized
-local testchain included in `lib\pymaker\tests\config`.
+local testchain included in `lib\pyflex\tests\config`.
 
 In order to be able to run tests, please install development dependencies first by executing:
 ```
@@ -292,7 +292,7 @@ pip3 install -r requirements-dev.txt
 
 You can then run all tests with:
 ```
-./test.sh
+for i in `ls tests/test*.py`;do ./test.sh `basename $i`;done
 ```
 
 ## License

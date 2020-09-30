@@ -1,0 +1,106 @@
+# This file is part of Maker Keeper Framework.
+#
+# Copyright (C) 2019 EdNoepel
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+import logging
+import os
+import sys
+from datetime import datetime, timedelta
+from web3 import Web3, HTTPProvider
+
+from auction_keeper.safe_history import SAFEHistory
+from pyflex.deployment import GfDeployment
+
+
+logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s', level=logging.DEBUG)
+logging.getLogger('urllib3').setLevel(logging.INFO)
+logging.getLogger("web3").setLevel(logging.INFO)
+logging.getLogger("asyncio").setLevel(logging.INFO)
+logging.getLogger("requests").setLevel(logging.INFO)
+
+web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
+graph_endpoint = sys.argv[1]
+graph_key = sys.argv[2]
+geb = GfDeployment.from_node(web3)
+collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
+collateral_typre= geb.collaterals[collateral_type].collateral_type
+# on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
+# TODO update this default from_block
+from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
+
+
+def wait(minutes_to_wait: int, sh: SAFEHistory):
+    while minutes_to_wait > 0:
+        print(f"Testing cache for another {minutes_to_wait} minutes")
+        state_update_started = datetime.now()
+        sh.get_safes()
+        minutes_elapsed = int((datetime.now() - state_update_started).seconds / 60)
+        minutes_to_wait -= minutes_elapsed
+
+
+# Retrieve data from chain
+started = datetime.now()
+print(f"Connecting to {sys.argv[1]}...")
+sh = SAFEHistory(web3, geb, collateral_type, from_block, None, None)
+safes_logs = sh.get_safes()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(safes_logs)} safes from block {from_block} in {elapsed.seconds} seconds")
+
+wait(30, sh)
+
+# Retrieve data from the Graph
+started = datetime.now()
+print(f"Connecting to {vulcanize_endpoint}...")
+sh = SafeHistory(web3, geb, collateral_type, None, graph_endpoint, graph_key)
+safes_graph = sh.get_urns()
+elapsed: timedelta = datetime.now() - started
+print(f"Found {len(safes_graph)} safes from the Graph in {elapsed.seconds} seconds")
+
+
+# Reconcile the data
+mismatches = 0
+missing = 0
+total_generated_debt_logs = 0
+total_generated_debt_graph = 0
+csv = "SAFE,ChainLockedCollateral,ChainGeneratedDebt,GraphLockedCollateral,GraphGeneratedDebt\n"
+
+for key, value in safes_logs.items():
+    assert value.collateral_type.name == collateral_type.name
+    if key in safes_graph:
+        if value.locked_collateral != safes_graph[key].locked_collateral or value.generated_debt != safes_graph[key].generated_debt:
+            csv += f"{key.address},{value.locked_collateral},{value.generated_debt},{safes_graph[key].locked_collateral},{safes_graph[key].generated_debt}\n"
+            mismatches += 1
+    else:
+        print(f"the graph is missing safe {key}")
+        csv += f"{key.address},{value.locked_collateral},{value.generated_debt},,\n"
+        missing += 1
+    total_generated_debt_logs += float(value.generated_debt)
+
+for key, value in safes_graph.items():
+    assert value.collateral_type.name == collateral_type.name
+    if key not in safes_logs:
+        print(f"logs is missing safe {key}")
+        missing += 1
+    total_generated_debt_graph += float(value.generated_debt)
+
+with open(f"safe-reconciliation-{collateral_type}.csv", "w") as file:
+    file.write(csv)
+
+total = max(len(safes_graph), len(safes_logs))
+print(f'Observed {mismatches} mismatched safes ({mismatches/total:.0%}) and '
+      f'{missing} missing safes ({missing/total:.0%})')
+print(f"Total generated_debt from logs: {total_generated_debt_logs}, from graph: {total_generated_debt_graph}")
