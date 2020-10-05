@@ -21,7 +21,8 @@ from auction_keeper.main import AuctionKeeper
 from pyflex.approval import approve_safe_modification_directly
 from pyflex.numeric import Wad, Ray, Rad
 
-from tests.conftest import web3, geb, create_critical_safe, keeper_address, reserve_system_coin, purchase_system_coin
+from tests.conftest import web3, geb, create_critical_safe, keeper_address, reserve_system_coin, purchase_system_coin, \
+                           set_collateral_price
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -30,6 +31,7 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
     def test_liquidation_and_collateral_auction(self, web3, geb, auction_income_recipient_address, keeper_address):
         # given
         c = geb.collaterals['ETH-A']
+        set_collateral_price(geb, c, Wad.from_number(500))
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type collateral "
                                          f"--from-block 1 "
@@ -38,6 +40,7 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
         keeper.approve()
         unsafe_safe = create_critical_safe(geb, c, Wad.from_number(1.2), auction_income_recipient_address)
         assert len(geb.active_auctions()["collateral_auctions"][c.collateral_type.name]) == 0
+
         # Keeper won't bid with a 0 system coin balance
         purchase_system_coin(Wad.from_number(20), keeper_address)
         assert geb.system_coin_adapter.join(keeper_address, Wad.from_number(20)).transact(from_address=keeper_address)
@@ -47,16 +50,34 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
         wait_for_other_threads()
 
         # then
-        print(geb.liquidation_engine.past_liquidations(10))
+        #print(geb.liquidation_engine.past_liquidations(10))
         assert len(geb.liquidation_engine.past_liquidations(10)) > 0
         safe = geb.safe_engine.safe(unsafe_safe.collateral_type, unsafe_safe.address)
         assert safe.generated_debt == Wad(0)  # unsafe safe has been liquidated
         assert safe.locked_collateral == Wad(0)  # unsafe safe is now safe ...
         assert c.collateral_auction_house.auctions_started() == 1  # One auction started
 
+    @pytest.mark.skip("failing")
+    def test_should_not_liquidate_dusty_safes(self, geb, auction_income_recipient_address):
+        # given a lot smaller than the dust limit
+        c = geb.collaterals['ETH-A']
+        safe = geb.safe_engine.safe(c.collateral_type, auction_income_recipient_address)
+        assert safe.generated_debt < Wad(c.collateral_type.debt_floor)
+        auctions_before = c.collateral_auction_house.auctions_started()
+
+        # when a small unsafe safe is created
+        assert not geb.liquidation_engine.can_liquidate(c.collateral_type, safe)
+
+        # then ensure the keeper does not liquidate it
+        self.keeper.check_safes()
+        wait_for_other_threads()
+        auctions_after = c.collateral_auction_house.auctions_started()
+        assert auctions_before == auctions_after
+
     @classmethod
     def teardown_class(cls):
         w3 = web3()
+        print("tearing down TestAuctionKeeperLiquidate")
         cls.eliminate_queued_debt(w3, geb(w3), keeper_address(w3))
 
     @classmethod

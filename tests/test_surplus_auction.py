@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+import threading
 import math
 import pytest
 
@@ -29,7 +29,6 @@ from tests.conftest import c, geb, mint_prot, reserve_system_coin, set_collatera
     max_delta_debt, is_safe_safe, liquidate, create_safe_with_surplus, simulate_model_output, models, set_collateral_price
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
-
 @pytest.fixture()
 def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
 
@@ -42,7 +41,6 @@ def auction_id(geb, c: Collateral, auction_income_recipient_address) -> int:
 
     current_bid = geb.surplus_auction_house.bids(auction_id)
     assert current_bid.amount_to_sell == geb.accounting_engine.surplus_auction_amount_to_sell()
-
     return auction_id
 
 
@@ -57,10 +55,12 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
         self.geb = geb(self.web3)
         self.surplus_auction_house = self.geb.surplus_auction_house
         self.surplus_auction_house.approve(self.geb.prot.address, directly(from_address=self.other_address))
+        #self.min_auction = self.geb.surplus_auction_house.auctions_started() + 1
 
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type surplus "
                                               f"--from-block 1 "
+                                              #f"--min-auction {self.min_auction} "
                                               f"--model ./bogus-model.sh"), web3=self.web3)
         self.keeper.approve()
 
@@ -73,6 +73,8 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
 
     #@pytest.mark.skip("tmp")
     def test_should_detect_surplus_auction(self, web3, geb, c, auction_income_recipient_address, keeper_address):
+
+        print(self.keeper)
         # given some PROT is available to the keeper and a count of surplus auctions
         mint_prot(geb.prot, keeper_address, Wad.from_number(50000))
         auctions_started = geb.surplus_auction_house.auctions_started()
@@ -80,9 +82,11 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
         # when surplus is generated
         create_safe_with_surplus(geb, c, auction_income_recipient_address)
         self.keeper.check_surplus()
+        for thread in threading.enumerate():
+            print(thread)
         wait_for_other_threads()
 
-        # then ensure another surplus auction was auction_ided off
+        # then ensure another surplus auction was started
         auction_id = geb.surplus_auction_house.auctions_started()
         assert auction_id == auctions_started + 1
 
