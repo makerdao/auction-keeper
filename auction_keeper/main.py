@@ -22,6 +22,7 @@ import logging
 import time
 import sys
 import threading
+from pprint import pformat
 
 from datetime import datetime
 from requests.exceptions import RequestException
@@ -129,6 +130,8 @@ class AuctionKeeper:
                             help="Enable debug output")
 
         self.arguments = parser.parse_args(args)
+        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
+                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Configure connection to the chain
         self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else web3_via_http(
@@ -195,13 +198,11 @@ class AuctionKeeper:
                                  debt_auction_house=self.debt_auction_house.address if self.debt_auction_house else None,
                                  model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
-        # Since we don't want periodically-pollled bidding threads to back up, use a flag instead of a lock.
+        # Since we don't want periodically-polled bidding threads to back up, use a flag instead of a lock.
         self.is_joining_system_coin = False
         self.dead_since = {}
         self.lifecycle = None
 
-        logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
-                            level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
         # Create gas strategy used for non-bids and bids which do not supply gas price
         self.gas_price = DynamicGasPrice(self.arguments, self.web3)
@@ -224,6 +225,9 @@ class AuctionKeeper:
         logging.getLogger("web3").setLevel(logging.INFO)
         logging.getLogger("asyncio").setLevel(logging.INFO)
         logging.getLogger("requests").setLevel(logging.INFO)
+
+    def __repr__(self):
+        return f"AuctionKeeper({pformat(vars(self))})"
 
     def main(self):
         def seq_func(check_func: callable):

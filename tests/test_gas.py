@@ -16,19 +16,30 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
-
 from auction_keeper.main import AuctionKeeper
 from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg
 
 from auction_keeper.gas import DynamicGasPrice
 from tests.conftest import get_node_gas_price
 from tests.helper import args
+import ctypes
+import threading
+import time
 
 
 GWEI = 1000000000
 default_max_gas = 2000
 
 class TestGasStrategy:
+    def teardown_class(self):
+        while threading.active_count() > 1:
+            for thread in threading.enumerate():
+                if thread is not threading.current_thread():
+                    print(f"Attempting to kill thread {thread}")
+                    sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
+                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
+                    time.sleep(2)
+
     def test_ethgasstation(self, geb, keeper_address):
         # given
         c = geb.collaterals['ETH-A']

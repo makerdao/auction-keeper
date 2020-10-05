@@ -16,7 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import time
-
+import ctypes
+import threading
 import pytest
 
 from auction_keeper.process import Process
@@ -25,6 +26,18 @@ from auction_keeper.process import Process
 class TestProcess:
     def setup_method(self):
         pass
+
+    """
+    @pytest.mark.timeout(60)
+    def teardown_class(self):
+        while threading.active_count() > 1:
+            for thread in threading.enumerate():
+                if thread is not threading.current_thread():
+                    print(f"Attempting to kill thread {thread}")
+                    sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
+                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
+                    time.sleep(2)
+    """
 
     @pytest.mark.timeout(15)
     def test_should_read_json_document(self):
@@ -35,6 +48,8 @@ class TestProcess:
             time.sleep(0.1)
 
         process.stop()
+        while process.running:
+            time.sleep(0.1)
 
     @pytest.mark.timeout(15)
     def test_should_read_multiple_json_documents(self):
@@ -51,6 +66,8 @@ class TestProcess:
             time.sleep(0.1)
 
         process.stop()
+        while process.running:
+            time.sleep(0.1)
 
     @pytest.mark.timeout(15)
     def test_should_skip_invalid_json_documents(self):
@@ -67,6 +84,8 @@ class TestProcess:
             time.sleep(0.1)
 
         process.stop()
+        while process.running:
+            time.sleep(0.1)
 
     @pytest.mark.timeout(15)
     def test_should_return_none_from_read_if_nothing_to_read(self):
@@ -90,7 +109,9 @@ class TestProcess:
                 time.sleep(0.1)
 
         process.stop()
-
+        while process.running:
+            time.sleep(0.1)
+    # no timeout
     def test_should_read_long_json_documents(self):
         process = Process("./tests/models/output-long.sh")
         process.start()
@@ -102,13 +123,21 @@ class TestProcess:
         assert doc is not None
         assert len(doc) == 65
 
-    @pytest.mark.timeout(10)
+        process.stop()
+        while process.running:
+            time.sleep(0.1)
+
+    @pytest.mark.timeout(15)
     def test_should_not_block_on_many_writes_if_no_input_being_received_by_the_process(self):
         process = Process("./tests/models/output-once.sh")
         process.start()
 
-        for _ in range(100000):
+        for _ in range(1000):
             process.write({'aaa': 'bbb'})
+
+        process.stop()
+        while process.running:
+            time.sleep(0.1)
 
     @pytest.mark.timeout(15)
     def test_should_terminate_process_on_broken_input_pipe(self):
@@ -142,6 +171,9 @@ class TestProcess:
         process.start()
 
         assert process.running
+        process.stop()
+        while process.running:
+            time.sleep(0.1)
 
     def test_should_not_let_start_the_process_twice(self):
         process = Process("./tests/models/output-echo.sh")
@@ -149,6 +181,10 @@ class TestProcess:
 
         with pytest.raises(Exception):
             process.start()
+
+        process.stop()
+        while process.running:
+            time.sleep(0.1)
 
     @pytest.mark.timeout(15)
     def test_should_let_start_the_process_again_after_it_got_stopped(self):
@@ -166,6 +202,10 @@ class TestProcess:
         while not process.running:
             time.sleep(0.1)
 
+        process.stop()
+        while process.running:
+            time.sleep(0.1)
+
     @pytest.mark.timeout(15)
     def test_should_let_start_the_process_again_after_it_terminated_voluntarily(self):
         process = Process("./tests/models/terminate-voluntarily.sh")
@@ -176,4 +216,8 @@ class TestProcess:
 
         process.start()
         while not process.running:
+            time.sleep(0.1)
+
+        process.stop()
+        while process.running:
             time.sleep(0.1)
