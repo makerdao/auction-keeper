@@ -1,5 +1,8 @@
 # auction-keeper
 
+[![Build Status](https://travis-ci.org/reflexer-labs/auction-keeper.svg?branch=master)](https://travis-ci.org/reflexer-labs/auction-keeper)
+[![codecov](https://codecov.io/gh/reflexer-labs/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/reflexer-labs/auction-keeper)
+
 The purpose of `auction-keeper` is to:
  * Seek out opportunities and start new auctions
  * Detect auctions started by other participants
