@@ -385,6 +385,10 @@ class AuctionKeeper:
         dunk = self.cat.dunk(self.ilk)
         chop = self.cat.chop(self.ilk)
 
+        if not self.collateral.flipper.wards(self.mcd.cat.address):
+            self.logger.warning(f"Cat is not authorized to kick on this flipper")
+            return
+
         # Look for unsafe vaults and bite them
         urns = self.urn_history.get_urns()
         logging.debug(f"Evaluating {len(urns)} {self.ilk} urns to be bitten if any are unsafe")
@@ -416,6 +420,10 @@ class AuctionKeeper:
         # Check if Vow has a surplus of Dai compared to bad debt
         joy = self.vat.dai(self.vow.address)
         awe = self.vat.sin(self.vow.address)
+
+        if not self.flapper.wards(self.mcd.vow.address):
+            self.logger.warning(f"Vow is not authorized to kick on this flapper")
+            return
 
         # Check if Vow has Dai in excess
         if joy > awe:
@@ -457,6 +465,10 @@ class AuctionKeeper:
         # Check if Vow has a surplus of bad debt compared to Dai
         joy = self.vat.dai(self.vow.address)
         awe = self.vat.sin(self.vow.address)
+
+        if not self.flopper.wards(self.mcd.vow.address):
+            self.logger.warning(f"Vow is not authorized to kick on this flopper")
+            return
 
         # Check if Vow has bad debt in excess
         excess_debt = joy < awe
