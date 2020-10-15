@@ -100,8 +100,8 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
         assert c.collateral_auction_house.settle_auction(auction_id).transact()
 
         # when a bid covers the vow debt
-        assert geb.accounting_engine.debt_queue_of(last_liquidation.era(web3)) > Rad(0)
-        assert geb.accounting_engine.pop_debt_from_queue(last_liquidation.era(web3)).transact(from_address=keeper_address)
+        assert geb.accounting_engine.debt_queue_of(last_liquidation.block_time(web3)) > Rad(0)
+        assert geb.accounting_engine.pop_debt_from_queue(last_liquidation.block_time(web3)).transact(from_address=keeper_address)
         assert geb.accounting_engine.settle_debt(geb.safe_engine.debt_balance(geb.accounting_engine.address)).transact()
 
         # then ensure queued debt has been auctioned off

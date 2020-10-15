@@ -50,7 +50,7 @@ class Parameters:
 
     def __repr__(self):
         return pformat(vars(self))
-
+'''
 class AuctionStatus:
     """Abstract baseclass shared across Auction statuses."""
 
@@ -64,7 +64,8 @@ class AuctionStatus:
     def to_dict(self):
         raise NotImplemented()
 
-class Status(AuctionStatus):
+'''
+class Status():
     def __init__(self,
                  id: int,
                  collateral_auction_house: Optional[Address],
@@ -73,10 +74,12 @@ class Status(AuctionStatus):
                  bid_amount: Wad,
                  amount_to_sell: Wad,
                  amount_to_raise: Optional[Wad],
-                 bid_increase: Wad,
-                 high_bidder: Address,
-                 era: int,
-                 bid_expiry: int,
+                 sold_amount: Optional[Wad],
+                 raised_amount: Optional[Rad],
+                 bid_increase: Optional[Wad],
+                 high_bidder: Optional[Address],
+                 block_time: int,
+                 bid_expiry: Optional[int],
                  auction_deadline: int,
                  price: Optional[Wad]):
         assert isinstance(id, int)
@@ -84,13 +87,15 @@ class Status(AuctionStatus):
         assert isinstance(surplus_auction_house, Address) or (surplus_auction_house is None)
         assert isinstance(debt_auction_house, Address) or (debt_auction_house is None)
         # Numeric type of bid and amount_to_sell depends on auction type; system coin values are bid in Rad, collateral and prot in Wad.
-        assert isinstance(bid_amount, Wad) or isinstance(bid_amount, Rad)
+        assert isinstance(bid_amount, Wad) or isinstance(bid_amount, Rad) or bid_amount is None
         assert isinstance(amount_to_sell, Wad) or isinstance(amount_to_sell, Rad)
         assert isinstance(amount_to_raise, Rad) or (amount_to_raise is None)
-        assert isinstance(bid_increase, Wad)
-        assert isinstance(high_bidder, Address)
-        assert isinstance(era, int)
-        assert isinstance(bid_expiry, int)
+        assert isinstance(sold_amount, Wad) or (sold_amount is None)
+        assert isinstance(raised_amount, Rad) or (raised_amount is None)
+        assert isinstance(bid_increase, Wad) or bid_increase is None
+        assert isinstance(high_bidder, Address) or high_bidder is None
+        assert isinstance(block_time, int)
+        assert isinstance(bid_expiry, int) or bid_expiry is None
         assert isinstance(auction_deadline, int)
         assert isinstance(price, Wad) or (price is None)
 
@@ -101,14 +106,19 @@ class Status(AuctionStatus):
         self.bid_amount = bid_amount
         self.amount_to_sell = amount_to_sell
         self.amount_to_raise = amount_to_raise
+        self.sold_amount = sold_amount
+        self.raised_amount = raised_amount
         self.bid_increase = bid_increase
         self.high_bidder = high_bidder
-        self.era = era
+        self.block_time = block_time
         self.bid_expiry = bid_expiry
         self.auction_deadline = auction_deadline
         self.price = price
 
-        super().__init__()
+        #super().__init__()
+
+    def __repr__(self):
+        return pformat(vars(self))
 
     def __eq__(self, other):
         assert isinstance(other, Status)
@@ -122,7 +132,7 @@ class Status(AuctionStatus):
                self.amount_to_raise == other.amount_to_raise and \
                self.bid_increase == other.bid_increase and \
                self.high_bidder == other.high_bidder and \
-               self.era == other.era and \
+               self.block_time == other.block_time and \
                self.bid_expiry == other.bid_expiry and \
                self.auction_deadline == other.auction_deadline and \
                self.price == other.price
@@ -137,7 +147,7 @@ class Status(AuctionStatus):
                      self.amount_to_raise,
                      self.bid_increase,
                      self.high_bidder,
-                     self.era,
+                     self.block_time,
                      self.bid_expiry,
                      self.auction_deadline,
                      self.price))
@@ -147,119 +157,19 @@ class Status(AuctionStatus):
             "id": str(self.id),
             "bid_amount": str(self.bid_amount),
             "amount_to_sell": str(self.amount_to_sell),
-            "bid_increase": str(self.bid_increase),
-            "high_bidder": str(self.high_bidder),
-            "era": int(self.era),
-            "bid_expiry": int(self.bid_expiry),
+            "block_time": int(self.block_time),
             "auction_deadline": int(self.auction_deadline),
             "price": str(self.price) if self.price is not None else None,
         }
 
-        if self.amount_to_raise:
-            record['amount_to_raise'] = str(self.amount_to_raise)
+        if self.bid_increase:
+            record['bid_increase'] = str(self.bid_increase)
 
-        if self.collateral_auction_house:
-            record['collateral_auction_house'] = str(self.collateral_auction_house)
+        if self.high_bidder:
+            record['high_bidder'] = str(self.high_bidder)
 
-        if self.surplus_auction_house:
-            record['surplus_auction_house'] = str(self.surplus_auction_house)
-
-        if self.debt_auction_house:
-            record['debt_auction_house'] = str(self.debt_auction_house)
-
-        return record
-
-class FixedDiscountStatus(AuctionStatus):
-    """ WIP """
-    def __init__(self,
-                 id: int,
-                 collateral_auction_house: Optional[Address],
-                 surplus_auction_house: Optional[Address],
-                 debt_auction_house: Optional[Address],
-                 bid_amount: Wad,
-                 amount_to_sell: Wad,
-                 amount_to_raise: Optional[Wad],
-                 bid_increase: Wad,
-                 high_bidder: Address,
-                 era: int,
-                 bid_expiry: int,
-                 auction_deadline: int,
-                 price: Optional[Wad]):
-        assert isinstance(id, int)
-        assert isinstance(collateral_auction_house, Address) or (collateral_auction_house is None)
-        assert isinstance(surplus_auction_house, Address) or (surplus_auction_house is None)
-        assert isinstance(debt_auction_house, Address) or (debt_auction_house is None)
-        # Numeric type of bid and amount_to_sell depends on auction type; system coin values are bid in Rad, collateral and prot in Wad.
-        assert isinstance(bid_amount, Wad) or isinstance(bid_amount, Rad)
-        assert isinstance(amount_to_sell, Wad) or isinstance(amount_to_sell, Rad)
-        assert isinstance(amount_to_raise, Rad) or (amount_to_raise is None)
-        assert isinstance(bid_increase, Wad)
-        assert isinstance(high_bidder, Address)
-        assert isinstance(era, int)
-        assert isinstance(bid_expiry, int)
-        assert isinstance(auction_deadline, int)
-        assert isinstance(price, Wad) or (price is None)
-
-        self.id = id
-        self.collateral_auction_house = collateral_auction_house
-        self.surplus_auction_house = surplus_auction_house
-        self.debt_auction_house = debt_auction_house
-        self.bid_amount = bid_amount
-        self.amount_to_sell = amount_to_sell
-        self.amount_to_raise = amount_to_raise
-        self.bid_increase = bid_increase
-        self.high_bidder = high_bidder
-        self.era = era
-        self.bid_expiry = bid_expiry
-        self.auction_deadline = auction_deadline
-        self.price = price
-
-        super().__init__()
-
-    def __eq__(self, other):
-        assert isinstance(other, Status)
-
-        return self.id == other.id and \
-               self.collateral_auction_house == other.collateral_auction_house and \
-               self.surplus_auction_house == other.surplus_auction_house and \
-               self.debt_auction_house == other.debt_auction_house and \
-               self.bid == other.bid and \
-               self.amount_to_sell == other.amount_to_sell and \
-               self.amount_to_raise == other.amount_to_raise and \
-               self.bid_increase == other.bid_increase and \
-               self.high_bidder == other.high_bidder and \
-               self.era == other.era and \
-               self.bid_expiry == other.bid_expiry and \
-               self.auction_deadline == other.auction_deadline and \
-               self.price == other.price
-
-    def __hash__(self):
-        return hash((self.id,
-                     self.collateral_auction_house,
-                     self.surplus_auction_house,
-                     self.debt_auction_house,
-                     self.bid,
-                     self.amount_to_sell,
-                     self.amount_to_raise,
-                     self.bid_increase,
-                     self.high_bidder,
-                     self.era,
-                     self.bid_expiry,
-                     self.auction_deadline,
-                     self.price))
-    def to_dict(self):
-
-        record = {
-            "id": str(self.id),
-            "bid_amount": str(self.bid_amount),
-            "amount_to_sell": str(self.amount_to_sell),
-            "bid_increase": str(self.bid_increase),
-            "high_bidder": str(self.high_bidder),
-            "era": int(self.era),
-            "bid_expiry": int(self.bid_expiry),
-            "auction_deadline": int(self.auction_deadline),
-            "price": str(self.price) if self.price is not None else None,
-        }
+        if self.bid_expiry:
+            record['bid_expiry'] = str(self.bid_expiry)
 
         if self.amount_to_raise:
             record['amount_to_raise'] = str(self.amount_to_raise)
@@ -321,8 +231,8 @@ class Model:
 
             self._process.start()
 
-    def send_status(self, input: AuctionStatus):
-        assert isinstance(input, AuctionStatus)
+    def send_status(self, input: Status):
+        assert isinstance(input, Status)
 
         self._ensure_process_running()
 

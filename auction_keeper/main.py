@@ -35,11 +35,13 @@ from pyflex.keys import register_keys
 from pyflex.lifecycle import Lifecycle
 from pyflex.model import Token
 from pyflex.numeric import Wad, Ray, Rad
+from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
 
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
-from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy, EnglishCollateralAuctionStrategy
+from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy
+from auction_keeper.strategy import EnglishCollateralAuctionStrategy, FixedDiscountCollateralAuctionStrategy
 from auction_keeper.safe_history import SAFEHistory
 
 
@@ -174,7 +176,11 @@ class AuctionKeeper:
         self.safe_history = None
         if self.collateral_auction_house:
             self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
-            self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
+            if isinstance(self.collateral_auction_house, EnglishCollateralAuctionHouse):
+                self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
+            else:
+                self.strategy = FixedDiscountCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
+
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
                                               self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
@@ -450,12 +456,12 @@ class AuctionKeeper:
             if unqueued_unauctioned_debt < (debt_auction_bid_size + total_surplus) and self.liquidation_engine is not None:
                 past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
                 for liquidation_event in self.liquidation_engine.past_liquidations(past_blocks):  # TODO: cache ?
-                    era = liquidation_event.era(self.web3)
+                    block_time = liquidation_event.block_time(self.web3)
                     now = self.web3.eth.getBlock('latest')['timestamp']
-                    debt_queue = self.accounting_engine.debt_queue_of(era)
+                    debt_queue = self.accounting_engine.debt_queue_of(block_time)
                     # If the liquidation hasn't already been popped from queue and has aged past the `pop_debt_delay`
-                    if debt_queue > Rad(0) and era + pop_debt_delay <= now:
-                        self.accounting_engine.pop_debt_from_queue(era).transact(gas_price=self.gas_price)
+                    if debt_queue > Rad(0) and block_time + pop_debt_delay <= now:
+                        self.accounting_engine.pop_debt_from_queue(block_time).transact(gas_price=self.gas_price)
 
                         # pop debt from queue until unqueued_unauctioned_debt is above debt_auction_bid_size + total_surplus
                         total_surplus = self.safe_engine.coin_balance(self.accounting_engine.address)
@@ -525,7 +531,10 @@ class AuctionKeeper:
 
                 if not self.auction_handled_by_this_shard(id):
                     continue
-                self.handle_bid(id=id, auction=auction, reservoir=reservoir)
+                if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
+                    self.handle_bid(id=id, auction=auction, reservoir=reservoir, update_bid_price=False)
+                else:
+                    self.handle_bid(id=id, auction=auction, reservoir=reservoir, update_bid_price=True)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
@@ -543,7 +552,10 @@ class AuctionKeeper:
         # Read auction information from the chain
         input = self.strategy.get_input(id)
         auction_deleted = (input.auction_deadline == 0)
-        auction_finished = (input.bid_expiry < input.era and input.bid_expiry != 0) or (input.auction_deadline < input.era)
+        if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
+            auction_finished = False
+        else:
+            auction_finished = (input.bid_expiry < input.block_time and input.bid_expiry != 0) or (input.auction_deadline < input.block_time)
 
         if auction_deleted:
             # Try to remove the auction so the model terminates and we stop tracking it.
@@ -591,7 +603,7 @@ class AuctionKeeper:
         # Feed the model with current state
         auction.feed_model(input)
 
-    def handle_bid(self, id: int, auction: Auction, reservoir: Reservoir):
+    def handle_bid(self, id: int, auction: Auction, reservoir: Reservoir, update_bid_price: bool=True):
         assert isinstance(id, int)
         assert isinstance(auction, Auction)
         assert isinstance(reservoir, Reservoir)
@@ -632,7 +644,7 @@ class AuctionKeeper:
                     time.sleep(self.arguments.bid_delay)
 
             # if transaction in progress and the bid price changed...
-            elif auction.price and bid_price != auction.price:
+            elif auction.price and bid_price != auction.price and update_bid_price:
                 self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
                 auction.price = bid_price
                 if new_gas_strategy:  # gas strategy changed

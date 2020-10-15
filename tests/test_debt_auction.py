@@ -174,8 +174,8 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert status.amount_to_raise is None
         assert status.bid_increase > Wad.from_number(1)
         assert status.high_bidder == self.geb.accounting_engine.address
-        assert status.era > 0
-        assert status.auction_deadline < status.era + self.debt_auction_house.total_auction_length() + 1
+        assert status.block_time > 0
+        assert status.auction_deadline < status.block_time + self.debt_auction_house.total_auction_length() + 1
         assert status.bid_expiry == 0
         assert status.price == Wad(status.bid_amount / Rad(status.amount_to_sell))
     @pytest.mark.skip("tmp")
@@ -214,9 +214,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert status.amount_to_raise is None
         assert status.bid_increase > Wad.from_number(1)
         assert status.high_bidder == self.keeper_address
-        assert status.era > 0
-        assert status.auction_deadline > status.era
-        assert status.bid_expiry > status.era
+        assert status.block_time > 0
+        assert status.auction_deadline > status.block_time
+        assert status.bid_expiry > status.block_time
         assert status.price == price
 
         # cleanup
@@ -253,9 +253,9 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert status.amount_to_raise is None
         assert status.bid_increase > Wad.from_number(1)
         assert status.high_bidder == self.other_address
-        assert status.era > 0
-        assert status.auction_deadline > status.era
-        assert status.bid_expiry > status.era
+        assert status.block_time > 0
+        assert status.auction_deadline > status.block_time
+        assert status.bid_expiry > status.block_time
         assert status.price == Wad(self.debt_auction_bid_size / Rad(amount_to_sell))
 
         # cleanup

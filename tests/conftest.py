@@ -364,13 +364,13 @@ def pop_debt_and_settle_debt(web3: Web3, geb: GfDeployment, past_blocks=8, cance
     # Raise debt from the queue (note that accounting_engine.wait is 0 on our testchain)
     liquidations = geb.liquidation_engine.past_liquidations(past_blocks)
     for liquidation in liquidations:
-        era_liquidation = liquidation.era(web3)
-        debt_queue = geb.accounting_engine.debt_queue_of(era_liquidation)
+        block_time_liquidation = liquidation.block_time(web3)
+        debt_queue = geb.accounting_engine.debt_queue_of(block_time_liquidation)
         if debt_queue > Rad(0):
-            print(f'popping debt era={era_liquidation} from block={liquidation.raw["blockNumber"]} '
-                  f'with debt_queue={str(geb.accounting_engine.debt_queue_of(era_liquidation))}')
-            assert geb.accounting_engine.pop_debt_from_queue(era_liquidation).transact()
-            assert geb.accounting_engine.debt_queue_of(era_liquidation) == Rad(0)
+            print(f'popping debt era={block_time_liquidation} from block={liquidation.raw["blockNumber"]} '
+                  f'with debt_queue={str(geb.accounting_engine.debt_queue_of(block_time_liquidation))}')
+            assert geb.accounting_engine.pop_debt_from_queue(block_time_liquidation).transact()
+            assert geb.accounting_engine.debt_queue_of(block_time_liquidation) == Rad(0)
 
     # Ensure there is no on-auction debt which a previous test failed to clean up
     if cancel_auctioned_debt and geb.accounting_engine.total_on_auction_debt() > Rad.from_number(0):

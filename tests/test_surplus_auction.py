@@ -119,8 +119,8 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
         assert status.amount_to_raise is None
         assert status.bid_increase == self.geb.surplus_auction_house.bid_increase()
         assert status.high_bidder == self.geb.accounting_engine.address
-        assert status.era > 0
-        assert status.auction_deadline < status.era + self.surplus_auction_house.total_auction_length() + 1
+        assert status.block_time > 0
+        assert status.auction_deadline < status.block_time + self.surplus_auction_house.total_auction_length() + 1
         assert status.bid_expiry == 0
         assert status.price is None
 
@@ -158,9 +158,9 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
         assert status.amount_to_raise is None
         assert status.bid_increase == self.geb.surplus_auction_house.bid_increase()
         assert status.high_bidder == self.keeper_address
-        assert status.era > 0
-        assert status.auction_deadline > status.era
-        assert status.bid_expiry > status.era
+        assert status.block_time > 0
+        assert status.auction_deadline > status.block_time
+        assert status.bid_expiry > status.block_time
         assert round(status.price, 2) == round(Wad.from_number(9), 2)
 
         # cleanup
@@ -200,9 +200,9 @@ class TestAuctionKeeperSurplus(TransactionIgnoringTest):
         assert status.amount_to_raise is None
         assert status.bid_increase == self.geb.surplus_auction_house.bid_increase()
         assert status.high_bidder == self.other_address
-        assert status.era > 0
-        assert status.auction_deadline > status.era
-        assert status.bid_expiry > status.era
+        assert status.block_time > 0
+        assert status.auction_deadline > status.block_time
+        assert status.bid_expiry > status.block_time
         assert status.price == Wad(auction.amount_to_sell / Rad(auction.bid_amount))
 
         # cleanup
