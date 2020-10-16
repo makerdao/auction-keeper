@@ -532,9 +532,9 @@ class AuctionKeeper:
                 if not self.auction_handled_by_this_shard(id):
                     continue
                 if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
-                    self.handle_bid(id=id, auction=auction, reservoir=reservoir, update_bid_price=False)
+                    self.handle_fixed_discount_bid(id=id, auction=auction, reservoir=reservoir)
                 else:
-                    self.handle_bid(id=id, auction=auction, reservoir=reservoir, update_bid_price=True)
+                    self.handle_bid(id=id, auction=auction, reservoir=reservoir)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
@@ -603,7 +603,65 @@ class AuctionKeeper:
         # Feed the model with current state
         auction.feed_model(input)
 
-    def handle_bid(self, id: int, auction: Auction, reservoir: Reservoir, update_bid_price: bool=True):
+    def handle_fixed_discount_bid(self, id: int, auction: Auction, reservoir: Reservoir):
+        assert isinstance(id, int)
+        assert isinstance(auction, Auction)
+        assert isinstance(reservoir, Reservoir)
+
+        output = auction.model_output()
+        if output is None:
+            return
+
+        bid_price, bid_transact, cost = self.strategy.bid(id)
+
+        # If we can't afford the bid, log a warning/error and back out.
+        # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
+        if cost is not None:
+            if not self.check_bid_cost(id, cost, reservoir):
+                return
+
+        if bid_price is not None and bid_transact is not None:
+            assert isinstance(bid_price, Wad)
+            # Ensure this auction has a gas strategy assigned
+            (new_gas_strategy, fixed_gas_price_changed) = auction.determine_gas_strategy_for_bid(output, self.gas_price)
+
+            # if no transaction in progress, send a new one
+            transaction_in_progress = auction.transaction_in_progress()
+
+            logging.debug(f"Handling bid for auction {id}: tx in progress={transaction_in_progress is not None}, " 
+                          f"auction.price={auction.price}, bid_price={bid_price}")
+
+            # if transaction has not been submitted...
+            if transaction_in_progress is None:
+                self.logger.info(f"Sending new bid @{output.price} for auction {id}")
+                auction.price = bid_price
+                auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
+                auction.register_transaction(bid_transact)
+
+                # ...submit a new transaction and wait the delay period (if so configured)
+                self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+                if self.arguments.bid_delay:
+                    logging.debug(f"Waiting {self.arguments.bid_delay}s")
+                    time.sleep(self.arguments.bid_delay)
+
+            # if model has been providing a gas price, and that changed...
+            elif fixed_gas_price_changed:
+                assert isinstance(auction.gas_price, UpdatableGasPrice)
+                self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price}) for auction {id}")
+                auction.gas_price.update_gas_price(output.gas_price)
+
+            # if transaction in progress, but gas strategy changed...
+            elif new_gas_strategy:
+                self.logger.info(f"Changing gas strategy for pending bid @{output.price} for auction {id}")
+                auction.price = bid_price
+                auction.gas_price = new_gas_strategy
+                auction.register_transaction(bid_transact)
+
+                # ...ask pyflex to replace the transaction
+                self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                             gas_price=auction.gas_price))
+
+    def handle_bid(self, id: int, auction: Auction, reservoir: Reservoir):
         assert isinstance(id, int)
         assert isinstance(auction, Auction)
         assert isinstance(reservoir, Reservoir)
@@ -613,6 +671,7 @@ class AuctionKeeper:
             return
 
         bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+
         # If we can't afford the bid, log a warning/error and back out.
         # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
         if cost is not None:

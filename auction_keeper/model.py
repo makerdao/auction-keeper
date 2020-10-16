@@ -50,21 +50,7 @@ class Parameters:
 
     def __repr__(self):
         return pformat(vars(self))
-'''
-class AuctionStatus:
-    """Abstract baseclass shared across Auction statuses."""
 
-    def __init__(self):
-        if self.__class__ == AuctionStatus:
-            raise NotImplemented('Abstract class; please call Status or FixedDiscountStatus')
-
-    def __repr__(self):
-        return pformat(vars(self))
-
-    def to_dict(self):
-        raise NotImplemented()
-
-'''
 class Status():
     def __init__(self,
                  id: int,
@@ -186,8 +172,8 @@ class Status():
         return record
 
 class Stance:
-    def __init__(self, price: Wad, gas_price: Optional[int]):
-        assert isinstance(price, Wad)
+    def __init__(self, price: Optional[Wad], gas_price: Optional[int]):
+        assert isinstance(price, Wad) or (price is None)
         assert isinstance(gas_price, int) or (gas_price is None)
 
         self.price = price
@@ -247,7 +233,7 @@ class Model:
             data = self._process.read()
 
             if data is not None:
-                self._last_output = Stance(price=Wad.from_number(data['price']),
+                self._last_output = Stance(price=Wad.from_number(data['price'] if 'price' in data else None),
                                            gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
 
             else:

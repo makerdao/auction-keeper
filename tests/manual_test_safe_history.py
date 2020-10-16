@@ -60,6 +60,8 @@ safes_logs = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(safes_logs)} safes from block {from_block} in {elapsed.seconds} seconds")
 
+sys.exit()
+
 wait(30, sh)
 
 # Retrieve data from the Graph

@@ -168,9 +168,8 @@ class FixedDiscountCollateralAuctionStrategy(Strategy):
                       auction_deadline=bid.auction_deadline,
                       price=None)
 
-    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
+    def bid(self, id: int) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
-        assert isinstance(price, Wad)
 
         bid = self.collateral_auction_house.bids(id)
         remaining_to_raise = bid.amount_to_raise - bid.raised_amount
@@ -185,7 +184,7 @@ class FixedDiscountCollateralAuctionStrategy(Strategy):
         #our_approximate_price = our_adjusted_bid/approximate_collateral
 
         #return our_approximate_price, self.collateral_auction_house.buy_collateral(id, our_adjusted_bid), our_adjusted_bid
-        return Wad(1), self.collateral_auction_house.buy_collateral(id, Wad(our_bid)), Rad(our_bid)
+        return Wad(1), self.collateral_auction_house.buy_collateral(id, Wad(our_bid) + Wad(1)), Rad(our_bid)
 
 class SurplusAuctionStrategy(Strategy):
     def __init__(self, surplus_auction_house: PreSettlementSurplusAuctionHouse, prot: Address):

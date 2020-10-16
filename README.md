@@ -131,12 +131,12 @@ the following actions:
   * liquidating a SAFE or starting a surplus or debt auction
 * The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will
 `liquidateSAFE`, start a new surplus or debt auction in response to opportunities regardless of whether or not your system coin or protocol token balance is sufficient to participate.  This too imposes a gas fee.
-* Liquidating SAFEs to kick off new collateral auctions is an expensive operation.  To do so without a subgraph
-subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then
-continuously refresh urn state to detect undercollateralized SAFEs.
-   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the urn state
+* Liquidating SAFEs to start new collateral auctions is an expensive operation.  To do so without a subgraph
+subscription, the keeper initializes a cache of safe state by scraping event logs from the chain.  The keeper will then
+continuously refresh safe state to detect undercollateralized SAFEs.
+   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the safe state
    cache in a reasonable amount of time.  As such, Geth is not recommended for liquidating SAFEs.
-   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--kick-only`)
+   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--start-auctions-only`)
    and bid (`--bid-only`).
 
 ## Installation
@@ -228,9 +228,9 @@ is specified.
 
 #### Minimize load on your node
 
-To start collateral auctions, the keeper needs a list of SAFEs and the collateralization ratio of each urn.  There are
+To start collateral auctions, the keeper needs a list of SAFEs and the collateralization ratio of each safe.  There are
 two ways to retrieve the list of SAFEs:
- * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `ModifySAFECollateralization` events.  
+ * **Set `--from-block` to the block where the first safe was created** to scrape the chain for `ModifySAFECollateralization` events.  
     The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events
     will be queried back to the last cached block to detect new SAFEs.  The state of all SAFEs will be queried
     continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join`
@@ -295,7 +295,7 @@ pip3 install -r requirements-dev.txt
 
 You can then run all tests with:
 ```
-for i in `ls tests/test*.py`;do ./test.sh `basename $i`;done
+./test.sh
 ```
 
 ## License
