@@ -100,7 +100,7 @@ A sample message sent from the model to the keeper may look like:
 {"price": "750.0", "gasPrice": 70000000000}
 ```
 ### Sample model output for Fixed Discount Auction 
-NOTE: Collateral price is determined by the fixed discount percentage, so only `gas` is supported for fixed discount
+NOTE: Collateral price is determined by the fixed discount percentage, so only `gasPrice` is supported for fixed discount
       collateral auctions.
 A sample message sent from the model to the keeper may look like:
 ```json
