@@ -97,14 +97,14 @@ process and tries to parse them as JSON documents. Then it extracts two fields f
 ## Sample model output for English Auction 
 A sample message sent from the model to the keeper may look like:
 ```json
-{"price": "750.0", "gasPrice": 7000000000}
+{"price": "750.0", "gasPrice": 70000000000}
 ```
 ### Sample model output for Fixed Discount Auction 
 NOTE: Collateral price is determined by the fixed discount percentage, so only `gas` is supported for fixed discount
       collateral auctions.
 A sample message sent from the model to the keeper may look like:
 ```json
-{"gasPrice": 7000000000}
+{"gasPrice": 70000000000}
 ```
 
 Whenever the keeper and the model communicate in terms of prices, it is the PROT/SYS_COIN price (for surplus
@@ -146,7 +146,7 @@ Gas price is optional for fixed discount models. If you want to start with a fix
 #!/usr/bin/env bash
 
 while true; do
-  echo "{\"gas\": \"60\"}"    # put your desired gas price in GWEI here
+  echo "{\"gasPrice\": \"70000000000\"}"    # put your desired gas price in Wei here
   sleep 120                   # locking the gas price for n seconds
 done
 ```
