@@ -165,7 +165,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         # cleanup
         TestAuctionKeeperFixedDiscountCollateralAuctionHouse.buy_collateral_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Wad.from_number(30))
 
-    #@pytest.mark.skip("tmp")
     def test_should_provide_model_with_updated_info_after_our_partial_bid(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -254,7 +253,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         assert current_status.auction_deadline == 0
         assert current_status.raised_amount == Rad(0)
 
-    #@pytest.mark.skip("tmp")
     def test_auction_deleted_after_our_full_bid(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -293,7 +291,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         assert current_status.auction_deadline == 0
         assert current_status.raised_amount == Rad(0)
 
-    #@pytest.mark.skip("tmp")
     def test_should_provide_model_with_updated_info_after_somebody_else_partial_bids(self, auction_id, other_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -330,7 +327,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         assert status.block_time > 0
         assert status.auction_deadline > status.block_time
 
-    #@pytest.mark.skip("tmp")
     def test_should_not_do_anything_if_no_output_from_model(self):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -346,7 +342,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         # then
         assert self.web3.eth.blockNumber == previous_block_number
 
-    #@pytest.mark.skip("tmp")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -374,7 +369,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         #assert collateral_auction_house.bids(auction_id).raised_amount == Rad(bid_price * bid_size)
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 15
 
-    #@pytest.mark.skip("tmp")
     def test_should_obey_gas_price_provided_by_the_model(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
@@ -391,7 +385,6 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         # then
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == 175000
 
-    #@pytest.mark.skip("tmp")
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
