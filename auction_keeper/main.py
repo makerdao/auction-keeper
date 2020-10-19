@@ -56,25 +56,20 @@ class AuctionKeeper:
                             help="JSON-RPC endpoint URI with port (default: `http://localhost:8545')")
         parser.add_argument("--rpc-timeout", type=int, default=10,
                             help="JSON-RPC timeout (in seconds, default: 10)")
-
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
-
         parser.add_argument('--type', type=str, choices=['collateral', 'surplus', 'debt'],
                             help="Auction type in which to participate")
         parser.add_argument('--collateral-type', type=str,
-                            help="Name of the collateral type for a collateral keeper (e.g. 'ETH-B', 'ZRX-A'); "
-                                 "available collateral types can be found at the left side of the Oasis Borrow")
-
+                            help="Name of the collateral type for a collateral keeper (e.g. 'ETH-B', 'ZRX-A'); ")
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
         parser.add_argument('--start-auctions-only', dest='bid_on_auctions', action='store_false',
                             help="Do not bid on auctions")
         parser.add_argument('--settle-auctions-for', type=str, nargs="+",
                             help="List of addresses for which auctions will be settled")
-
         parser.add_argument('--min-auction', type=int, default=0,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
@@ -90,16 +85,12 @@ class AuctionKeeper:
                             help="When sharding auctions across multiple keepers, this identifies the shard")
         parser.add_argument('--shards', type=int, default=1,
                             help="Number of shards; should be one greater than your highest --shard-id")
-
-        parser.add_argument("--vulcanize-endpoint", type=str,
-                            help="When specified, safe history will be initialized from a VulcanizeDB node, "
+        parser.add_argument("--graph-endpoint", type=str,
+                            help="When specified, safe history will be initialized from a Graph node, "
                                  "reducing load on the Ethereum node for collateral auctions")
-        parser.add_argument("--vulcanize-key", type=str,
-                            help="API key for the Vulcanize endpoint")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to find vaults to liquidation or debt to queue "
-                                 "(set to block where MCD was deployed)")
-
+                                 "(set to block where GEB was deployed)")
         parser.add_argument('--safe-engine-system-coin-target', type=str,
                             help="Amount of system coin to keep in the SAFEEngine contract or ALL to join entire token balance")
         parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
@@ -108,10 +99,8 @@ class AuctionKeeper:
                             help="Retain collateral in the SAFE Engine on exit")
         parser.add_argument('--return-collateral-interval', type=int, default=300,
                             help="Period of timer [in seconds] used to check and exit won collateral")
-
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
-
         gas_group = parser.add_mutually_exclusive_group()
         gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
         gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
@@ -127,10 +116,8 @@ class AuctionKeeper:
                             help="Increases gas price when transactions haven't been mined after some time")
         parser.add_argument("--gas-maximum", type=float, default=2000,
                             help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
-
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
-
         self.arguments = parser.parse_args(args)
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -144,8 +131,8 @@ class AuctionKeeper:
 
         # Check configuration for retrieving safes/liquidations
         if self.arguments.type == 'collateral' and self.arguments.create_auctions \
-                and self.arguments.from_block is None and self.arguments.vulcanize_endpoint is None:
-            raise RuntimeError("Either --from-block or --vulcanize-endpoint must be specified to kick off "
+                and self.arguments.from_block is None and self.arguments.graph_endpoint is None:
+            raise RuntimeError("Either --from-block or --graph-endpoint must be specified to kick off "
                                "collateral auctions")
         if self.arguments.type == 'collateral' and not self.arguments.collateral_type:
             raise RuntimeError("--collateral-type must be supplied when configuring a collateral keeper")
@@ -186,7 +173,7 @@ class AuctionKeeper:
 
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
-                                              self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
+                                              self.arguments.graph_endpoint, None)
         elif self.surplus_auction_house:
             self.strategy = SurplusAuctionStrategy(self.surplus_auction_house, self.prot.address)
         elif self.debt_auction_house:
@@ -313,7 +300,7 @@ class AuctionKeeper:
 
             if self.collateral_auction_house and self.collateral_type and self.collateral_type.name == "ETH-A":
                 logging.info("*** When Keeper is settling/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
-                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
+                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using Graph via `--graph-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
