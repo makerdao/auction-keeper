@@ -166,56 +166,135 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         TestAuctionKeeperFixedDiscountCollateralAuctionHouse.buy_collateral_with_system_coin(self.geb, self.collateral, collateral_auction_house, auction_id, other_address, Wad.from_number(30))
 
     #@pytest.mark.skip("tmp")
-    def test_should_provide_model_with_updated_info_after_our_own_bid(self, auction_id):
+    def test_should_provide_model_with_updated_info_after_our_partial_bid(self, auction_id):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
         if not isinstance(collateral_auction_house, FixedDiscountCollateralAuctionHouse):
             return
+
         (model, model_factory) = models(self.keeper, auction_id)
 
         # when
         self.keeper.check_all_auctions()
         wait_for_other_threads()
-        previous_bid = collateral_auction_house.bids(model.id)
+        initial_status = collateral_auction_house.bids(model.id)
         # then
         assert model.send_status.call_count == 1
 
-        # when
-        initial_bid = collateral_auction_house.bids(auction_id)
-        our_bid = initial_bid.amount_to_raise
-        reserve_system_coin(self.geb, self.collateral, self.keeper_address, Wad(our_bid)*2)
-        simulate_model_output(model=model, price=Wad(1))
+        # when bidding less than the full amount
+        our_balance = Wad(initial_status.amount_to_raise) / Wad.from_number(2)
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, our_balance)
+
+        assert initial_status.amount_to_raise != Rad(0)
+        assert self.geb.safe_engine.coin_balance(self.keeper_address) > Rad(0)
+
+        # Make our balance lte half of the auction size
+        half_amount_to_raise = initial_status.amount_to_raise / Rad.from_number(2)
+        if self.geb.safe_engine.coin_balance(self.keeper_address) >= half_amount_to_raise:
+            burn_amount = self.geb.safe_engine.coin_balance(self.keeper_address) - half_amount_to_raise
+            assert burn_amount < self.geb.safe_engine.coin_balance(self.keeper_address)
+            self.geb.safe_engine.transfer_internal_coins(self.keeper_address, Address("0x0000000000000000000000000000000000000000"), burn_amount).transact()
+
+        assert self.geb.safe_engine.coin_balance(self.keeper_address) <= half_amount_to_raise
+        assert self.geb.safe_engine.coin_balance(self.keeper_address) > Rad(0)
+
+        simulate_model_output(model=model, price=None)
         self.keeper.check_for_bids()
 
-        # and
+        # and checking auction status and sending auction status to model
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
+
         # then
         assert model.send_status.call_count > 1
-        # and
+
+        # ensure our bid was processed
+        current_status = collateral_auction_house.bids(model.id)
+        assert current_status.amount_to_raise == initial_status.amount_to_raise
+        assert current_status.amount_to_sell == initial_status.amount_to_sell
+        assert current_status.auction_deadline == initial_status.auction_deadline
+        assert current_status.raised_amount == Rad(our_balance)
+
+        # and the last status sent to our model reflects our bid
         status = model.send_status.call_args[0][0]
-        print('status')
-        print(status)
         assert status.id == auction_id
         assert status.collateral_auction_house == collateral_auction_house.address
         assert status.surplus_auction_house is None
         assert status.debt_auction_house is None
-        assert status.amount_to_sell == previous_bid.amount_to_sell
-        assert status.amount_to_raise == previous_bid.amount_to_raise
-        assert status.block_time > 0
-        assert status.auction_deadline > status.block_time
+        assert status.amount_to_sell == initial_status.amount_to_sell
+        assert status.amount_to_raise == initial_status.amount_to_raise
+        assert status.raised_amount == Rad(our_balance)
+        assert status.auction_deadline == initial_status.auction_deadline
 
-        final_bid = collateral_auction_house.bids(auction_id)
-        assert final_bid.amount_to_sell == Wad(0)
-        assert final_bid.amount_to_raise == Rad(0)
-        assert final_bid.sold_amount == Wad(0)
-        assert final_bid.raised_amount == Rad(0)
+        # and auction is still active
+        final_status = collateral_auction_house.bids(model.id)
+        assert final_status.amount_to_raise == initial_status.amount_to_raise
+        assert final_status.amount_to_sell == initial_status.amount_to_sell
+        assert final_status.auction_deadline == initial_status.auction_deadline
+        assert final_status.raised_amount == Rad(our_balance)
+
+        #cleanup 
+        our_balance = Wad(initial_status.amount_to_raise) + Wad(1)
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, our_balance)
+        assert self.geb.safe_engine.coin_balance(self.keeper_address) >= initial_status.amount_to_raise
+        simulate_model_output(model=model, price=None)
+        self.keeper.check_for_bids()
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+
+        # ensure auction has been deleted
+        current_status = collateral_auction_house.bids(model.id)
+        assert current_status.raised_amount == Rad(0)
+        assert current_status.sold_amount == Wad(0)
+        assert current_status.amount_to_raise == Rad(0)
+        assert current_status.amount_to_sell == Wad(0)
+        assert current_status.auction_deadline == 0
+        assert current_status.raised_amount == Rad(0)
 
     #@pytest.mark.skip("tmp")
-    def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, auction_id, other_address):
+    def test_auction_deleted_after_our_full_bid(self, auction_id):
+        # given
+        collateral_auction_house = self.collateral.collateral_auction_house
+        if not isinstance(collateral_auction_house, FixedDiscountCollateralAuctionHouse):
+            return
+
+        (model, model_factory) = models(self.keeper, auction_id)
+
+        # when
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        initial_status = collateral_auction_house.bids(model.id)
+        # then
+        assert model.send_status.call_count == 1
+
+        # when bidding the full amount
+        our_bid = Wad(initial_status.amount_to_raise) + Wad(1)
+        reserve_system_coin(self.geb, self.collateral, self.keeper_address, our_bid, Wad.from_number(2))
+        assert self.geb.safe_engine.coin_balance(self.keeper_address) >= initial_status.amount_to_raise
+        simulate_model_output(model=model, price=None)
+        self.keeper.check_for_bids()
+
+        # and checking auction status and sending auction status to model
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+
+        # ensure our bid was processed and auction has been deleted
+        current_status = collateral_auction_house.bids(model.id)
+        assert current_status.raised_amount == Rad(0)
+        assert current_status.sold_amount == Wad(0)
+        assert current_status.amount_to_raise == Rad(0)
+        assert current_status.amount_to_sell == Wad(0)
+        assert current_status.auction_deadline == 0
+        assert current_status.raised_amount == Rad(0)
+
+    #@pytest.mark.skip("tmp")
+    def test_should_provide_model_with_updated_info_after_somebody_else_partial_bids(self, auction_id, other_address):
         # given
         collateral_auction_house = self.collateral.collateral_auction_house
         if not isinstance(collateral_auction_house, FixedDiscountCollateralAuctionHouse):

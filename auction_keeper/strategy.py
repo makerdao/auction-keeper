@@ -26,6 +26,7 @@ from pyflex.auctions import AuctionContract, PreSettlementSurplusAuctionHouse, D
 from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
 from pyflex.gas import GasPrice
 from pyflex.numeric import Wad, Ray, Rad
+from pyflex.deployment import GfDeployment
 
 
 def block_time(web3: Web3):
@@ -128,14 +129,19 @@ class EnglishCollateralAuctionStrategy(Strategy):
 
 
 class FixedDiscountCollateralAuctionStrategy(Strategy):
-    def __init__(self, collateral_auction_house: FixedDiscountCollateralAuctionHouse, min_amount_to_sell: Wad):
+    def __init__(self, collateral_auction_house: FixedDiscountCollateralAuctionHouse, min_amount_to_sell: Wad,
+                 geb: GfDeployment, our_address: Address):
         assert isinstance(collateral_auction_house, FixedDiscountCollateralAuctionHouse)
         assert isinstance(min_amount_to_sell, Wad)
+        assert isinstance(geb, GfDeployment)
+        assert isinstance(our_address, Address)
         super().__init__(collateral_auction_house)
 
         self.collateral_auction_house = collateral_auction_house
         self.minimum_bid = collateral_auction_house.minimum_bid()
         self.min_amount_to_sell = min_amount_to_sell
+        self.geb = geb
+        self.our_address = our_address
 
     def approve(self, gas_price: GasPrice):
         assert isinstance(gas_price, GasPrice)
@@ -179,12 +185,12 @@ class FixedDiscountCollateralAuctionStrategy(Strategy):
             self.logger.debug(f"remaining_to_sell {remaining_to_sell} less than minimum {self.min_amount_to_sell} for auction {id}")
             return None, None, None
 
-        our_bid = remaining_to_raise
-        #approximate_collateral, our_adjusted_bid = self.collateral_auction_house.get_approximate_collateral_bought(id, our_bid)
-        #our_approximate_price = our_adjusted_bid/approximate_collateral
+        # Always bid our entire balance.  If auction amount_to_raise is less, FixedDiscountCollateralAuctionHouse will reduce it.
+        our_bid = Wad(self.geb.safe_engine.coin_balance(self.our_address)) 
+        approximate_collateral, our_adjusted_bid = self.collateral_auction_house.get_approximate_collateral_bought(id, our_bid)
+        our_approximate_price = our_adjusted_bid/approximate_collateral
 
-        #return our_approximate_price, self.collateral_auction_house.buy_collateral(id, our_adjusted_bid), our_adjusted_bid
-        return Wad(1), self.collateral_auction_house.buy_collateral(id, Wad(our_bid) + Wad(1)), Rad(our_bid)
+        return our_approximate_price, self.collateral_auction_house.buy_collateral(id, our_bid), Rad(our_bid)
 
 class SurplusAuctionStrategy(Strategy):
     def __init__(self, surplus_auction_house: PreSettlementSurplusAuctionHouse, prot: Address):

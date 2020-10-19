@@ -156,7 +156,8 @@ class TestConfig:
                                          f"--collateral-type ETH-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
-        assert isinstance(keeper.collateral_auction_house, EnglishCollateralAuctionHouse)
+        assert isinstance(keeper.collateral_auction_house, EnglishCollateralAuctionHouse) or \
+               isinstance(keeper.collateral_auction_house, FixedDiscountCollateralAuctionHouse)
         assert keeper.collateral.collateral_auction_house == keeper.collateral_auction_house
         assert keeper.collateral.collateral_type.name == 'ETH-A'
         assert keeper.surplus_auction_house is None

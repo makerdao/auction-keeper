@@ -25,7 +25,7 @@ from auction_keeper.strategy import DebtAuctionStrategy
 from datetime import datetime, timezone
 from pyflex import Address
 from pyflex.approval import approve_safe_modification_directly
-from pyflex.auctions import DebtAuctionHouse
+from pyflex.auctions import DebtAuctionHouse, EnglishCollateralAuctionHouse
 from pyflex.deployment import GfDeployment
 from pyflex.numeric import Wad, Ray, Rad
 from tests.conftest import liquidate, create_critical_safe, pop_debt_and_settle_debt, auction_income_recipient_address, keeper_address, geb, \
@@ -126,7 +126,8 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert geb.liquidation_engine.liquidate_safe(critical_safe.collateral_type, critical_safe).transact()
 
         # when the auction ends without debt being covered
-        time_travel_by(web3, c.collateral_auction_house.total_auction_length() + 1)
+        if isinstance(c.collateral_auction_house, EnglishCollateralAuctionHouse):
+            time_travel_by(web3, c.collateral_auction_house.total_auction_length() + 1)
 
         # then ensure testchain is in the appropriate state
         total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
@@ -178,7 +179,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert status.auction_deadline < status.block_time + self.debt_auction_house.total_auction_length() + 1
         assert status.bid_expiry == 0
         assert status.price == Wad(status.bid_amount / Rad(status.amount_to_sell))
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_provide_model_with_updated_info_after_our_own_bid(self):
         # given
         auction_id = self.debt_auction_house.auctions_started()
@@ -223,7 +224,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_provide_model_with_updated_info_after_somebody_else_bids(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -262,7 +263,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_restart_auction_if_auction_expired_due_to_total_auction_length(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -293,7 +294,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         model.terminate.assert_called_once()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_terminate_model_if_auction_expired_due_to_bid_duration_and_somebody_else_won_it(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -319,7 +320,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # cleanup
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_terminate_model_if_auction_is_settled(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -344,7 +345,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         model_factory.create_model.assert_called_once()
         model.terminate.assert_called_once()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_not_instantiate_model_if_auction_is_settled(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -361,7 +362,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # then
         model_factory.create_model.assert_not_called()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_not_do_anything_if_no_output_from_model(self, auction_id):
         # given
         previous_block_number = self.web3.eth.blockNumber
@@ -375,7 +376,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # then
         assert self.web3.eth.blockNumber == previous_block_number
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_make_initial_bid(self):
         # given
         auction_id = self.debt_auction_house.auctions_started()
@@ -398,7 +399,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_bid_even_if_there_is_already_a_bidder(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -425,7 +426,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_overbid_itself_if_model_has_updated_the_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -451,7 +452,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -478,7 +479,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_replace_pending_transactions_if_model_raises_bid_and_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -507,7 +508,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_replace_pending_transactions_if_model_lowers_bid_and_increases_gas_price(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -535,7 +536,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_not_bid_on_rounding_errors_with_small_amounts(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -558,7 +559,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # then
         assert self.web3.eth.getTransactionCount(self.keeper_address.address) == tx_count
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_settle_when_we_won_the_auction(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -582,7 +583,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         prot_after = self.geb.prot.balance_of(self.keeper_address)
         assert prot_before < prot_after
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_not_settle_when_auction_finished_but_somebody_else_won(self, auction_id):
         # given
         prot_before = self.geb.prot.balance_of(self.keeper_address)
@@ -599,7 +600,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         prot_after = self.geb.prot.balance_of(self.keeper_address)
         assert prot_before == prot_after
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_obey_gas_price_provided_by_the_model(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -618,7 +619,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_use_default_gas_price_if_not_provided_by_the_model(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -638,7 +639,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         time_travel_by(self.web3, self.debt_auction_house.bid_duration() + 1)
         assert self.debt_auction_house.settle_auction(auction_id).transact()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_should_change_gas_strategy_when_model_output_changes(self, auction_id):
         # given
         (model, model_factory) = models(self.keeper, auction_id)
@@ -738,7 +739,7 @@ class TestDebtAuctionStrategy:
         self.strategy = DebtAuctionStrategy(self.geb.debt_auction_house)
         self.mock_debt_auction_house = MockDebtAuctionHouse()
 
-    @pytest.mark.skip("tmp")
+    #@pytest.mark.skip("tmp")
     def test_price(self, mocker):
         mocker.patch("pyflex.auctions.DebtAuctionHouse.bids", return_value=self.mock_debt_auction_house.bids(1))
         mocker.patch("pyflex.auctions.DebtAuctionHouse.decrease_sold_amount", return_value="tx goes here")

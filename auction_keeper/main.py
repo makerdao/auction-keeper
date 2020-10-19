@@ -179,7 +179,10 @@ class AuctionKeeper:
             if isinstance(self.collateral_auction_house, EnglishCollateralAuctionHouse):
                 self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
             else:
-                self.strategy = FixedDiscountCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
+                # Fixed Discount strategy needs to know our current system coin balance
+                self.strategy = FixedDiscountCollateralAuctionStrategy(self.collateral_auction_house,
+                                                                       self.min_collateral_lot,
+                                                                       self.geb, self.our_address)
 
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
@@ -532,7 +535,7 @@ class AuctionKeeper:
                 if not self.auction_handled_by_this_shard(id):
                     continue
                 if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
-                    self.handle_fixed_discount_bid(id=id, auction=auction, reservoir=reservoir)
+                    self.handle_fixed_discount_bid(id=id, auction=auction)
                 else:
                     self.handle_bid(id=id, auction=auction, reservoir=reservoir)
 
@@ -551,7 +554,9 @@ class AuctionKeeper:
 
         # Read auction information from the chain
         input = self.strategy.get_input(id)
+        logging.debug(f"Input for auction {id}: {input}")
         auction_deleted = (input.auction_deadline == 0)
+        logging.debug(f"Auction {id} deleted: {auction_deleted}")
         if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
             auction_finished = False
         else:
@@ -600,25 +605,19 @@ class AuctionKeeper:
         # Read auction state from the chain
         input = self.strategy.get_input(id)
 
+        logging.debug(f"Feeding auction {id} model input {input}")
         # Feed the model with current state
         auction.feed_model(input)
 
-    def handle_fixed_discount_bid(self, id: int, auction: Auction, reservoir: Reservoir):
+    def handle_fixed_discount_bid(self, id: int, auction: Auction):
         assert isinstance(id, int)
         assert isinstance(auction, Auction)
-        assert isinstance(reservoir, Reservoir)
 
         output = auction.model_output()
         if output is None:
             return
 
         bid_price, bid_transact, cost = self.strategy.bid(id)
-
-        # If we can't afford the bid, log a warning/error and back out.
-        # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
-        if cost is not None:
-            if not self.check_bid_cost(id, cost, reservoir):
-                return
 
         if bid_price is not None and bid_transact is not None:
             assert isinstance(bid_price, Wad)
@@ -633,7 +632,7 @@ class AuctionKeeper:
 
             # if transaction has not been submitted...
             if transaction_in_progress is None:
-                self.logger.info(f"Sending new bid @{output.price} for auction {id}")
+                self.logger.info(f"Sending new bid @{bid_price} for auction {id}")
                 auction.price = bid_price
                 auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
                 auction.register_transaction(bid_transact)
@@ -703,7 +702,7 @@ class AuctionKeeper:
                     time.sleep(self.arguments.bid_delay)
 
             # if transaction in progress and the bid price changed...
-            elif auction.price and bid_price != auction.price and update_bid_price:
+            elif auction.price and bid_price != auction.price:
                 self.logger.info(f"Attempting to override pending bid with new bid @{output.price} for auction {id}")
                 auction.price = bid_price
                 if new_gas_strategy:  # gas strategy changed

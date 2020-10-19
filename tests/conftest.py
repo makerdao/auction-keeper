@@ -398,8 +398,8 @@ def models(keeper: AuctionKeeper, id: int):
     return (model, model_factory)
 
 
-def simulate_model_output(model: object, price: Wad, gas_price: Optional[int] = None):
-    assert (isinstance(price, Wad))
+def simulate_model_output(model: object, price: Optional[Wad] = None, gas_price: Optional[int] = None):
+    assert (isinstance(price, Wad)) or price is None
     assert (isinstance(gas_price, int)) or gas_price is None
     model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
 
