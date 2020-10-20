@@ -92,7 +92,7 @@ class AuctionKeeper:
                             help="Starting block from which to find vaults to liquidation or debt to queue "
                                  "(set to block where GEB was deployed)")
         parser.add_argument('--safe-engine-system-coin-target', type=str,
-                            help="Amount of system coin to keep in the SAFEEngine contract or ALL to join entire token balance")
+                            help="Amount of system coin to keep in the SAFEEngine contract or 'ALL' to join entire token balance")
         parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
                             help="Retain system coin in the SAFE Engine on exit, saving gas when restarting the keeper")
         parser.add_argument('--keep-collateral-in-safe-engine-on-exit', dest='exit_collateral_on_shutdown', action='store_false',
@@ -145,7 +145,7 @@ class AuctionKeeper:
         self.safe_engine = self.geb.safe_engine
         self.liquidation_engine = self.geb.liquidation_engine
         self.accounting_engine = self.geb.accounting_engine
-        self.prot = self.geb.prot
+        #self.prot = self.geb.prot
         self.system_coin_join = self.geb.system_coin_adapter
         if self.arguments.type == 'collateral':
             self.collateral = self.geb.collaterals[self.arguments.collateral_type]
@@ -791,7 +791,7 @@ class AuctionKeeper:
                                     "system coin to the SAFE Engine")
                 return self.join_system_coin(token_balance)
             else:
-                self.logger.warning("Insufficient system coin is available to join to SAFE Engine; cannot maintain Dai target")
+                self.logger.warning("Insufficient system coin is available to join to SAFE Engine; cannot maintain system coin target")
                 return Wad(0)
         elif system_coin_to_exit > debt_floor:
             # Exit system_coin from the safe_engine

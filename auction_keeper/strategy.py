@@ -187,7 +187,14 @@ class FixedDiscountCollateralAuctionStrategy(Strategy):
 
         # Always bid our entire balance.  If auction amount_to_raise is less, FixedDiscountCollateralAuctionHouse will reduce it.
         our_bid = Wad(self.geb.safe_engine.coin_balance(self.our_address)) 
+        if our_bid <= self.collateral_auction_house.minimum_bid():
+            self.logger.info(f"Our system coin balance is less than FixedDiscountCollateralAucttionHouse.minimum_bid(). Not bidding")
+            return None, None, None
+
         approximate_collateral, our_adjusted_bid = self.collateral_auction_house.get_approximate_collateral_bought(id, our_bid)
+        if approximate_collateral == Wad(0):
+            self.logger.info(f"Approximate collateral bought would be Wad(0). Not bidding")
+            return None, None, None
         our_approximate_price = our_adjusted_bid/approximate_collateral
 
         return our_approximate_price, self.collateral_auction_house.buy_collateral(id, our_bid), Rad(our_bid)

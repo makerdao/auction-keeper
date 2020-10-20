@@ -233,7 +233,7 @@ class Model:
             data = self._process.read()
 
             if data is not None:
-                self._last_output = Stance(price=Wad.from_number(data['price'] if 'price' in data else None),
+                self._last_output = Stance(price=Wad.from_number(data['price']) if 'price' in data else None,
                                            gas_price=int(data['gasPrice']) if 'gasPrice' in data else None)
 
             else:
