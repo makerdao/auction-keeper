@@ -67,10 +67,13 @@ class SAFEHistory:
             mods = self.get_past_safe_mods_from_graph(from_block=from_block,
                                                       to_block=to_block,
                                                       collateral_type=self.collateral_type)
+            self.logger.debug(f"Retrieved {len(mods)} past safe mods from graph")
         else:
             mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block,
                                                                 to_block=to_block,
                                                                 collateral_type=self.collateral_type)
+            self.logger.debug(f"Retrieved {len(mods)} past safe mods from node")
+
         for mod in mods:
             safe_addresses.add(mod.safe)
 
