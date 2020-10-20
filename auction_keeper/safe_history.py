@@ -18,6 +18,7 @@
 import json
 import logging
 import requests
+from collections import namedtuple
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 from web3 import Web3
@@ -26,45 +27,51 @@ from pyflex import Address, Wad
 from pyflex.deployment import GfDeployment
 from pyflex.gf import CollateralType, SAFE
 
+from gql import gql, Client, AIOHTTPTransport
 
 class SAFEHistory:
     logger = logging.getLogger()
-    cache_lookback = 10  # for handling block reorgs
+    cache_lookback = 12  # for handling block reorgs
 
     def __init__(self, web3: Web3, geb: GfDeployment, collateral_type: CollateralType, from_block: Optional[int],
-                 vulcanize_endpoint: Optional[str], vulcanize_key: Optional[str]):
+                 graph_endpoint: Optional[str], graph_key: Optional[str]):
         assert isinstance(web3, Web3)
         assert isinstance(geb, GfDeployment)
         assert isinstance(collateral_type, CollateralType)
         assert isinstance(from_block, int) or from_block is None
-        assert isinstance(vulcanize_endpoint, str) or vulcanize_endpoint is None
-        assert isinstance(vulcanize_key, str) or vulcanize_key is None
-        assert from_block or vulcanize_endpoint
+        assert isinstance(graph_endpoint, str) or graph_endpoint is None
+        assert isinstance(graph_key, str) or graph_key is None
+        assert from_block or graph_endpoint
 
         self.web3 = web3
         self.geb = geb
         self.collateral_type = collateral_type
         self.from_block = from_block
-        self.vulcanize_endpoint = vulcanize_endpoint
-        self.vulcanize_key = vulcanize_key
+        self.graph_endpoint = graph_endpoint
+        self.graph_key = graph_key
         self.cache_block = from_block
         self.cache = {}
 
     def get_safes(self) -> Dict[Address, SAFE]:
         """Returns a list of safes indexed by address"""
-        if self.vulcanize_endpoint:
-            return self.get_safes_from_vulcanize()
-        else:
-            return self.get_safes_from_past_frobs()
+        return self._get_safes(use_graph=self.graph_endpoint is not None)
 
-    def get_safes_from_past_frobs(self) -> Dict[Address, SAFE]:
+    def _get_safes(self, use_graph: bool = True) -> Dict[Address, SAFE]:
         start = datetime.now()
         safe_addresses = set()
 
         # Get a unique list of safe addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
-        mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block, to_block=to_block, collateral_type=self.collateral_type)
+        if use_graph:
+            mods = self.get_past_safe_mods_from_graph(from_block=from_block,
+                                                      to_block=to_block,
+                                                      collateral_type=self.collateral_type)
+        else:
+            mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block,
+                                                                to_block=to_block,
+                                                                collateral_type=self.collateral_type)
+
         for mod in mods:
             safe_addresses.add(mod.safe)
 
@@ -81,7 +88,45 @@ class SAFEHistory:
         self.cache_block = to_block
         return self.cache
 
-    def get_safes_from_vulcanize(self) -> Dict[Address, SAFE]:
+    def get_past_safe_mods_from_graph(self, from_block:int, to_block: int, collateral_type: CollateralType: None):
+        Mod = namedtuple("Mod", "safe")
+        current_block = self.web3.eth.blockNumber
+        assert isinstance(from_block, int)
+        assert from_block < current_block
+        if to_block is None:
+            to_block = current_block
+        else:
+            assert isinstance(to_block, int)
+            assert to_block >= from_block
+            assert to_block <= current_block
+        assert isinstance(collateral_type, CollateralType) or collateral_type is None
+
+        transport = AIOHTTPTransport(url=self.graph_endpoint, headers={'Authorization': self.graph_key}))
+        client = Client(transport=transport, fetch_schema_from_transport=True)
+
+        query = gql(
+        f"""
+        query{
+            modifySAFECollateralizations(where: \{createdAtBlock_gte: {from_block}\}) {
+                safeHandler,
+                collateralType {
+                    id
+                }
+
+            }
+        }
+        """
+
+        )
+        result = client.execute(query)
+        print(result)
+
+    def get_safes_from_graph(self) -> Dict[Address, SAFE]:
+
+        from_block = max(0, self.cache_block - self.cache_lookback)
+        mods = self.get_safe_mods_from_graph(from_block, to_block=None, self.collateral_type)
+
+
         start = datetime.now()
 
         response = self.run_query(self.lag_query)
@@ -120,6 +165,47 @@ class SAFEHistory:
                           f"in {(datetime.now() - start).seconds} seconds")
         self.cache_block = current_block
         return self.cache
+    """
+    def get_safes_from_graph(self) -> Dict[Address, SAFE]:
+        start = datetime.now()
+
+        response = self.run_query(self.lag_query)
+        self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
+
+        response = self.run_query(self.init_query)
+        raw = json.loads(response.text)['data']['allSAFEs']['nodes']
+        for item in raw:
+            if item['collateralTypeIdentifier'] == self.collateral_type.name:
+                safe = self.safe_from_vdb_node(item)
+                self.cache[safe.address] = safe
+        self.logger.debug(f"Found {len(self.cache)} safes from VulcanizeDB up to block {self.cache_block} " 
+                          f"in {(datetime.now() - start).seconds} seconds")
+
+        start = datetime.now()
+        from_block = max(0, self.cache_block - self.cache_lookback)
+        response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
+        parsed_data = json.loads(response.text)['data']
+
+        mods_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allSAFEEngineMods']['nodes'])
+        recent_mods = [item['rawSAFEBySAFEId']['identifier'] for item in mods_for_collateral_type]
+        liquidations_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allRawLiquidations']['nodes'])
+        recent_liquidations = [item['rawSAFEBySAFEId']['identifier'] for item in liquidations_for_collateral_type]
+        transfers_for_collateral_type = self.filter_nodes_by_collateral_type(parsed_data['allSAFEEngineTransfers']['nodes'])
+        recent_transfers = [item['src'] for item in transfers_for_collateral_type] + [item['dst'] for item in transfers_for_collateral_type]
+        #assert isinstance(recent_mods, list)
+        #assert isinstance(recent_liquidations, list)
+        #assert isinstance(recent_transfers, list)
+        recent_changes = set(recent_mods + recent_liquidations + recent_transfers)
+        for safe in recent_changes:
+            address = Address(safe)
+            self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
+
+        current_block = int(parsed_data['lastBlock']['nodes'][0]['blockNumber'])
+        self.logger.debug(f"Updated {len(recent_changes)} safes from block {from_block} to {current_block} "
+                          f"in {(datetime.now() - start).seconds} seconds")
+        self.cache_block = current_block
+        return self.cache
+    """
 
     def run_query(self, query: str, variables=None):
         assert isinstance(query, str)
@@ -129,8 +215,8 @@ class SAFEHistory:
             body = {'query': query, 'variables': json.dumps(variables)}
         else:
             body = {'query': query}
-        headers = {'Authorization': 'Basic ' + self.vulcanize_key} if self.vulcanize_key else None
-        response = requests.post(self.vulcanize_endpoint, json=body, headers=headers, timeout=30)
+        headers = {'Authorization': 'Basic ' + self.graph_key} if self.graph_key else None
+        response = requests.post(self.graph_endpoint, json=body, headers=headers, timeout=30)
         if not response.ok:
             error_msg = f"{response.status_code} {response.reason} ({response.text})"
             raise RuntimeError(f"Vulcanize query failed: {error_msg}")
