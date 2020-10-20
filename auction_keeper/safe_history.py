@@ -71,7 +71,6 @@ class SAFEHistory:
             mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block,
                                                                 to_block=to_block,
                                                                 collateral_type=self.collateral_type)
-
         for mod in mods:
             safe_addresses.add(mod.safe)
 
@@ -88,7 +87,7 @@ class SAFEHistory:
         self.cache_block = to_block
         return self.cache
 
-    def get_past_safe_mods_from_graph(self, from_block:int, to_block: int, collateral_type: CollateralType: None):
+    def get_past_safe_mods_from_graph(self, from_block:int, to_block: int, collateral_type: CollateralType = None):
         Mod = namedtuple("Mod", "safe")
         current_block = self.web3.eth.blockNumber
         assert isinstance(from_block, int)
@@ -101,199 +100,26 @@ class SAFEHistory:
             assert to_block <= current_block
         assert isinstance(collateral_type, CollateralType) or collateral_type is None
 
-        transport = AIOHTTPTransport(url=self.graph_endpoint, headers={'Authorization': self.graph_key}))
+        if self.graph_key:
+            transport = AIOHTTPTransport(url=self.graph_endpoint, headers={'Authorization': self.graph_key})
+        else:
+            transport = AIOHTTPTransport(url=self.graph_endpoint)
+
         client = Client(transport=transport, fetch_schema_from_transport=True)
 
         query = gql(
         f"""
-        query{
-            modifySAFECollateralizations(where: \{createdAtBlock_gte: {from_block}\}) {
+        query{{
+            modifySAFECollateralizations(where: {{createdAtBlock_gte: {from_block}}}) {{
                 safeHandler,
-                collateralType {
+                collateralType {{
                     id
-                }
+                }}
 
-            }
-        }
+            }}
+        }}
         """
-
         )
         result = client.execute(query)
-        print(result)
-
-    def get_safes_from_graph(self) -> Dict[Address, SAFE]:
-
-        from_block = max(0, self.cache_block - self.cache_lookback)
-        mods = self.get_safe_mods_from_graph(from_block, to_block=None, self.collateral_type)
-
-
-        start = datetime.now()
-
-        response = self.run_query(self.lag_query)
-        self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
-
-        response = self.run_query(self.init_query)
-        raw = json.loads(response.text)['data']['allSAFEs']['nodes']
-        for item in raw:
-            if item['collateralTypeIdentifier'] == self.collateral_type.name:
-                safe = self.safe_from_vdb_node(item)
-                self.cache[safe.address] = safe
-        self.logger.debug(f"Found {len(self.cache)} safes from VulcanizeDB up to block {self.cache_block} " 
-                          f"in {(datetime.now() - start).seconds} seconds")
-
-        start = datetime.now()
-        from_block = max(0, self.cache_block - self.cache_lookback)
-        response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
-        parsed_data = json.loads(response.text)['data']
-
-        mods_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allSAFEEngineMods']['nodes'])
-        recent_mods = [item['rawSAFEBySAFEId']['identifier'] for item in mods_for_collateral_type]
-        liquidations_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allRawLiquidations']['nodes'])
-        recent_liquidations = [item['rawSAFEBySAFEId']['identifier'] for item in liquidations_for_collateral_type]
-        transfers_for_collateral_type = self.filter_nodes_by_collateral_type(parsed_data['allSAFEEngineTransfers']['nodes'])
-        recent_transfers = [item['src'] for item in transfers_for_collateral_type] + [item['dst'] for item in transfers_for_collateral_type]
-        #assert isinstance(recent_mods, list)
-        #assert isinstance(recent_liquidations, list)
-        #assert isinstance(recent_transfers, list)
-        recent_changes = set(recent_mods + recent_liquidations + recent_transfers)
-        for safe in recent_changes:
-            address = Address(safe)
-            self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
-
-        current_block = int(parsed_data['lastBlock']['nodes'][0]['blockNumber'])
-        self.logger.debug(f"Updated {len(recent_changes)} safes from block {from_block} to {current_block} "
-                          f"in {(datetime.now() - start).seconds} seconds")
-        self.cache_block = current_block
-        return self.cache
-    """
-    def get_safes_from_graph(self) -> Dict[Address, SAFE]:
-        start = datetime.now()
-
-        response = self.run_query(self.lag_query)
-        self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
-
-        response = self.run_query(self.init_query)
-        raw = json.loads(response.text)['data']['allSAFEs']['nodes']
-        for item in raw:
-            if item['collateralTypeIdentifier'] == self.collateral_type.name:
-                safe = self.safe_from_vdb_node(item)
-                self.cache[safe.address] = safe
-        self.logger.debug(f"Found {len(self.cache)} safes from VulcanizeDB up to block {self.cache_block} " 
-                          f"in {(datetime.now() - start).seconds} seconds")
-
-        start = datetime.now()
-        from_block = max(0, self.cache_block - self.cache_lookback)
-        response = self.run_query(self.recent_changes_query, {"fromBlock": from_block})
-        parsed_data = json.loads(response.text)['data']
-
-        mods_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allSAFEEngineMods']['nodes'])
-        recent_mods = [item['rawSAFEBySAFEId']['identifier'] for item in mods_for_collateral_type]
-        liquidations_for_collateral_type = self.filter_safe_nodes_by_collateral_type(parsed_data['allRawLiquidations']['nodes'])
-        recent_liquidations = [item['rawSAFEBySAFEId']['identifier'] for item in liquidations_for_collateral_type]
-        transfers_for_collateral_type = self.filter_nodes_by_collateral_type(parsed_data['allSAFEEngineTransfers']['nodes'])
-        recent_transfers = [item['src'] for item in transfers_for_collateral_type] + [item['dst'] for item in transfers_for_collateral_type]
-        #assert isinstance(recent_mods, list)
-        #assert isinstance(recent_liquidations, list)
-        #assert isinstance(recent_transfers, list)
-        recent_changes = set(recent_mods + recent_liquidations + recent_transfers)
-        for safe in recent_changes:
-            address = Address(safe)
-            self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
-
-        current_block = int(parsed_data['lastBlock']['nodes'][0]['blockNumber'])
-        self.logger.debug(f"Updated {len(recent_changes)} safes from block {from_block} to {current_block} "
-                          f"in {(datetime.now() - start).seconds} seconds")
-        self.cache_block = current_block
-        return self.cache
-    """
-
-    def run_query(self, query: str, variables=None):
-        assert isinstance(query, str)
-        assert isinstance(variables, dict) or variables is None
-
-        if variables:
-            body = {'query': query, 'variables': json.dumps(variables)}
-        else:
-            body = {'query': query}
-        headers = {'Authorization': 'Basic ' + self.graph_key} if self.graph_key else None
-        response = requests.post(self.graph_endpoint, json=body, headers=headers, timeout=30)
-        if not response.ok:
-            error_msg = f"{response.status_code} {response.reason} ({response.text})"
-            raise RuntimeError(f"Vulcanize query failed: {error_msg}")
-        return response
-
-    def filter_safe_nodes_by_collateral_type(self, nodes: list):
-        assert isinstance(nodes, list)
-        return list(filter(lambda item: item['rawSAFEBySAFEId']['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
-
-    def filter_nodes_by_collateral_type(self, nodes: list):
-        assert isinstance(nodes, list)
-        return list(filter(lambda item: item['rawCollateralTypeByCollateralTypeId']['identifier'] == self.collateral_type.name, nodes))
-
-    def safe_from_vdb_node(self, node: dict) -> SAFE:
-        assert isinstance(node, dict)
-
-        address = Address(node['safeIdentifier'])
-        safe_collateral = Wad(int(node['safeCollateral']))
-        safe_debt = Wad(int(node['safeDebt']))
-
-        return SAFE(address, self.collateral_type, safe_collateral, safe_debt)
-
-    init_query = """query {
-      allSAFEs {
-        nodes {
-          safeIdentifier
-          collateralTypeIdentifier
-          safeCollateral
-          safeDebt
-        }
-      }
-    }"""
-
-    lag_query = """query {
-      lastStorageDiffProcessed: allStorageDiffs(last: 1, condition: {checked: true}) {
-        nodes {
-          blockHeight
-        }
-      }
-    }"""
-
-    recent_changes_query = """query($fromBlock: BigInt) {
-      allSAFEEngineMods(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
-      {
-        nodes {
-          rawSAFEBySAFEId {
-            rawCollateralTypeByCollateralTypeId {
-              identifier
-            }
-            identifier
-          }
-        }
-      }
-      allRawLiquidations(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
-      {
-        nodes {
-          rawSAFEBySAFEId {
-            rawCollateralTypeByCollateralTypeId {
-              identifier
-            }
-            identifier
-          }
-        }
-      }
-      allSAFEEngineTransfers(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
-      {
-        nodes {
-          rawCollateralTypeByCollateralTypeId {
-              identifier
-          }
-          src
-          dst
-        }
-      }
-      lastBlock: allHeaders(last: 1) {
-        nodes {
-          blockNumber
-        }
-      }
-    }"""
+        return [Mod(Address(safe['safeHandler'])) for safe in result['modifySAFECollateralizations'] \
+                if safe['collateralType']['id'] == collateral_type.name]
