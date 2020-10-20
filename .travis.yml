@@ -19,8 +19,7 @@ install:
   - pip install -r requirements-dev.txt
 
 script:
-  - ./.ci/leaks.sh
-  - ./test.sh
+  - "./.ci/leaks.sh && ./test.sh"
 
 after_success:
   - codecov
