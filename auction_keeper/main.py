@@ -145,7 +145,7 @@ class AuctionKeeper:
         self.safe_engine = self.geb.safe_engine
         self.liquidation_engine = self.geb.liquidation_engine
         self.accounting_engine = self.geb.accounting_engine
-        #self.prot = self.geb.prot
+        self.prot = self.geb.prot
         self.system_coin_join = self.geb.system_coin_adapter
         if self.arguments.type == 'collateral':
             self.collateral = self.geb.collaterals[self.arguments.collateral_type]
