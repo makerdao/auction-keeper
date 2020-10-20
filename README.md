@@ -29,16 +29,16 @@ example of a bidding model is a shell script which echoes a fixed price.
 ### Monitoring ongoing auctions and discovering new ones
 
 The main task of this keeper, as already outlined above, is to constantly monitor all ongoing auctions,
-discover new ones, ensure that an instance of _bidding model_ is running for each auction, provide
+discover new ones, ensure that an instance of bidding model is running for each auction, provide
 these instances of the current status of their auctions and bid according to decisions taken by them.
 
 The way the auction discovery and monitoring mechanism works at the moment is simplistic for illustration purposes.
 It basically operates as a loop which kicks in on every new block enumerating all auctions from `1` to `auctionsStarted`.
 Bidding models are checked every 2 seconds and submitted where appropriate.
 
-### Starting and stopping _bidding models_
+### Starting and stopping bidding models
 
-`auction-keeper` maintains a collection of child processes, as each _bidding model_ is its own dedicated
+`auction-keeper` maintains a collection of child processes, as each bidding model is its own dedicated
 process. New processes (new _bidding model_ instances) are spawned by executing a command according to the
 `--model` commandline parameter. These processes are automatically terminated (via `SIGKILL`) by the keeper
 shortly after their associated auction expires.
@@ -50,16 +50,17 @@ Example:
 bin/auction-keeper --model '../my-bidding-model.sh' [...]
 ```
 
-### Communicating with English Auction _bidding models_
+### Communicating with bidding models
 
-`auction-keeper` communicates with _bidding models_ via their standard input and standard output.
+`auction-keeper` communicates with bidding models via their standard input and standard output.
 
 Straight away after the process gets started, and every time the auction state changes, the keeper
-sends a one-line JSON document to the **standard input** of the _bidding model_ process.
+sends a one-line JSON document to the **standard input** of the bidding model process.
 Sample message sent from the keeper to the model looks like:
 ```json
 {"id": "6", "surplusAuctionHouse": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bidAmount": "7.142857142857142857", "amountToSell": "10000.000000000000000000", "bidIncrease": "1.050000000000000000", "highBidder": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "bidExpiry": 1530541420, "auctionDeadline": 1531135256, "price": "1400.000000000000000028"}
 ```
+## Keeper message for English Auction
 
 The meaning of individual fields:
 * `id` - auction identifier.
@@ -73,18 +74,37 @@ The meaning of individual fields:
 * `auctionDeadline` - time when the entire auction will expire.
 * `price` - current price being bid (can be `null` if price is infinity).
 
-_Bidding models_ should never make an assumption that messages will be sent only when auction state changes.
-It is perfectly fine for the `auction-keeper` to periodically send the same messages to _bidding models_.
+## Keeper message for Fixed Discount Auction
 
-At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the _bidding model_
+The meaning of individual fields:
+* `id` - auction identifier.
+* `amountToSell` - amount being currently auctioned (will go down for surplus and debt auctions).
+* `amountToRaise` - bid value which will cause the auction to enter its second phase (only for collateral auctions).
+* `soldAmount` - total collateral sold for this auction
+* `raisedAmount` - total system count raised from this auction
+* `block_time` - current time (in seconds since the UNIX epoch).
+* `auctionDeadline` - time when the entire auction will expire.
+
+Bidding models should never make an assumption that messages will be sent only when auction state changes.
+It is perfectly fine for the `auction-keeper` to periodically send the same messages to bidding models.
+
+At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the bidding model
 process and tries to parse them as JSON documents. Then it extracts two fields from that document:
 * `price` - the maximum (for collateral and debt auctions) or the minimum (for surplus auctions) price
-  the model is willing to bid.
+  the model is willing to bid. This value is ignored for fixed discount collateral auctions
 * `gasPrice` (optional) - gas price in Wei to use when sending the bid.
 
+## Sample model output for English Auction 
 A sample message sent from the model to the keeper may look like:
 ```json
-{"price": "750.0", "gasPrice": 7000000000}
+{"price": "750.0", "gasPrice": 70000000000}
+```
+### Sample model output for Fixed Discount Auction 
+NOTE: Collateral price is determined by the fixed discount percentage, so only `gasPrice` is supported for fixed discount
+      collateral auctions.
+A sample message sent from the model to the keeper may look like:
+```json
+{"gasPrice": 70000000000}
 ```
 
 Whenever the keeper and the model communicate in terms of prices, it is the PROT/SYS_COIN price (for surplus
@@ -96,7 +116,7 @@ This is the most convenient way of implementing logging from _bidding models_.
 **No facility is provided to prevent you from bidding an unprofitable price.**  Please ensure you understand how your
 model produces prices and how prices are consumed by the keeper for each of the auction types in which you participate.
 
-### Simplest possible _bidding model_
+### Simplest possible English Auction bidding model
 
 If you just want to bid a fixed price for each auction, this is the simplest possible _bidding model_
 you can use:
@@ -107,6 +127,27 @@ you can use:
 while true; do
   echo "{\"price\": \"723.0\"}"  # put your desired price amount here
   sleep 120                      # locking the price for n seconds
+done
+```
+
+### Simplest possible Fixed Discount bidding model
+
+
+```bash
+#!/usr/bin/env bash
+while true; do
+  echo "{}"
+  sleep 120                   
+done
+```
+Gas price is optional for fixed discount models. If you want to start with a fixed gas price, you can add it.
+
+```bash
+#!/usr/bin/env bash
+
+while true; do
+  echo "{\"gasPrice\": \"70000000000\"}"    # put your desired gas price in Wei here
+  sleep 120                   # locking the gas price for n seconds
 done
 ```
 
@@ -131,12 +172,12 @@ the following actions:
   * liquidating a SAFE or starting a surplus or debt auction
 * The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will
 `liquidateSAFE`, start a new surplus or debt auction in response to opportunities regardless of whether or not your system coin or protocol token balance is sufficient to participate.  This too imposes a gas fee.
-* Liquidating SAFEs to kick off new collateral auctions is an expensive operation.  To do so without a subgraph
-subscription, the keeper initializes a cache of urn state by scraping event logs from the chain.  The keeper will then
-continuously refresh urn state to detect undercollateralized SAFEs.
-   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the urn state
+* Liquidating SAFEs to start new collateral auctions is an expensive operation.  To do so without a subgraph
+subscription, the keeper initializes a cache of safe state by scraping event logs from the chain.  The keeper will then
+continuously refresh safe state to detect undercollateralized SAFEs.
+   * Despite batching log queries into multiple requests, Geth nodes are generally unable to initialize the safe state
    cache in a reasonable amount of time.  As such, Geth is not recommended for liquidating SAFEs.
-   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--kick-only`)
+   * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--start-auctions-only`)
    and bid (`--bid-only`).
 
 ## Installation
@@ -228,9 +269,9 @@ is specified.
 
 #### Minimize load on your node
 
-To start collateral auctions, the keeper needs a list of SAFEs and the collateralization ratio of each urn.  There are
+To start collateral auctions, the keeper needs a list of SAFEs and the collateralization ratio of each safe.  There are
 two ways to retrieve the list of SAFEs:
- * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `ModifySAFECollateralization` events.  
+ * **Set `--from-block` to the block where the first safe was created** to scrape the chain for `ModifySAFECollateralization` events.  
     The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events
     will be queried back to the last cached block to detect new SAFEs.  The state of all SAFEs will be queried
     continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join`
@@ -295,7 +336,7 @@ pip3 install -r requirements-dev.txt
 
 You can then run all tests with:
 ```
-for i in `ls tests/test*.py`;do ./test.sh `basename $i`;done
+./test.sh
 ```
 
 ## License

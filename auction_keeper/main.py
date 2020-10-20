@@ -35,11 +35,13 @@ from pyflex.keys import register_keys
 from pyflex.lifecycle import Lifecycle
 from pyflex.model import Token
 from pyflex.numeric import Wad, Ray, Rad
+from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
 
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
-from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy, EnglishCollateralAuctionStrategy
+from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy
+from auction_keeper.strategy import EnglishCollateralAuctionStrategy, FixedDiscountCollateralAuctionStrategy
 from auction_keeper.safe_history import SAFEHistory
 
 
@@ -54,25 +56,20 @@ class AuctionKeeper:
                             help="JSON-RPC endpoint URI with port (default: `http://localhost:8545')")
         parser.add_argument("--rpc-timeout", type=int, default=10,
                             help="JSON-RPC timeout (in seconds, default: 10)")
-
         parser.add_argument("--eth-from", type=str, required=True,
                             help="Ethereum account from which to send transactions")
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
-
         parser.add_argument('--type', type=str, choices=['collateral', 'surplus', 'debt'],
                             help="Auction type in which to participate")
         parser.add_argument('--collateral-type', type=str,
-                            help="Name of the collateral type for a collateral keeper (e.g. 'ETH-B', 'ZRX-A'); "
-                                 "available collateral types can be found at the left side of the Oasis Borrow")
-
+                            help="Name of the collateral type for a collateral keeper (e.g. 'ETH-B', 'ZRX-A'); ")
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
         parser.add_argument('--start-auctions-only', dest='bid_on_auctions', action='store_false',
                             help="Do not bid on auctions")
         parser.add_argument('--settle-auctions-for', type=str, nargs="+",
                             help="List of addresses for which auctions will be settled")
-
         parser.add_argument('--min-auction', type=int, default=0,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
@@ -88,16 +85,12 @@ class AuctionKeeper:
                             help="When sharding auctions across multiple keepers, this identifies the shard")
         parser.add_argument('--shards', type=int, default=1,
                             help="Number of shards; should be one greater than your highest --shard-id")
-
-        parser.add_argument("--vulcanize-endpoint", type=str,
-                            help="When specified, safe history will be initialized from a VulcanizeDB node, "
+        parser.add_argument("--graph-endpoint", type=str,
+                            help="When specified, safe history will be initialized from a Graph node, "
                                  "reducing load on the Ethereum node for collateral auctions")
-        parser.add_argument("--vulcanize-key", type=str,
-                            help="API key for the Vulcanize endpoint")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to find vaults to liquidation or debt to queue "
-                                 "(set to block where MCD was deployed)")
-
+                                 "(set to block where GEB was deployed)")
         parser.add_argument('--safe-engine-system-coin-target', type=str,
                             help="Amount of system coin to keep in the SAFEEngine contract or ALL to join entire token balance")
         parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
@@ -106,10 +99,8 @@ class AuctionKeeper:
                             help="Retain collateral in the SAFE Engine on exit")
         parser.add_argument('--return-collateral-interval', type=int, default=300,
                             help="Period of timer [in seconds] used to check and exit won collateral")
-
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
-
         gas_group = parser.add_mutually_exclusive_group()
         gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
         gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
@@ -125,10 +116,8 @@ class AuctionKeeper:
                             help="Increases gas price when transactions haven't been mined after some time")
         parser.add_argument("--gas-maximum", type=float, default=2000,
                             help="Places an upper bound (in Gwei) on the amount of gas to use for a single TX")
-
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
-
         self.arguments = parser.parse_args(args)
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
@@ -142,8 +131,8 @@ class AuctionKeeper:
 
         # Check configuration for retrieving safes/liquidations
         if self.arguments.type == 'collateral' and self.arguments.create_auctions \
-                and self.arguments.from_block is None and self.arguments.vulcanize_endpoint is None:
-            raise RuntimeError("Either --from-block or --vulcanize-endpoint must be specified to kick off "
+                and self.arguments.from_block is None and self.arguments.graph_endpoint is None:
+            raise RuntimeError("Either --from-block or --graph-endpoint must be specified to kick off "
                                "collateral auctions")
         if self.arguments.type == 'collateral' and not self.arguments.collateral_type:
             raise RuntimeError("--collateral-type must be supplied when configuring a collateral keeper")
@@ -174,10 +163,17 @@ class AuctionKeeper:
         self.safe_history = None
         if self.collateral_auction_house:
             self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
-            self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
+            if isinstance(self.collateral_auction_house, EnglishCollateralAuctionHouse):
+                self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
+            else:
+                # Fixed Discount strategy needs to know our current system coin balance
+                self.strategy = FixedDiscountCollateralAuctionStrategy(self.collateral_auction_house,
+                                                                       self.min_collateral_lot,
+                                                                       self.geb, self.our_address)
+
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
-                                              self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
+                                              self.arguments.graph_endpoint, None)
         elif self.surplus_auction_house:
             self.strategy = SurplusAuctionStrategy(self.surplus_auction_house, self.prot.address)
         elif self.debt_auction_house:
@@ -304,7 +300,7 @@ class AuctionKeeper:
 
             if self.collateral_auction_house and self.collateral_type and self.collateral_type.name == "ETH-A":
                 logging.info("*** When Keeper is settling/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
-                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
+                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using Graph via `--graph-endpoint` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 
@@ -450,12 +446,12 @@ class AuctionKeeper:
             if unqueued_unauctioned_debt < (debt_auction_bid_size + total_surplus) and self.liquidation_engine is not None:
                 past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
                 for liquidation_event in self.liquidation_engine.past_liquidations(past_blocks):  # TODO: cache ?
-                    era = liquidation_event.era(self.web3)
+                    block_time = liquidation_event.block_time(self.web3)
                     now = self.web3.eth.getBlock('latest')['timestamp']
-                    debt_queue = self.accounting_engine.debt_queue_of(era)
+                    debt_queue = self.accounting_engine.debt_queue_of(block_time)
                     # If the liquidation hasn't already been popped from queue and has aged past the `pop_debt_delay`
-                    if debt_queue > Rad(0) and era + pop_debt_delay <= now:
-                        self.accounting_engine.pop_debt_from_queue(era).transact(gas_price=self.gas_price)
+                    if debt_queue > Rad(0) and block_time + pop_debt_delay <= now:
+                        self.accounting_engine.pop_debt_from_queue(block_time).transact(gas_price=self.gas_price)
 
                         # pop debt from queue until unqueued_unauctioned_debt is above debt_auction_bid_size + total_surplus
                         total_surplus = self.safe_engine.coin_balance(self.accounting_engine.address)
@@ -525,7 +521,10 @@ class AuctionKeeper:
 
                 if not self.auction_handled_by_this_shard(id):
                     continue
-                self.handle_bid(id=id, auction=auction, reservoir=reservoir)
+                if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
+                    self.handle_fixed_discount_bid(id=id, auction=auction)
+                else:
+                    self.handle_bid(id=id, auction=auction, reservoir=reservoir)
 
     # TODO if we will introduce multithreading here, proper locking should be introduced as well
     #     locking should not happen on `auction.lock`, but on auction.id here. as sometimes we will
@@ -542,8 +541,13 @@ class AuctionKeeper:
 
         # Read auction information from the chain
         input = self.strategy.get_input(id)
+        logging.debug(f"Input for auction {id}: {input}")
         auction_deleted = (input.auction_deadline == 0)
-        auction_finished = (input.bid_expiry < input.era and input.bid_expiry != 0) or (input.auction_deadline < input.era)
+        logging.debug(f"Auction {id} deleted: {auction_deleted}")
+        if isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
+            auction_finished = False
+        else:
+            auction_finished = (input.bid_expiry < input.block_time and input.bid_expiry != 0) or (input.auction_deadline < input.block_time)
 
         if auction_deleted:
             # Try to remove the auction so the model terminates and we stop tracking it.
@@ -588,8 +592,60 @@ class AuctionKeeper:
         # Read auction state from the chain
         input = self.strategy.get_input(id)
 
+        logging.debug(f"Feeding auction {id} model input {input}")
         # Feed the model with current state
         auction.feed_model(input)
+
+    def handle_fixed_discount_bid(self, id: int, auction: Auction):
+        assert isinstance(id, int)
+        assert isinstance(auction, Auction)
+
+        output = auction.model_output()
+        if output is None:
+            return
+
+        bid_price, bid_transact, cost = self.strategy.bid(id)
+
+        if bid_price is not None and bid_transact is not None:
+            assert isinstance(bid_price, Wad)
+            # Ensure this auction has a gas strategy assigned
+            (new_gas_strategy, fixed_gas_price_changed) = auction.determine_gas_strategy_for_bid(output, self.gas_price)
+
+            # if no transaction in progress, send a new one
+            transaction_in_progress = auction.transaction_in_progress()
+
+            logging.debug(f"Handling bid for auction {id}: tx in progress={transaction_in_progress is not None}, " 
+                          f"auction.price={auction.price}, bid_price={bid_price}")
+
+            # if transaction has not been submitted...
+            if transaction_in_progress is None:
+                self.logger.info(f"Sending new bid @{bid_price} for auction {id}")
+                auction.price = bid_price
+                auction.gas_price = new_gas_strategy if new_gas_strategy else auction.gas_price
+                auction.register_transaction(bid_transact)
+
+                # ...submit a new transaction and wait the delay period (if so configured)
+                self._run_future(bid_transact.transact_async(gas_price=auction.gas_price))
+                if self.arguments.bid_delay:
+                    logging.debug(f"Waiting {self.arguments.bid_delay}s")
+                    time.sleep(self.arguments.bid_delay)
+
+            # if model has been providing a gas price, and that changed...
+            elif fixed_gas_price_changed:
+                assert isinstance(auction.gas_price, UpdatableGasPrice)
+                self.logger.info(f"Overriding pending bid with new gas_price ({output.gas_price}) for auction {id}")
+                auction.gas_price.update_gas_price(output.gas_price)
+
+            # if transaction in progress, but gas strategy changed...
+            elif new_gas_strategy:
+                self.logger.info(f"Changing gas strategy for pending bid @{output.price} for auction {id}")
+                auction.price = bid_price
+                auction.gas_price = new_gas_strategy
+                auction.register_transaction(bid_transact)
+
+                # ...ask pyflex to replace the transaction
+                self._run_future(bid_transact.transact_async(replace=transaction_in_progress,
+                                                             gas_price=auction.gas_price))
 
     def handle_bid(self, id: int, auction: Auction, reservoir: Reservoir):
         assert isinstance(id, int)
@@ -601,6 +657,7 @@ class AuctionKeeper:
             return
 
         bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+
         # If we can't afford the bid, log a warning/error and back out.
         # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
         if cost is not None:

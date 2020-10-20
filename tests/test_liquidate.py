@@ -20,6 +20,7 @@ import pytest
 from auction_keeper.main import AuctionKeeper
 from pyflex.approval import approve_safe_modification_directly
 from pyflex.numeric import Wad, Ray, Rad
+from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
 
 from tests.conftest import web3, geb, create_critical_safe, keeper_address, reserve_system_coin, purchase_system_coin, \
                            set_collateral_price
@@ -95,13 +96,17 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
         reserve_system_coin(geb, c, keeper_address, Wad(auction.amount_to_raise) + Wad(1))
         c.collateral_auction_house.approve(c.collateral_auction_house.safe_engine(), approval_function=approve_safe_modification_directly(from_address=keeper_address))
         c.approve(keeper_address)
-        assert c.collateral_auction_house.increase_bid_size(auction_id, auction.amount_to_sell, auction.amount_to_raise).transact(from_address=keeper_address)
-        time_travel_by(web3, c.collateral_auction_house.bid_duration() + 1)
-        assert c.collateral_auction_house.settle_auction(auction_id).transact()
+        if isinstance(c.collateral_auction_house, EnglishCollateralAuctionHouse):
+            assert c.collateral_auction_house.increase_bid_size(auction_id, auction.amount_to_sell,
+                                                                auction.amount_to_raise).transact(from_address=keeper_address)
+            time_travel_by(web3, c.collateral_auction_house.bid_duration() + 1)
+            assert c.collateral_auction_house.settle_auction(auction_id).transact()
+        elif isinstance(c.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
+            assert c.collateral_auction_house.buy_collateral(auction_id, Wad(auction.amount_to_raise) + Wad(1)).transact(from_address=keeper_address)
 
         # when a bid covers the vow debt
-        assert geb.accounting_engine.debt_queue_of(last_liquidation.era(web3)) > Rad(0)
-        assert geb.accounting_engine.pop_debt_from_queue(last_liquidation.era(web3)).transact(from_address=keeper_address)
+        assert geb.accounting_engine.debt_queue_of(last_liquidation.block_time(web3)) > Rad(0)
+        assert geb.accounting_engine.pop_debt_from_queue(last_liquidation.block_time(web3)).transact(from_address=keeper_address)
         assert geb.accounting_engine.settle_debt(geb.safe_engine.debt_balance(geb.accounting_engine.address)).transact()
 
         # then ensure queued debt has been auctioned off

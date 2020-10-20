@@ -107,7 +107,7 @@ class Auctions:
         self.debt_auction_house = debt_auction_house
         self.model_factory = model_factory
 
-    # TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
+    # TODO by passing `bid_amount` and `amount_to_sell` to this method it can actually check if the auction under this id hasn't changed,
     # TODO and restart the model if so.
     def get_auction(self, id: int, create: bool = True) -> Optional[Auction]:
         assert isinstance(id, int)
