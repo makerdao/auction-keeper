@@ -19,6 +19,7 @@
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from web3 import Web3, HTTPProvider
 
@@ -26,7 +27,7 @@ from auction_keeper.safe_history import SAFEHistory
 from pyflex.deployment import GfDeployment
 
 
-logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s', level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s', level=logging.INFO)
 logging.getLogger('urllib3').setLevel(logging.INFO)
 logging.getLogger("web3").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)
@@ -34,10 +35,10 @@ logging.getLogger("requests").setLevel(logging.INFO)
 
 web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
 graph_endpoint = sys.argv[1]
-graph_key = sys.argv[2]
+graph_key = sys.argv[2] if len(sys.argv) >2 else None
 geb = GfDeployment.from_node(web3)
 collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
-collateral_typre= geb.collaterals[collateral_type].collateral_type
+collateral_type= geb.collaterals[collateral_type].collateral_type
 # on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
 # TODO update this default from_block
 from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
@@ -45,6 +46,7 @@ from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
 
 def wait(minutes_to_wait: int, sh: SAFEHistory):
     while minutes_to_wait > 0:
+        time.sleep(2)
         print(f"Testing cache for another {minutes_to_wait} minutes")
         state_update_started = datetime.now()
         sh.get_safes()
@@ -60,15 +62,13 @@ safes_logs = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(safes_logs)} safes from block {from_block} in {elapsed.seconds} seconds")
 
-sys.exit()
-
 wait(30, sh)
 
 # Retrieve data from the Graph
 started = datetime.now()
-print(f"Connecting to {vulcanize_endpoint}...")
-sh = SafeHistory(web3, geb, collateral_type, None, graph_endpoint, graph_key)
-safes_graph = sh.get_urns()
+print(f"Connecting to {graph_endpoint}...")
+sh = SAFEHistory(web3, geb, collateral_type, from_block, graph_endpoint, graph_key)
+safes_graph = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(safes_graph)} safes from the Graph in {elapsed.seconds} seconds")
 
