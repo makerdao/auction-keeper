@@ -92,6 +92,44 @@ class SAFEHistory:
         return self.cache
 
     @retry(exceptions=Exception, tries=10, delay=0, max_delay=None, backoff=1, jitter=0)
+    def fetch_safe_mods(self, from_block, to_block, page_size=1000):
+
+        if self.graph_key:
+            transport = AIOHTTPTransport(url=self.graph_endpoint, headers={'Authorization': self.graph_key})
+        else:
+            transport = AIOHTTPTransport(url=self.graph_endpoint)
+
+        client = Client(transport=transport, fetch_schema_from_transport=True)
+
+        def fetch_page(from_block, to_block, first, skip):
+            query = gql(
+            f"""
+            query{{
+                modifySAFECollateralizations(first: {first}, skip: {skip},
+                                             where: {{createdAtBlock_gte: {from_block},  createdAtBlock_lte: {to_block}}}) {{
+                    safeHandler,
+                    createdAtBlock,
+                    collateralType {{
+                        id
+                    }}
+
+                }}
+            }}
+            """
+            )   
+            result = client.execute(query)
+            return result['modifySAFECollateralizations']
+
+        page_num = 0
+        page = fetch_page(from_block, to_block, page_size, page_num * page_size)
+        all_pages = []
+        while page:
+          all_pages.extend(page)
+          page_num += 1
+          page = fetch_page(from_block, to_block, page_size, page_num * page_size)
+
+        return all_pages
+
     def get_past_safe_mods_from_graph(self, from_block:int, to_block: int, collateral_type: CollateralType = None):
         Mod = namedtuple("Mod", "safe")
         current_block = self.web3.eth.blockNumber
@@ -105,26 +143,6 @@ class SAFEHistory:
             assert to_block <= current_block
         assert isinstance(collateral_type, CollateralType) or collateral_type is None
 
-        if self.graph_key:
-            transport = AIOHTTPTransport(url=self.graph_endpoint, headers={'Authorization': self.graph_key})
-        else:
-            transport = AIOHTTPTransport(url=self.graph_endpoint)
+        results = self.fetch_safe_mods(from_block, to_block)
 
-        client = Client(transport=transport, fetch_schema_from_transport=True)
-
-        query = gql(
-        f"""
-        query{{
-            modifySAFECollateralizations(where: {{createdAtBlock_gte: {from_block}}}) {{
-                safeHandler,
-                collateralType {{
-                    id
-                }}
-
-            }}
-        }}
-        """
-        )
-        result = client.execute(query)
-        return [Mod(Address(safe['safeHandler'])) for safe in result['modifySAFECollateralizations'] \
-                if safe['collateralType']['id'] == collateral_type.name]
+        return [Mod(Address(safe['safeHandler'])) for safe in results if safe['collateralType']['id'] == collateral_type.name]
