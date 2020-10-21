@@ -39,9 +39,9 @@ graph_key = sys.argv[2] if len(sys.argv) >2 else None
 geb = GfDeployment.from_node(web3)
 collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
 collateral_type= geb.collaterals[collateral_type].collateral_type
-# on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
-# TODO update this default from_block
-from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
+
+# on kovan 0.9.0 use 21461453
+from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 21461453
 
 
 def wait(minutes_to_wait: int, sh: SAFEHistory):
@@ -56,7 +56,7 @@ def wait(minutes_to_wait: int, sh: SAFEHistory):
 
 # Retrieve data from chain
 started = datetime.now()
-print(f"Connecting to {sys.argv[1]}...")
+print(f"Connecting to node...")
 sh = SAFEHistory(web3, geb, collateral_type, from_block, None, None)
 safes_logs = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
