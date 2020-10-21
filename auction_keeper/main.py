@@ -355,7 +355,7 @@ class AuctionKeeper:
         logging.debug(f"Evaluating {len(safes)} {self.collateral_type} safes to be liquidated if any are critical")
 
         for safe in safes.values():
-            is_critical = safe.locked_collateral * collateral_type.liquidation_price >= safe.generated_debt * rate
+            is_critical = safe.locked_collateral * collateral_type.liquidation_price < safe.generated_debt * rate
             if is_critical:
                 if self.arguments.bid_on_auctions and available_system_coin == Wad(0):
                     self.logger.warning(f"Skipping opportunity to liquidation safe {safe.address} "
