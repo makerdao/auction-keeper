@@ -28,6 +28,7 @@ from pyflex.deployment import GfDeployment
 from pyflex.gf import CollateralType, SAFE
 
 from gql import gql, Client, AIOHTTPTransport
+from retry import retry
 
 class SAFEHistory:
     logger = logging.getLogger()
@@ -90,6 +91,7 @@ class SAFEHistory:
         self.cache_block = to_block
         return self.cache
 
+    @retry(exceptions=Exception, tries=10, delay=0, max_delay=None, backoff=1, jitter=0)
     def get_past_safe_mods_from_graph(self, from_block:int, to_block: int, collateral_type: CollateralType = None):
         Mod = namedtuple("Mod", "safe")
         current_block = self.web3.eth.blockNumber
