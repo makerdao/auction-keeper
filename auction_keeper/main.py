@@ -173,7 +173,7 @@ class AuctionKeeper:
 
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
-                                              self.arguments.graph_endpoint, None)
+                                                self.arguments.graph_endpoint, None)
         elif self.surplus_auction_house:
             self.strategy = SurplusAuctionStrategy(self.surplus_auction_house, self.prot.address)
         elif self.debt_auction_house:
