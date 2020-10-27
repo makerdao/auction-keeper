@@ -280,7 +280,7 @@ two ways to retrieve the list of SAFEs:
 
  * **Connect to a subgraph indexing the specific GEB you are targetting by setting `--subgraph-endpoints`, which will accept multiple hosts to use for failover.  This will conserve resources on your node and keeper and reduces check time for SAFEs.
    Example using kovan graph nodes:
-   `--graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/rai-kovan https://subgraph-kovan.reflexer.finance/subgraphs/name/reflexer-labs/rai`
+   `--graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/rai-kovan,https://subgraph-kovan.reflexer.finance/subgraphs/name/reflexer-labs/rai`
 
 To start debt auctions, the keeper needs a list of liquidation events to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first liquidation which has not been `popDebtFromQueue`.
