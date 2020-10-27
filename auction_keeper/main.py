@@ -85,9 +85,10 @@ class AuctionKeeper:
                             help="When sharding auctions across multiple keepers, this identifies the shard")
         parser.add_argument('--shards', type=int, default=1,
                             help="Number of shards; should be one greater than your highest --shard-id")
-        parser.add_argument("--graph-endpoint", type=str,
+        parser.add_argument("--graph-endpoints", action="extend", nargs="+", type=str,
                             help="When specified, safe history will be initialized from a Graph node, "
-                                 "reducing load on the Ethereum node for collateral auctions")
+                                 "reducing load on the Ethereum node for collateral auctions. If multiple nodes are passed, "
+                                 "they will be tried in order")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to find vaults to liquidation or debt to queue "
                                  "(set to block where GEB was deployed)")
@@ -131,8 +132,8 @@ class AuctionKeeper:
 
         # Check configuration for retrieving safes/liquidations
         if self.arguments.type == 'collateral' and self.arguments.create_auctions \
-                and self.arguments.from_block is None and self.arguments.graph_endpoint is None:
-            raise RuntimeError("Either --from-block or --graph-endpoint must be specified to kick off "
+                and self.arguments.from_block is None and self.arguments.graph_endpoints is None:
+            raise RuntimeError("Either --from-block or --graph-endpoints must be specified to kick off "
                                "collateral auctions")
         if self.arguments.type == 'collateral' and not self.arguments.collateral_type:
             raise RuntimeError("--collateral-type must be supplied when configuring a collateral keeper")
@@ -173,7 +174,7 @@ class AuctionKeeper:
 
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
-                                                self.arguments.graph_endpoint, None)
+                                                self.arguments.graph_endpoints)
         elif self.surplus_auction_house:
             self.strategy = SurplusAuctionStrategy(self.surplus_auction_house, self.prot.address)
         elif self.debt_auction_house:
@@ -300,7 +301,7 @@ class AuctionKeeper:
 
             if self.collateral_auction_house and self.collateral_type and self.collateral_type.name == "ETH-A":
                 logging.info("*** When Keeper is settling/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
-                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using Graph via `--graph-endpoint` ***")
+                logging.info("*** When Keeper is starting auctions, initializing safe history may take > 30 minutes without using Graph via `--graph-endpoints` ***")
         else:
             logging.info("Keeper is currently inactive. Consider re-running the startup script with --bid-only or --kick-only")
 

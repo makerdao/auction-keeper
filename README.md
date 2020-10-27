@@ -189,7 +189,8 @@ In order to clone the project and install required third-party packages please e
 git clone https://github.com/reflexer-labs/auction-keeper.git
 cd auction-keeper
 git submodule update --init --recursive
-pip3 install -r requirements.txt
+./install.sh
+source _virtualenv/bin/activate
 ```
 
 For some known Ubuntu and macOS issues see the [pyflex](https://github.com/reflexer-labs/pyflex) README.
@@ -277,8 +278,9 @@ two ways to retrieve the list of SAFEs:
     continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join`
     contract was deployed for some collateral types and chains.
 
- * **Connect to a subgraph indexing the specific GEB you are targetting by setting `--subgraph-endpoint`.  This will conserve
-    resources on your node and keeper and reduces check time for SAFEs.
+ * **Connect to a subgraph indexing the specific GEB you are targetting by setting `--subgraph-endpoints`, which will accept multiple hosts to use for failover.  This will conserve resources on your node and keeper and reduces check time for SAFEs.
+   Example using kovan graph nodes:
+   `--graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/rai-kovan https://subgraph-kovan.reflexer.finance/subgraphs/name/reflexer-labs/rai`
 
 To start debt auctions, the keeper needs a list of liquidation events to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first liquidation which has not been `popDebtFromQueue`.

@@ -35,27 +35,27 @@ class SAFEHistory:
     cache_lookback = 12  # for handling block reorgs
 
     def __init__(self, web3: Web3, geb: GfDeployment, collateral_type: CollateralType, from_block: Optional[int],
-                 graph_endpoint: Optional[str], graph_key: Optional[str]):
+                 graph_endpoints: Optional[list]):
         assert isinstance(web3, Web3)
         assert isinstance(geb, GfDeployment)
         assert isinstance(collateral_type, CollateralType)
         assert isinstance(from_block, int) or from_block is None
-        assert isinstance(graph_endpoint, str) or graph_endpoint is None
-        assert isinstance(graph_key, str) or graph_key is None
-        assert from_block or graph_endpoint
+        assert isinstance(graph_endpoints, list) or graph_endpoints is None
+        assert from_block or graph_endpoints
 
         self.web3 = web3
         self.geb = geb
         self.collateral_type = collateral_type
         self.from_block = from_block
-        self.graph_endpoint = graph_endpoint
-        self.graph_key = graph_key
+        self.graph_endpoints = graph_endpoints
+        #used for endpoint failover
+        self.graph_endpoint_idx = 0
         self.cache_block = from_block
         self.cache = {}
 
     def get_safes(self) -> Dict[Address, SAFE]:
         """Returns a list of safes indexed by address"""
-        return self._get_safes(use_graph=self.graph_endpoint is not None)
+        return self._get_safes(use_graph=self.graph_endpoints is not None)
 
     def _get_safes(self, use_graph: bool = True) -> Dict[Address, SAFE]:
         start = datetime.now()
@@ -65,13 +65,28 @@ class SAFEHistory:
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
         if use_graph:
-            mods = self.get_past_safe_mods_from_graph(from_block=from_block,
-                                                      to_block=to_block,
-                                                      collateral_type=self.collateral_type)
+            fetched_graph = False
+            # Cycle through list of graph endpoints until fetch succeeds
+            while self.graph_endpoint_idx < len(self.graph_endpoints):
+                try:
+                    self.logger.debug(f"Getting safe mods from {self.graph_endpoints[self.graph_endpoint_idx]}")
+                    mods = self.get_past_safe_mods_from_graph(self.graph_endpoints[self.graph_endpoint_idx], from_block=from_block,
+                                                              to_block=to_block, collateral_type=self.collateral_type)
+                    fetched_graph = True
+                    break
+                except:
+                    self.logger.warn(f"Failed to get safe mods from graph_endpoint {self.graph_endpoints[self.graph_endpoint_idx]}")
+                    # Try another graph endpoint
+                    self.graph_endpoint_idx += 1
+                    # update latest block
+                    to_block = self.web3.eth.blockNumber
+            if not fetched_graph:
+                raise RuntimeError("Unable to fetch graph data from {self.graph_endpoints}")
+
             self.logger.debug(f"Retrieved {len(mods)} past safe mods from graph")
+
         else:
-            mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block,
-                                                                to_block=to_block,
+            mods = self.geb.safe_engine.past_safe_modifications(from_block=from_block, to_block=to_block,
                                                                 collateral_type=self.collateral_type)
             self.logger.debug(f"Retrieved {len(mods)} past safe mods from node")
 
@@ -91,13 +106,11 @@ class SAFEHistory:
         self.cache_block = to_block
         return self.cache
 
-    @retry(exceptions=Exception, tries=10, delay=0, max_delay=None, backoff=1, jitter=0)
-    def fetch_safe_mods(self, from_block, to_block, page_size=1000):
+    #@retry(exceptions=Exception, tries=10, delay=0, max_delay=None, backoff=1, jitter=0)
+    def fetch_safe_mods(self, graph_endpoint, from_block, to_block, page_size=1000):
 
-        if self.graph_key:
-            transport = AIOHTTPTransport(url=self.graph_endpoint, headers={'Authorization': self.graph_key})
-        else:
-            transport = AIOHTTPTransport(url=self.graph_endpoint)
+        print(f"fetching safe modes from {graph_endpoint}")
+        transport = AIOHTTPTransport(url=graph_endpoint)
 
         client = Client(transport=transport, fetch_schema_from_transport=True)
 
@@ -130,7 +143,7 @@ class SAFEHistory:
 
         return all_pages
 
-    def get_past_safe_mods_from_graph(self, from_block:int, to_block: int, collateral_type: CollateralType = None):
+    def get_past_safe_mods_from_graph(self, endpoint, from_block:int, to_block: int, collateral_type: CollateralType = None):
         Mod = namedtuple("Mod", "safe")
         current_block = self.web3.eth.blockNumber
         assert isinstance(from_block, int)
@@ -143,6 +156,7 @@ class SAFEHistory:
             assert to_block <= current_block
         assert isinstance(collateral_type, CollateralType) or collateral_type is None
 
-        results = self.fetch_safe_mods(from_block, to_block)
+        results = self.fetch_safe_mods(endpoint, from_block, to_block)
+
 
         return [Mod(Address(safe['safeHandler'])) for safe in results if safe['collateralType']['id'] == collateral_type.name]
