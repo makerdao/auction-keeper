@@ -85,10 +85,10 @@ class AuctionKeeper:
                             help="When sharding auctions across multiple keepers, this identifies the shard")
         parser.add_argument('--shards', type=int, default=1,
                             help="Number of shards; should be one greater than your highest --shard-id")
-        parser.add_argument("--graph-endpoints", action="extend", nargs="+", type=str,
-                            help="When specified, safe history will be initialized from a Graph node, "
-                                 "reducing load on the Ethereum node for collateral auctions. If multiple nodes are passed, "
-                                 "they will be tried in order")
+        parser.add_argument("--graph-endpoints", type=str,
+                            help="Comma-delimited list of graph endpoints. When specified, safe history will be initialized "
+                                 "from a Graph node, reducing load on the Ethereum node for collateral auctions. "
+                                 "If multiple nodes are passed, they will be tried in order")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to find vaults to liquidation or debt to queue "
                                  "(set to block where GEB was deployed)")
@@ -120,6 +120,7 @@ class AuctionKeeper:
         parser.add_argument("--debug", dest='debug', action='store_true',
                             help="Enable debug output")
         self.arguments = parser.parse_args(args)
+        self.graph_endpoints = self.arguments.graph_endpoints.split(',') if self.arguments.graph_endpoints else None
         logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s',
                             level=(logging.DEBUG if self.arguments.debug else logging.INFO))
 
@@ -132,7 +133,7 @@ class AuctionKeeper:
 
         # Check configuration for retrieving safes/liquidations
         if self.arguments.type == 'collateral' and self.arguments.create_auctions \
-                and self.arguments.from_block is None and self.arguments.graph_endpoints is None:
+                and self.arguments.from_block is None and self.graph_endpoints is None:
             raise RuntimeError("Either --from-block or --graph-endpoints must be specified to kick off "
                                "collateral auctions")
         if self.arguments.type == 'collateral' and not self.arguments.collateral_type:
@@ -174,7 +175,7 @@ class AuctionKeeper:
 
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,
-                                                self.arguments.graph_endpoints)
+                                                self.graph_endpoints)
         elif self.surplus_auction_house:
             self.strategy = SurplusAuctionStrategy(self.surplus_auction_house, self.prot.address)
         elif self.debt_auction_house:
