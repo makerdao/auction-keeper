@@ -14,6 +14,48 @@ _bidding models_, which tell the keeper when and how high to bid.
 The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
 be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
 
+## Installation
+
+This project uses *Python 3.6.6*.
+
+In order to clone the project and install required third-party packages please execute:
+```
+git clone https://github.com/reflexer-labs/auction-keeper.git
+cd auction-keeper
+git submodule update --init --recursive
+./install.sh
+source _virtualenv/bin/activate
+```
+## Quickstart for Collateral Auctions
+
+### 1). Create simple null model in `model.sh`
+Bidders of fixed discount auctions don't determine the price.  They simply received collateral at a fixed discount(currently 95% of market price).
+```
+#!/usr/bin/env bash
+while true; do
+  echo "{}"
+  sleep 120                   
+done
+```
+### 2) Deposit PRAI to your keeper address
+
+### 3). Start auction-keeper
+
+This will start a collateral auction-keeper for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
+`rpc-host` and use the `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be asked upon startup.
+`ALL` system coin owned by `eth-from` will be `join`ed and available for bidding on fixed discount auctions. By default, collateral won in auction will be `exit`ed to your account upon keeper exit.
+```
+auction-keeper/bin/auction-keeper \
+        --type collateral \
+        --collateral-type ETH-A \
+        --rpc-host http://127.0.0.1:8545 \
+        --eth-from 0x12a70C78bc500FF8fe98Af7D84d443f875D047a8F \
+        --eth-key "key_file=keystore.json" \
+        --model ./model.sh \
+        --from-block 11120953 \
+        --safe-engine-system-coin-target 'ALL'
+```
+
 ## Architecture
 
 `auction-keeper` directly interacts with auction contracts deployed to the Ethereum blockchain. Bid prices are received from separate _bidding models_.
@@ -108,7 +150,7 @@ This is the most convenient way of implementing logging from _bidding models_.
 
 ### Simplest possible Fixed Discount Collateral bidding model
 
-```bash
+```
 #!/usr/bin/env bash
 while true; do
   echo "{}"
@@ -117,7 +159,7 @@ done
 ```
 Gas price is optional for fixed discount models. If you want to start with a fixed gas price, you can add it.
 
-```bash
+```
 #!/usr/bin/env bash
 
 while true; do
@@ -155,18 +197,6 @@ continuously refresh safe state to detect undercollateralized SAFEs.
    * To manage resources, it is recommended to run separate keepers using separate accounts to bite (`--start-auctions-only`)
    and bid (`--bid-only`).
 
-## Installation
-
-This project uses *Python 3.6.6*.
-
-In order to clone the project and install required third-party packages please execute:
-```
-git clone https://github.com/reflexer-labs/auction-keeper.git
-cd auction-keeper
-git submodule update --init --recursive
-./install.sh
-source _virtualenv/bin/activate
-```
 
 For some known Ubuntu and macOS issues see the [pyflex](https://github.com/reflexer-labs/pyflex) README.
 
@@ -179,21 +209,6 @@ one for surplus and another one for debt auctions.  Currently, only `ETH-A` coll
 
 Configure `--from-block` to the block where GEB was deployed.  For the current mainnet system, this is `11120953`
 
-### Simple Example
-This will start a collateral auction-keeper for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
-`rpc-host` and use `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be asked upon startup.
-`ALL` system coin owned by `eth-from` will be `join`ed and available for bidding on fixed discount auctions.
-```
-auction-keeper/bin/auction-keeper \
-        --type collateral \
-        --collateral-type ETH-A \
-        --rpc-host http://127.0.0.1:8545 \
-        --eth-from 0x12a70C78bc500FF8fe98Af7D84d443f875D047a8F \
-        --eth-key "key_file=keystore.json" \
-        --model ./model.sh \
-        --from-block 11120953 \
-        --safe-engine-system-coin-target 'ALL'
-```
 
 ## Gas price strategy
 
