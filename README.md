@@ -4,26 +4,26 @@
 [![codecov](https://codecov.io/gh/reflexer-labs/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/reflexer-labs/auction-keeper)
 
 The purpose of `auction-keeper` is to:
- * Seek out opportunities and start new auctions
- * Detect auctions started by other participants
- * Bid on auctions by converting token prices into bids
+ * Start new auctions
+ * Detect auctions started
+ * Bid on auctions
 
-`auction-keeper` can participate in collateral, surplus and debt auctions. Its unique feature is the ability to plug in external
-_bidding models_, which tell the keeper when and how high to bid. Note: Only the surplus and debt models can tell the keeper a price. For collateral auctions, Reflexer uses fixed-discount auctions, where the keeper pays a fixed percentage discount price.
+`auction-keeper` can participate in collateral, surplus and debt auctions. It can read auction status from an Ethereum node or a [Graph](https://thegraph.com/) node. Its unique feature is the ability to plug in external
+_bidding models_, which tell the keeper when and how high to bid.
 
 The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
-be automatically terminated by the keeper the moment the auction expires.  The keeper also automatically settles expired auctions if it's us who won them.
+be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
 
 This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to
-develop your own auction trading bot.
+develop your own auction keeper.
 
 <https://discord.gg/kB4vcYs>
 
 ## Architecture
 
-`auction-keeper` directly interacts with auction contracts deployed to the Ethereum blockchain. Decisions which involve pricing are delegated to _bidding models_.
+`auction-keeper` directly interacts with auction contracts deployed to the Ethereum blockchain. Bid prices are received from separate _bidding models_.
 
-_Bidding models_ are simple processes, external to the main `auction-keeper` process and can be implemented in basically 
+_Bidding models_ are simple processes that can be implemented in
 any programming language. They only need to pass JSON objects to and from `auction-keeper`. The simplest
 example of a bidding model is a shell script which echoes a fixed price.
 
@@ -39,11 +39,11 @@ The keeper is responsible for
 For every new block, all auctions from `1` to `auctionsStarted` are checking for active status.
 If a new auction is detected, a new bidding model is started.
 
-#### Ensure bidding model is running for each active auction
+### Ensure bidding model is running for each active auction
 
 `auction-keeper` maintains a collection of child processes, as each bidding model is its own dedicated
-process. New processes (new _bidding model_ instances) are spawned by executing a command according to the
-`--model` commandline parameter. These processes are automatically terminated (via `SIGKILL`) by the keeper
+process. New processes (new _bidding model_ instances) are spawned by executing the value passed to the
+`--model` command flag. These processes are automatically terminated (via `SIGKILL`) by the keeper
 shortly after their associated auction expires.
 
 Whenever the _bidding model_ process dies, it gets automatically respawned by the keeper.
@@ -63,7 +63,7 @@ Sample message sent from the keeper to the model looks like:
 ```json
 {"id": "6", "surplusAuctionHouse": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bidAmount": "7.142857142857142857", "amountToSell": "10000.000000000000000000", "bidIncrease": "1.050000000000000000", "highBidder": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "bidExpiry": 1530541420, "auctionDeadline": 1531135256, "price": "1400.000000000000000028"}
 ```
-#### Fixed Discount Auction auction status sent to bidding model
+#### Fixed Discount Auction auction status passed to bidding model
 
 The meaning of individual fields:
 * `id` - auction identifier.
@@ -79,26 +79,33 @@ It is perfectly fine for the `auction-keeper` to periodically send the same mess
 
 At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the bidding model
 process and tries to parse them as JSON documents. Then it extracts two fields from that document:
-* `price` - the maximum (for collateral and debt auctions) or the minimum (for surplus auctions) price
+* `price` - the maximum (for debt auctions) or the minimum (for surplus auctions) price
   the model is willing to bid. This value is ignored for fixed discount collateral auctions
 * `gasPrice` (optional) - gas price in Wei to use when sending the bid.
 
 ### Processing each bidding model output and submitting bids
 
 #### Sample model output for Fixed Discount Collateral Auction 
-NOTE: Collateral price is determined by the fixed discount percentage, so only `gasPrice` is supported for fixed discount
-      collateral auctions.
-A sample message sent from the model to the keeper may look like:
+   **Collateral price is determined by the fixed discount percentage, so only `gasPrice` is supported for fixed discount
+     collateral auctions.**
+     
+A sample message sent from the fixed discount model to the keeper may look like:
 ```json
 {"gasPrice": 70000000000}
 ```
-#### Sample model output for Debt Auction 
-A sample message sent from the model to the keeper may look like:
-```json
-{"price": "150.0", "gasPrice": 70000000000}
-```
 
-`price` units: PROT/SystemCoin price for surplus and debt auctions
+#### Sample model output from Debt Auction bidding model 
+A sample message sent from the debt model to the keeper may look like:
+`price` is `PROT/System Coin` price
+```json
+{"price": "250.0", "gasPrice": 70000000000}
+```
+#### Sample model output from Surplus Auction bidding model
+A sample message sent from the debt model to the keeper may look like:
+`price` is `PROT/System Coin` price
+```json
+{"price": "150.0"}
+```
 
 Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
 This is the most convenient way of implementing logging from _bidding models_.
@@ -121,11 +128,11 @@ Gas price is optional for fixed discount models. If you want to start with a fix
 
 while true; do
   echo "{\"gasPrice\": \"70000000000\"}"    # put your desired gas price in Wei here
-  sleep 120                   # locking the gas price for n seconds
+  sleep 120                                 # locking the gas price for n seconds
 done
 ```
 
-The model produces a price/gasPrice for the keeper. After the sleep period. the keeper will restart the price model and read a new price.  
+The model produces price(s) for the keeper. After the `sleep` period. the keeper will restart the price model and read new price(s).  
 Consider this your price update interval.
 
 ### Other bidding models
@@ -144,7 +151,8 @@ the following actions:
   * queuing debt for auction
   * liquidating a SAFE or starting a surplus or debt auction
 * The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will
-`liquidateSAFE`, start a new surplus or debt auction in response to opportunities regardless of whether or not your PRAI or protocol token balance is sufficient to participate.  This too imposes a gas fee.
+`liquidateSAFE`, start a new surplus or debt auction in response to opportunities regardless of whether or not your PRAI or 
+protocol token balance is sufficient to participate.  This too imposes a gas fee.
 * Liquidating SAFEs to start new collateral auctions is an expensive operation.  To do so without a subgraph
 subscription, the keeper initializes a cache of safe state by scraping event logs from the chain.  The keeper will then
 continuously refresh safe state to detect undercollateralized SAFEs.
