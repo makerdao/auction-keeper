@@ -28,9 +28,10 @@ source _virtualenv/bin/activate
 ```
 ## Quickstart for Collateral Auctions
 
-### 1). Create simple null model in `model.sh`
-Bidders of fixed discount auctions don't determine the price.  They simply receive collateral at a fixed discount(currently 95% of market price).
-Put this in `model.sh` and `chmod +x model.sh`.
+### 1). Create simple null bidding model in `model.sh`
+Bidders of fixed discount auctions don't determine the price.  They simply receive collateral at a fixed discount(currently 95% of market price). For debt and surplus auctions, the model will bid a price, but for collateral auctions, no price is required in `model.sh`
+
+For collateral auctions, put this in `model.sh` and `chmod +x model.sh`.
 ```
 #!/usr/bin/env bash
 while true; do
@@ -39,7 +40,7 @@ while true; do
 done
 ```
 ### 2) Deposit PRAI to your keeper address
-Obtain PRAI from Uniswap or open a SAFE and generate some PRAI
+Buy PRAI from Uniswap or open a SAFE and generate some PRAI
 
 ### 3). Run collateral auction-keeper
 
