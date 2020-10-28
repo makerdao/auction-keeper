@@ -29,7 +29,8 @@ source _virtualenv/bin/activate
 ## Quickstart for Collateral Auctions
 
 ### 1). Create simple null model in `model.sh`
-Bidders of fixed discount auctions don't determine the price.  They simply received collateral at a fixed discount(currently 95% of market price).
+Bidders of fixed discount auctions don't determine the price.  They simply receive collateral at a fixed discount(currently 95% of market price).
+Put this in `model.sh` and `chmod +x model.sh`.
 ```
 #!/usr/bin/env bash
 while true; do
@@ -38,8 +39,9 @@ while true; do
 done
 ```
 ### 2) Deposit PRAI to your keeper address
+Obtain PRAI from Uniswap or open a SAFE and generate some PRAI
 
-### 3). Start auction-keeper
+### 3). Run collateral auction-keeper
 
 This will start a collateral auction-keeper for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
 `rpc-host` and use the `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be asked upon startup.
