@@ -14,11 +14,6 @@ _bidding models_, which tell the keeper when and how high to bid.
 The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
 be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
 
-This keeper is intended to be a reference implementation.  It may be used as-is, or pieces borrowed to
-develop your own auction keeper.
-
-<https://discord.gg/kB4vcYs>
-
 ## Architecture
 
 `auction-keeper` directly interacts with auction contracts deployed to the Ethereum blockchain. Bid prices are received from separate _bidding models_.
@@ -251,7 +246,7 @@ two ways to retrieve the list of SAFEs:
     will be queried back to the last cached block to detect new SAFEs.  The state of all SAFEs will be queried
     continuously.
 
- * **Connect to a subgraph indexing the specific GEB you are targetting by setting `--subgraph-endpoints`, which will accept multiple hosts to use for failover.  This will conserve resources on your node and keeper and reduces check time for SAFEs.
+ * **Connect to a subgraph indexing the specific GEB you are targetting by setting `--subgraph-endpoints`, which will accept multiple hosts to use for failover.  This will conserve resources on your node and keeper and reduces check time for SAFEs.**
    Example using kovan graph nodes:
    `--graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/prai-mainnet,https://subgraph.reflexer.finance/subgraphs/name/reflexer-labs/prai`
 
@@ -262,7 +257,7 @@ The `--min-auction` argument arbitrarily ignores older completed auctions, such 
 status.  The `--max-auctions` argument allows you to limit the number of bidding models created to handle active
 auctions.  Both switches help reduce the number of _requests_ (not just transactions) made to the node.
 
-#### Transaction management
+#### Sharding
 
 Bid management can be sharded across multiple keepers by **auction id**.  To do this, configure `--shards` with the
 number of keepers you will run, and a separate `--shard-id` for each keeper, counting from 0.  For example, to
@@ -275,17 +270,13 @@ may disable settling auctions by specifying `--settle-for NONE` in each of your 
 to settle auctions for all participants, `--settle-for ALL` is also supported.  Unlike auction starts, **settlements are sharded**, so
 remove sharding configuration if running a dedicated settlement keeper.
 
+#### Transaction management 
 Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  By
 waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still
 allowing some time for older transactions to complete, freeing up the queue.  Many parameters determine the appropriate
 amount of time to wait.  For illustration purposes, assume the queue can hold 12 transactions, and gas prices are
 reasonable.  In this environment, a bid delay of 1.2 seconds might provide ample time for transactions at the front of
 the queue to complete.  [Etherscan.io](etherscan.io) can be used to view your account's pending transaction queue.
-
-#### Hardware and operating system resources
-
- * The most expensive keepers are collateral and debt keepers configured to start new auctions.
- * To prevent process churn, ensure your pricing model stays running for a reasonable amount of time.
 
 ## Infrastructure
 
@@ -313,6 +304,10 @@ You can then run all tests with:
 ```
 ./test.sh
 ```
+
+## Support
+
+<https://discord.gg/kB4vcYs>
 
 ## License
 
