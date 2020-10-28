@@ -26,9 +26,12 @@ git submodule update --init --recursive
 ./install.sh
 source _virtualenv/bin/activate
 ```
-## Quickstart for Collateral Auctions
+## Quickstart for ETH Collateral Auctions
 
-### 1). Create simple null bidding model in `model.sh`
+### 1) Deposit PRAI to your keeper address
+Buy PRAI from Uniswap or open a SAFE and generate some PRAI
+
+### 2). Create simple null bidding model in `model.sh`
 Bidders of fixed discount auctions don't determine the price.  They simply receive collateral at a fixed discount(currently 95% of market price). For debt and surplus auctions, the model will bid a price, but for collateral auctions, no price is required in `model.sh`
 
 For collateral auctions, put this in `model.sh` and `chmod +x model.sh`.
@@ -39,8 +42,6 @@ while true; do
   sleep 120                   
 done
 ```
-### 2) Deposit PRAI to your keeper address
-Buy PRAI from Uniswap or open a SAFE and generate some PRAI
 
 ### 3). Run collateral auction-keeper
 
@@ -48,7 +49,7 @@ This will start a collateral auction-keeper for collateral type `ETH-A` using `m
 `rpc-host` and use the `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be asked upon startup.
 `ALL` system coin owned by `eth-from` will be `join`ed and available for bidding on fixed discount auctions. By default, collateral won in auction will be `exit`ed to your account upon keeper exit.
 ```
-auction-keeper/bin/auction-keeper \
+bin/auction-keeper \
         --type collateral \
         --collateral-type ETH-A \
         --rpc-host http://127.0.0.1:8545 \
