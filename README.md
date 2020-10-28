@@ -31,14 +31,14 @@ The keeper is responsible for
 5) Processing each bidding model output and submitting bids
 
 ### Monitoring active auctions and discovering new auctions
-For every new block, all auctions from `1` to `auctionsStarted` are checking for active status.
+For every new block, all auctions from `1` to `auctionsStarted` are checked for active status.
 If a new auction is detected, a new bidding model is started.
 
 ### Ensure bidding model is running for each active auction
 
 `auction-keeper` maintains a collection of child processes, as each bidding model is its own dedicated
-process. New processes (new _bidding model_ instances) are spawned by executing the value passed to the
-`--model` command flag. These processes are automatically terminated (via `SIGKILL`) by the keeper
+process. New processes (new _bidding model_ instances) are spawned by executing the command passed to
+`--model`. These processes are automatically terminated (via `SIGKILL`) by the keeper
 shortly after their associated auction expires.
 
 Whenever the _bidding model_ process dies, it gets automatically respawned by the keeper.
@@ -51,26 +51,25 @@ bin/auction-keeper --model '../my-bidding-model.sh' [...]
 ### Pass auction status to each bidding model
 
 `auction-keeper` communicates with bidding models via their standard input and standard output.
+When the auction state changes, the keeper sends a one-line JSON document to the **standard input** of the bidding model process.
 
-Straight away after the process gets started, and every time the auction state changes, the keeper
-sends a one-line JSON document to the **standard input** of the bidding model process.
 Sample message sent from the keeper to the model looks like:
 ```json
-{"id": "6", "surplusAuctionHouse": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bidAmount": "7.142857142857142857", "amountToSell": "10000.000000000000000000", "bidIncrease": "1.050000000000000000", "highBidder": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "bidExpiry": 1530541420, "auctionDeadline": 1531135256, "price": "1400.000000000000000028"}
+{"id": "6", "surplus_auction_house": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bid_amount": "7.142857142857142857", "amount_to_sell": "10000.000000000000000000", "bid_increase": "1.050000000000000000", "high_bidder": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "bid_expiry": 1530541420, "auction_deadline": 1531135256, "price": "1400.000000000000000028"}
 ```
 #### Fixed Discount Auction auction status passed to bidding model
 
 The meaning of individual fields:
 * `id` - auction identifier.
-* `amountToSell` - amount being currently auctioned (will go down for surplus and debt auctions).
-* `amountToRaise` - bid value which will cause the auction to enter its second phase (only for collateral auctions).
-* `soldAmount` - total collateral sold for this auction
-* `raisedAmount` - total system count raised from this auction
+* `collateral_auction_house` - address of Fixed Discount Collateral Auction House
+* `amount_to_sell` - amount being currently auctioned
+* `amount_to_raise` - bid value which will cause the auction to settle
+* `sold_amount` - total collateral sold for this auction
+* `raised_amount` - total system coin raised from this auction
 * `block_time` - current time (in seconds since the UNIX epoch).
-* `auctionDeadline` - time when the entire auction will expire.
+* `auction_deadline` - time when the entire auction will expire.
 
 Bidding models should never make an assumption that messages will be sent only when auction state changes.
-It is perfectly fine for the `auction-keeper` to periodically send the same messages to bidding models.
 
 At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the bidding model
 process and tries to parse them as JSON documents. Then it extracts two fields from that document:
