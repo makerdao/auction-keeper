@@ -179,6 +179,22 @@ one for surplus and another one for debt auctions.  Currently, only `ETH-A` coll
 
 Configure `--from-block` to the block where GEB was deployed.  For the current mainnet system, this is `11120953`
 
+### Simple Example
+This will start a collateral auction-keeper for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
+`rpc-host` and use `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be asked upon startup.
+`ALL` system coin owned by `eth-from` will be `join`ed and available for bidding on fixed discount auctions.
+```
+auction-keeper/bin/auction-keeper \
+        --type collateral \
+        --collateral-type ETH-A \
+        --rpc-host http://127.0.0.1:8545 \
+        --eth-from 0x12a70C78bc500FF8fe98Af7D84d443f875D047a8F \
+        --eth-key "key_file=keystore.json" \
+        --model ./model.sh \
+        --from-block 11120953 \
+        --safe-engine-system-coin-target 'ALL'
+```
+
 ## Gas price strategy
 
 Auction keeper can use one of several sources for the initial gas price of a transaction:  
