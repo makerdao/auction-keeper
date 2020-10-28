@@ -28,7 +28,7 @@ source _virtualenv/bin/activate
 ```
 ## Quickstart for ETH Collateral Auctions
 
-### 1) Deposit PRAI to your keeper address
+### 1) Deposit PRAI(aka System Coin) to your keeper address
 Buy PRAI from Uniswap or open a SAFE and generate some PRAI
 
 ### 2) Create simple null bidding model in `model.sh`
