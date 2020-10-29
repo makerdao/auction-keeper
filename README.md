@@ -5,14 +5,12 @@
 
 The purpose of `auction-keeper` is to:
  * Start new auctions
- * Detect auctions started
+ * Detect currently ongoing auctions
  * Bid on auctions
 
-`auction-keeper` can participate in collateral, surplus and debt auctions. It can read auction status from an Ethereum node or a [Graph](https://thegraph.com/) node. Its unique feature is the ability to plug in external
-_bidding models_, which tell the keeper when and how high to bid.
+`auction-keeper` can participate in collateral, surplus and debt auctions. It can read an auction's status from an Ethereum or a [Graph](https://thegraph.com/) node. Its unique feature is the ability to plug in external _bidding models_ which tell the keeper when and how much to bid.
 
-The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will
-be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
+The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
 
 ## Installation
 
@@ -26,15 +24,18 @@ git submodule update --init --recursive
 ./install.sh
 source _virtualenv/bin/activate
 ```
-## Quickstart for ETH Collateral Auctions
 
-### 1) Deposit PRAI(aka System Coin) to your keeper address
-Buy PRAI from Uniswap or open a SAFE and generate some PRAI
+## Quickstart for Fixed Discount Collateral Auctions
 
-### 2) Create simple null bidding model in `model.sh`
-Bidders of fixed discount auctions don't determine the price.  They simply receive collateral at a fixed discount(currently 95% of market price). For debt and surplus auctions, the model will bid a price, but for collateral auctions, no price is required in `model.sh`
+### 1) Send RAI (aka system coins) to your keeper address
 
-For collateral auctions, put this in `model.sh` and `chmod +x model.sh`.
+Buy RAI from [Uniswap v2](https://info.uniswap.org/pair/0xEBdE9F61e34B7aC5aAE5A4170E964eA85988008C) or open a SAFE and generate some RAI.
+
+### 2) Create a simple null bidding model in `model.sh`
+
+Bidders of fixed discount auctions don't need to determine the price. They simply receive collateral at a fixed discount that's set in the auction smart contract. For debt and surplus auctions, the model will bid using a specific price. On the other hand, fixed discount collateral auctions do not need a price.
+
+For collateral auctions, put this in `model.sh`:
 ```
 #!/usr/bin/env bash
 while true; do
@@ -43,11 +44,13 @@ while true; do
 done
 ```
 
+And then execute `chmod +x model.sh`.
+
 ### 3) Run collateral auction-keeper
 
-This will start a collateral auction-keeper for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
-`rpc-host` and use the `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be asked upon startup.
-`ALL` system coin owned by `eth-from` will be `join`ed and available for bidding on fixed discount auctions. By default, collateral won in auction will be `exit`ed to your account upon keeper exit.
+This will start a collateral `auction-keeper` for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
+`rpc-host` and use the `eth-from` Ethereum account, from keystore `keystore`.  The keystore password will be required upon startup.
+`ALL` system coins owned by `eth-from` will be `join`ed and available for bidding on fixed discount auctions. By default, collateral won in auctions will be `exit`ed to your account upon keeper exit.
 ```
 bin/auction-keeper \
         --type collateral \
@@ -64,12 +67,12 @@ bin/auction-keeper \
 
 `auction-keeper` directly interacts with auction contracts deployed to the Ethereum blockchain. Bid prices are received from separate _bidding models_.
 
-_Bidding models_ are simple processes that can be implemented in
-any programming language. They only need to pass JSON objects to and from `auction-keeper`. The simplest
-example of a bidding model is a shell script which echoes a fixed price.
+_Bidding models_ are simple processes that can be implemented in any programming language. They only need to pass JSON objects to and from `auction-keeper`. The simplest example of a bidding model is a shell script which echoes a fixed price.
 
 ## Responsibilities
-The keeper is responsible for
+
+The keeper is responsible with:
+
 1) Monitoring all active auctions
 2) Discovering new auctions
 3) Ensuring a bidding model is running for each active auction
@@ -77,15 +80,13 @@ The keeper is responsible for
 5) Processing each bidding model output and submitting bids
 
 ### Monitoring active auctions and discovering new auctions
+
 For every new block, all auctions from `1` to `auctionsStarted` are checked for active status.
 If a new auction is detected, a new bidding model is started.
 
 ### Ensure bidding model is running for each active auction
 
-`auction-keeper` maintains a collection of child processes, as each bidding model is its own dedicated
-process. New processes (new _bidding model_ instances) are spawned by executing the command passed to
-`--model`. These processes are automatically terminated (via `SIGKILL`) by the keeper
-shortly after their associated auction expires.
+`auction-keeper` maintains a collection of child processes, as each bidding model is its own dedicated process. New processes (new _bidding model_ instances) are spawned by executing the command passed to `--model`. These processes are automatically terminated (via `SIGKILL`) by the keeper shortly after their associated auction expires.
 
 Whenever the _bidding model_ process dies, it gets automatically respawned by the keeper.
 
@@ -103,7 +104,8 @@ Sample message sent from the keeper to the model looks like:
 ```json
 {"id": "6", "surplus_auction_house": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bid_amount": "7.142857142857142857", "amount_to_sell": "10000.000000000000000000", "bid_increase": "1.050000000000000000", "high_bidder": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "bid_expiry": 1530541420, "auction_deadline": 1531135256, "price": "1400.000000000000000028"}
 ```
-#### Fixed Discount Auction auction status passed to bidding model
+
+#### Fixed discount auction status passed to bidding model
 
 The meaning of individual fields:
 * `id` - auction identifier.
@@ -125,23 +127,28 @@ process and tries to parse them as JSON documents. Then it extracts two fields f
 
 ### Processing each bidding model output and submitting bids
 
-#### Sample model output for Fixed Discount Collateral Auction 
+#### Sample model output for Fixed Discount Collateral Auction
    **Collateral price is determined by the fixed discount percentage, so only `gasPrice` is supported for fixed discount
      collateral auctions.**
-     
+
 A sample message sent from the fixed discount model to the keeper may look like:
 ```json
 {"gasPrice": 70000000000}
 ```
 
-#### Sample model output from Debt Auction bidding model 
+#### Sample model output from Debt Auction bidding model
+
 A sample message sent from the debt model to the keeper may look like:
+
 `price` is `PROT/System Coin` price
 ```json
 {"price": "250.0", "gasPrice": 70000000000}
 ```
+
 #### Sample model output from Surplus Auction bidding model
+
 A sample message sent from the debt model to the keeper may look like:
+
 `price` is `PROT/System Coin` price
 ```json
 {"price": "150.0"}
@@ -150,9 +157,9 @@ A sample message sent from the debt model to the keeper may look like:
 Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
 This is the most convenient way of implementing logging from _bidding models_.
 
-**No facility is provided to prevent you from bidding an unprofitable price.** 
+**Currently no utility is provided to prevent you from bidding at an unprofitable price.**
 
-### Simplest possible Fixed Discount Collateral bidding model
+### Simplest possible fixed discount collateral auction bidding model
 
 ```
 #!/usr/bin/env bash
@@ -161,7 +168,8 @@ while true; do
   sleep 120                   
 done
 ```
-Gas price is optional for fixed discount models. If you want to start with a fixed gas price, you can add it.
+
+Gas price is optional for fixed discount models. If you want to start with a fixed gas price, you can add it like this:
 
 ```
 #!/usr/bin/env bash
@@ -176,6 +184,7 @@ The model produces price(s) for the keeper. After the `sleep` period. the keeper
 Consider this your price update interval.
 
 ### Other bidding models
+
 Thanks to our community for these examples:
  * *banteg*'s [Python boilerplate model](https://gist.github.com/banteg/93808e6c0f1b9b6b470beaba5a140813)
 
@@ -191,7 +200,7 @@ the following actions:
   * queuing debt for auction
   * liquidating a SAFE or starting a surplus or debt auction
 * The keeper does not check model prices until an auction exists.  When configured to create new auctions, it will
-`liquidateSAFE`, start a new surplus or debt auction in response to opportunities regardless of whether or not your PRAI or 
+`liquidateSAFE`, start a new surplus or debt auction in response to opportunities regardless of whether or not your RAI or
 protocol token balance is sufficient to participate.  This too imposes a gas fee.
 * Liquidating SAFEs to start new collateral auctions is an expensive operation.  To do so without a subgraph
 subscription, the keeper initializes a cache of safe state by scraping event logs from the chain.  The keeper will then
@@ -240,6 +249,7 @@ when the model does not provide a gas price.  Unless your price model is aware o
 generally advisable to allow the keeper to manage gas prices for bids, and not supply a `gasPrice` in your model.
 
 ### Accounting
+
 Key points:
 - System coins must be **joined** from a token balance to the `SAFEEngine` for bidding on collateral and debt auctions.
 - Won collateral can be **exited** from the `SAFEEngine` to a token balance after a won auction is settled.
@@ -252,7 +262,8 @@ set `--return-collateral-interval 0`, and do not pass `--safe-engine-system-coin
 Warnings: **Do not use an `eth-from` account on multiple keepers** as it complicates SAFEEngine inventory management and
 will likely cause nonce conflicts.  Using an `eth-from` account with an open SAFE is also discouraged.
 
-#### System Coins
+#### System coins
+
 All auction contracts exclusively interact with system coins (for all auctions) in the `SAFEEngine`. `--safe-engine-system-coin-target` may be set to
 the amount you wish to maintain, or `all` to join your account's entire token balance.  Rebalances do not account for
 system coins moved from the `SAFEEngine` to an auction contract for an active bid.  system coins is rebalanced per `--safe-engine-system-coin-target` when:
@@ -264,7 +275,8 @@ To avoid transaction spamming, small "dusty" system coins balances will be ignor
 By default, all system coins in your `eth-from` account is exited from the `SAFEEngine` and added to your token balance when the keeper
 is terminated normally.  This feature may be disabled using `--keep-system-coin-in-safe-engine-on-exit`.
 
-#### Collateral Auctions
+#### Collateral auctions
+
 Won collateral is periodically exited by setting `--return-collateral-interval` to the number of seconds between balance
 checks.  Collateral is exited from the `SAFEEngine` when the keeper is terminated normally unless `--keep-collateral-in-safe-engine-on-exit`
 is specified.
@@ -304,7 +316,8 @@ may disable settling auctions by specifying `--settle-for NONE` in each of your 
 to settle auctions for all participants, `--settle-for ALL` is also supported.  Unlike auction starts, **settlements are sharded**, so
 remove sharding configuration if running a dedicated settlement keeper.
 
-#### Transaction management 
+#### Transaction management
+
 Too many pending transactions can fill up the transaction queue, causing a subsequent transaction to be dropped.  By
 waiting a small `--bid-delay` after each bid, multiple transactions can be submitted asynchronously while still
 allowing some time for older transactions to complete, freeing up the queue.  Many parameters determine the appropriate
