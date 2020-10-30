@@ -250,23 +250,29 @@ Run `bin/auction-keeper -h` without arguments to see an up-to-date list of argum
 ## Gas price strategies
 
 The following options determine the keeper's gas strategy and are mutually exclusive:
+
 `--ethgasstation-api-key MY_API_KEY`
     Use [ethgasstation.info](https://ethgasstation.info) for gas prices
+    
 `--etherchain-gas-price`
     Use [etherchain.org](https://etherchain.org) for gas prices
+    
 `--poanetwork-gas-price`
     Use [POA Network](https://poa.network) for gas prices
     An alternate URL can be passed as `--poanetwork-url`
+    
  `--fixed-gas-price GWEI`
     Use a fixed gas price in GWEI
     
  If none of these options is given or the gas API produces not result, the keeper will use gas price from your node.
  
 ## Other gas options
+
 `--gas-initial-multiplier MULTIPLIER`
    When using an API source for initial gas price, tunes initial gas price. 
    Ignored when using `--fixed-gas-price` or no strategy is given
    default `1.0`
+   
 `--gas-reactive-multiplier MULTIPLIER`
    Every 30 seconds, a transaction's gas price will be multiplied by this value until it is mined or `--gas-maxiumum` is reached.
    Not used if `gasPrice` is passed from your bidding model. 
@@ -274,6 +280,7 @@ The following options determine the keeper's gas strategy and are mutually exclu
          minimum gas increase of `1.125` to propagate transaction replacement; this should be treated as a minimum
          value unless you want replacements to happen less frequently than 30 seconds (2+ blocks).
    default `1.125`
+   
 `--gas-maximum GWEI`
    Maximum value for gas price
 
@@ -284,11 +291,14 @@ The keeper provides facilities for managing `SAFEEngine` balances, which may be 
 
 `--keep-system-coin-in-safe-engine-on-exit`
    Do not `exit` system coin on shutdown
+   
 `--keep-collateral-in-safe-engine-on-exit`
    Do not `exit` collateral on shutdown
+   
 `--return-collateral-interval SECS`
    Interval to `exit` won collateral to auction-keeper. Pass `0` to disable completely.
    default `300`
+   
 `--safe-engine-system-coin-target  ALL|<integer>` 
    Amount of system-coin the keeper will try to keep in the `SAFEEngine` through rebalancing with `join`s and `exit`s.
    By default, there is no target.
@@ -308,6 +318,7 @@ The keeper provides facilities for managing `SAFEEngine` balances, which may be 
 
 To start collateral auctions, the keeper needs a list of SAFEs and the collateralization ratio of each safe.  There are
 two ways to retrieve the list of SAFEs:
+
 `--from-block BLOCK_NUMBER`
    Scrape the chain for `ModifySAFECollateralization` events, starting at `BLOCK_NUMBER`
    Set this to the block where the first safe was created. After startup, only new blocks will be queried.
@@ -326,6 +337,7 @@ two ways to retrieve the list of SAFEs:
 
 `--min-auction AUCTION_ID`
    Ignore auctions older than `AUCTION_ID` 
+   
 `--max-auctions NUMBER` a
    Limit the number of bidding models created to handle active auctions.  
    
@@ -337,6 +349,7 @@ Bid management can be sharded across multiple keepers by **auction id**.  If sha
 
 `--shards NUMBER_OF_KEEPER`
    Number of keepers you will run. Set on all keepers
+   
 `--shard-id SHARD_ID` 
    Set on each keeper, counting from 0.  
    For example, to configure three keepers, set `--shards 3` and assign `--shard-id 0`, `--shard-id 1`, `--shard-id 2` 
@@ -344,7 +357,8 @@ Bid management can be sharded across multiple keepers by **auction id**.  If sha
    Note: **Auction starts are not sharded**. For an auction contract, only one keeper should be configured to `startAuction`.
 
 
-If you are sharding across multiple accounts, you may wish to have another account handle all your `settleAuction`s.  
+If you are sharding across multiple accounts, you may wish to have another account handle all your `settleAuction`s. 
+
 `--settle-for <ACCOUNT1 ACCOUNT2>|NONE|ALL`
    Space-delimited list of accounts for which keeper will settle auctions or `NONE` to disable. If you'd like to donate your gas
 to settle auctions for all participants, `ALL` is also supported.  
