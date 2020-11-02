@@ -1,6 +1,6 @@
-[submodule "lib/pygasprice-client"]
-	path = lib/pygasprice-client
-	url = https://github.com/makerdao/pygasprice-client.git
 [submodule "lib/pyflex"]
 	path = lib/pyflex
 	url = https://github.com/reflexer-labs/pyflex.git
+[submodule "lib/pygasprice-client"]
+	path = lib/pygasprice-client
+	url = https://github.com/reflexer-labs/pygasprice-client.git

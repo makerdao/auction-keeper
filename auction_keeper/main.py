@@ -35,13 +35,13 @@ from pyflex.keys import register_keys
 from pyflex.lifecycle import Lifecycle
 from pyflex.model import Token
 from pyflex.numeric import Wad, Ray, Rad
-from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
+from pyflex.auctions import FixedDiscountCollateralAuctionHouse
 
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy
-from auction_keeper.strategy import EnglishCollateralAuctionStrategy, FixedDiscountCollateralAuctionStrategy
+from auction_keeper.strategy import FixedDiscountCollateralAuctionStrategy
 from auction_keeper.safe_history import SAFEHistory
 
 
@@ -102,14 +102,25 @@ class AuctionKeeper:
                             help="Period of timer [in seconds] used to check and exit won collateral")
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
+
         gas_group = parser.add_mutually_exclusive_group()
         gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
         gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
                                help="Use etherchain.org gas price")
         gas_group.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
                                help="Use POANetwork gas price")
+        gas_group.add_argument('--etherscan-gas-price', dest='etherscan_gas', action='store_true',
+                               help="Use Etherscan gas price")
+        gas_group.add_argument('--gasnow-gas-price', dest='gasnow_gas', action='store_true',
+                               help="Use Gasnow gas price")
         gas_group.add_argument('--fixed-gas-price', type=float, default=None,
                                help="Uses a fixed value (in Gwei) instead of an external API to determine initial gas")
+
+        parser.add_argument("--etherscan-key", type=str, default=None,
+                            help="Optional Etherscan API key. If not specified, client is rate-limited(currently 1request/5sec")
+        parser.add_argument("--gasnow-app-name", type=str, default=None,
+                            help="Optional, but recommended Gasnow app name, which should be unique to your client. If not specified, "
+                            "client is most-likely rate-limited")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
         parser.add_argument("--gas-initial-multiplier", type=float, default=1.0,
                             help="Adjusts the initial API-provided 'fast' gas price, default 1.0")
@@ -165,13 +176,9 @@ class AuctionKeeper:
         self.safe_history = None
         if self.collateral_auction_house:
             self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
-            if isinstance(self.collateral_auction_house, EnglishCollateralAuctionHouse):
-                self.strategy = EnglishCollateralAuctionStrategy(self.collateral_auction_house, self.min_collateral_lot)
-            else:
-                # Fixed Discount strategy needs to know our current system coin balance
-                self.strategy = FixedDiscountCollateralAuctionStrategy(self.collateral_auction_house,
-                                                                       self.min_collateral_lot,
-                                                                       self.geb, self.our_address)
+            self.strategy = FixedDiscountCollateralAuctionStrategy(self.collateral_auction_house,
+                                                                   self.min_collateral_lot,
+                                                                   self.geb, self.our_address)
 
             if self.arguments.create_auctions:
                 self.safe_history = SAFEHistory(self.web3, self.geb, self.collateral_type, self.arguments.from_block,

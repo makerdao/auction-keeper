@@ -23,7 +23,7 @@ from auction_keeper.model import Status
 from pyflex import Address, Transact
 from pyflex.approval import directly, approve_safe_modification_directly
 from pyflex.auctions import AuctionContract, PreSettlementSurplusAuctionHouse, DebtAuctionHouse
-from pyflex.auctions import EnglishCollateralAuctionHouse, FixedDiscountCollateralAuctionHouse
+from pyflex.auctions import FixedDiscountCollateralAuctionHouse
 from pyflex.gas import GasPrice
 from pyflex.numeric import Wad, Ray, Rad
 from pyflex.deployment import GfDeployment
@@ -50,83 +50,6 @@ class Strategy:
 
     def restart_auction(self, id: int) -> Transact:
         return self.contract.restart_auction(id)
-
-
-class EnglishCollateralAuctionStrategy(Strategy):
-    def __init__(self, collateral_auction_house: EnglishCollateralAuctionHouse, min_amount_to_sell: Wad):
-        assert isinstance(collateral_auction_house, EnglishCollateralAuctionHouse)
-        assert isinstance(min_amount_to_sell, Wad)
-        super().__init__(collateral_auction_house)
-
-        self.collateral_auction_house = collateral_auction_house
-        self.bid_increase = collateral_auction_house.bid_increase()
-        self.min_amount_to_sell = min_amount_to_sell
-
-    def approve(self, gas_price: GasPrice):
-        assert isinstance(gas_price, GasPrice)
-        self.collateral_auction_house.approve(self.collateral_auction_house.safe_engine(), approve_safe_modification_directly(gas_price=gas_price))
-        #self.collateral_auction_house.approve(self.collateral_auction_house.safe_engine(), approve_safe_modification_directly())
-
-    def auctions_started(self) -> int:
-        return self.collateral_auction_house.auctions_started()
-
-    def get_input(self, id: int) -> Status:
-        assert isinstance(id, int)
-
-        # Read auction state
-        bid = self.collateral_auction_house.bids(id)
-
-        # Prepare the model input from auction state
-        return Status(id=id,
-                      collateral_auction_house=self.collateral_auction_house.address,
-                      surplus_auction_house=None,
-                      debt_auction_house=None,
-                      bid_amount=bid.bid_amount,  # Rad
-                      amount_to_sell=bid.amount_to_sell,  # Wad
-                      amount_to_raise=bid.amount_to_raise,
-                      sold_amount=None,
-                      raised_amount=None,
-                      bid_increase=self.bid_increase,
-                      high_bidder=bid.high_bidder,
-                      block_time=block_time(self.collateral_auction_house.web3),
-                      bid_expiry=bid.bid_expiry,
-                      auction_deadline=bid.auction_deadline,
-                      price=Wad(bid.bid_amount / Rad(bid.amount_to_sell)) if bid.amount_to_sell != Wad(0) else None)
-
-    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
-        assert isinstance(id, int)
-        assert isinstance(price, Wad)
-
-        bid = self.collateral_auction_house.bids(id)
-
-        # decreaseSoldAmount phase
-        if bid.bid_amount == bid.amount_to_raise:
-            our_amount = Wad(bid.bid_amount / Rad(price))
-            if our_amount < self.min_amount_to_sell:
-                self.logger.debug(f"decreaseSoldAmount lot {our_amount} less than minimum {self.min_amount_to_sell} for auction {id}")
-                return None, None, None
-
-            if (our_amount * self.bid_increase <= bid.amount_to_sell) and (our_amount < bid.amount_to_sell):
-                return price, self.collateral_auction_house.decrease_sold_amount(id, our_amount, bid.bid_amount), bid.bid_amount
-            else:
-                self.logger.debug(f"decreaseSoldAmount our_amount {our_amount} would not exceed the bid increment for auction {id}")
-                return None, None, None
-
-        # increaseBidSize phase
-        else:
-            if bid.amount_to_sell < self.min_amount_to_sell:
-                self.logger.debug(f"increaseBidSize amount_to_sell {bid.amount_to_sell} less than minimum {self.min_amount_to_sell} for auction {id}")
-                return None, None, None
-
-            our_bid = Rad.min(Rad(bid.amount_to_sell) * price, bid.amount_to_raise)
-            our_price = price if our_bid < bid.amount_to_raise else Wad(bid.bid_amount) / bid.amount_to_sell
-
-            if (our_bid >= bid.bid_amount * self.bid_increase or our_bid == bid.amount_to_raise) and our_bid > bid.bid_amount:
-                return our_price, self.collateral_auction_house.increase_bid_size(id, bid.amount_to_sell, our_bid), our_bid
-            else:
-                self.logger.debug(f"increaseBidSize bid {our_bid} would not exceed the bid increment for auction {id}")
-                return None, None, None
-
 
 class FixedDiscountCollateralAuctionStrategy(Strategy):
     def __init__(self, collateral_auction_house: FixedDiscountCollateralAuctionHouse, min_amount_to_sell: Wad,

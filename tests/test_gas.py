@@ -17,7 +17,7 @@
 
 import pytest
 from auction_keeper.main import AuctionKeeper
-from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg
+from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg, Etherscan, Gasnow
 
 from auction_keeper.gas import DynamicGasPrice
 from tests.conftest import get_node_gas_price
@@ -85,6 +85,56 @@ class TestGasStrategy:
                                          f"--model ./bogus-model.sh"), web3=geb.web3)
         assert isinstance(keeper.gas_price.gas_station, POANetwork)
         assert keeper.gas_price.gas_station.URL == "http://localhost:8000"
+
+    def test_etherscan(self, geb, keeper_address):
+        # given
+        c = geb.collaterals['ETH-A']
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type collateral "
+                                         f"--from-block 1 "
+                                         f"--collateral-type {c.collateral_type.name} "
+                                         f"--etherscan-gas-price "
+                                         f"--model ./bogus-model.sh"), web3=geb.web3)
+        assert isinstance(keeper.gas_price.gas_station, Etherscan)
+        assert keeper.gas_price.gas_station.URL == "https://api.etherscan.io/api?module=gastracker&action=gasoracle"
+
+    def test_etherscan_key(self, geb, keeper_address):
+        # given
+        c = geb.collaterals['ETH-A']
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type collateral "
+                                         f"--from-block 1 "
+                                         f"--collateral-type {c.collateral_type.name} "
+                                         f"--etherscan-gas-price "
+                                         f"--etherscan-key MY_API_KEY "
+                                         f"--model ./bogus-model.sh"), web3=geb.web3)
+        assert isinstance(keeper.gas_price.gas_station, Etherscan)
+        assert keeper.gas_price.gas_station.URL == "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=MY_API_KEY"
+
+    def test_gasnow(self, geb, keeper_address):
+        # given
+        c = geb.collaterals['ETH-A']
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type collateral "
+                                         f"--from-block 1 "
+                                         f"--collateral-type {c.collateral_type.name} "
+                                         f"--gasnow-gas-price "
+                                         f"--model ./bogus-model.sh"), web3=geb.web3)
+        assert isinstance(keeper.gas_price.gas_station, Gasnow)
+        assert keeper.gas_price.gas_station.URL == "https://www.gasnow.org/api/v3/gas/price"
+
+    def test_gasnow_key(self, geb, keeper_address):
+        # given
+        c = geb.collaterals['ETH-A']
+        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
+                                         f"--type collateral "
+                                         f"--from-block 1 "
+                                         f"--collateral-type {c.collateral_type.name} "
+                                         f"--gasnow-gas-price "
+                                         f"--gasnow-app-name MY_APP_NAME "
+                                         f"--model ./bogus-model.sh"), web3=geb.web3)
+        assert isinstance(keeper.gas_price.gas_station, Gasnow)
+        assert keeper.gas_price.gas_station.URL == "https://www.gasnow.org/api/v3/gas/price?utm_source=MY_APP_NAME"
 
     def test_default_gas_config(self, web3, keeper_address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
