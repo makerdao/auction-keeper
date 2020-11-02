@@ -1,11 +1,0 @@
---2020-11-02 12:09:55--  https://api.etherscan.io/api?module=gastracker
-Resolving api.etherscan.io (api.etherscan.io)... 23.111.175.138, 217.79.240.58
-Connecting to api.etherscan.io (api.etherscan.io)|23.111.175.138|:443... connected.
-HTTP request sent, awaiting response... 200 OK
-Length: 135 [application/json]
-Saving to: ‘api?module=gastracker’
-
-api?module=gastracker                   0%[                                                                         ]       0  --.-KB/s               api?module=gastracker                 100%[========================================================================>]     135  --.-KB/s    in 0s      
-
-2020-11-02 12:09:55 (6.44 MB/s) - ‘api?module=gastracker’ saved [135/135]
-
