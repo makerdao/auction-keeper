@@ -29,7 +29,7 @@ after_success:
 
 deploy:
   provider: script
-  script: ./ci/docker_push.sh
+  script: ./.ci/docker_push.sh
   on:
     branch: master
 
