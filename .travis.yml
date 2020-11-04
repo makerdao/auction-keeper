@@ -27,12 +27,13 @@ script:
   - "./test.sh"
 
 after_success:
-  - echo "Travis branch: ${TRAVIS_BRANCH}"
-  - if [ "$TRAVIS_BRANCH" == "master" ]; then
-    docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
-    docker push reflexer/auction-keeper
-    fi
   - codecov
+
+deploy:
+  provider: script
+  script: ./ci/docker_push.sh
+  on:
+    branch: master
 
 notifications:
   email: false
