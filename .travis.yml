@@ -13,6 +13,11 @@ cache: pip
 before_cache:
   - rm -f $HOME/.cache/pip/log/debug.log
 
+before_install:
+  - docker build -t reflexer/auction-keeper .
+script:
+  - docker images reflexer/auction-keeper
+
 install:
   - pip install virtualenv --upgrade
   - pip install -r requirements.txt
@@ -22,6 +27,10 @@ script:
   - "./test.sh"
 
 after_success:
+  - if [ "$TRAVIS_BRANCH" == "master" ]; then
+    docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
+    docker push reflexer/auction-keeper
+    fi
   - codecov
 
 notifications:
