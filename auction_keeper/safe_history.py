@@ -81,7 +81,7 @@ class SAFEHistory:
                     # update latest block
                     to_block = self.web3.eth.blockNumber
             if not fetched_graph:
-                raise RuntimeError("Unable to fetch graph data from {self.graph_endpoints}")
+                raise RuntimeError(f"Unable to fetch graph data from {self.graph_endpoints}")
 
             self.logger.debug(f"Retrieved {len(mods)} past safe mods from graph")
 
@@ -106,10 +106,10 @@ class SAFEHistory:
         self.cache_block = to_block
         return self.cache
 
-    #@retry(exceptions=Exception, tries=10, delay=0, max_delay=None, backoff=1, jitter=0)
+    @retry(exceptions=Exception, tries=10, delay=0, max_delay=None, backoff=1, jitter=0)
     def fetch_safe_mods(self, graph_endpoint, from_block, to_block, page_size=1000):
 
-        print(f"fetching safe modes from {graph_endpoint}")
+        self.logger.info(f"Fetching safe modes from {graph_endpoint}")
         transport = AIOHTTPTransport(url=graph_endpoint)
 
         client = Client(transport=transport, fetch_schema_from_transport=True)
