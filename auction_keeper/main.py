@@ -81,6 +81,9 @@ class AuctionKeeper:
                             help="Period of timer [in seconds] used to check bidding models for changes")
         parser.add_argument('--bid-delay', type=float, default=0.0,
                             help="Seconds to wait between bids, used to manage OS and hardware limitations")
+        parser.add_argument('--block-check-interval', type=float, default=1.0,
+                            help="Period of timer [in seconds] used to check for new blocks. If using Infura free-tier, you must "
+                            "increase this value")
         parser.add_argument('--shard-id', type=int, default=0,
                             help="When sharding auctions across multiple keepers, this identifies the shard")
         parser.add_argument('--shards', type=int, default=1,
@@ -251,7 +254,7 @@ class AuctionKeeper:
             except (RequestException, ConnectionError, ValueError, AttributeError):
                 logging.exception("Error checking auction states")
 
-        with Lifecycle(self.web3) as lifecycle:
+        with Lifecycle(self.web3, self.arguments.block_check_interval) as lifecycle:
             self.lifecycle = lifecycle
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
