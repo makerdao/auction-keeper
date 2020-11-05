@@ -14,3 +14,4 @@ RUN ./install.sh
 WORKDIR /opt/keeper/auction-keeper/bin
 
 USER keeper
+ENTRYPOINT ./auction-keeper

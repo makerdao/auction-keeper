@@ -6,42 +6,46 @@ services:
     env_file:
       - .env
     volumes:
-      - $PWD/hush:/home/keeper/hush
-      - $PWD/model:/home/keeper/model
+      - $PWD/keystore:/home/keeper/keystore
+      - $PWD/models:/home/keeper/models
     command: >
-      bash -c "./auction-keeper --rpc-host=$${RPC_HOST} --rpc-port=$${RPC_PORT} \
+      bash -c "./auction-keeper \
+      --type collateral \
+      --collateral-type ETH-A \
+      --rpc-uri=$${RPC_URI} \
       --eth-from=$${ETH_FROM} \
-      --eth-key='key_file=/home/keeper/hush/auction.json,pass_file=/home/keeper/hush/auction.pass' \
-      --collateral-auction-house=$${COLLATERAL_AUCTION_HOUSE_ADDRESS} \
-      --liquidation-engine=$${LIQUIDATION_ENGINE_ADDRESS} \
-      --model '/home/keeper/model/model.sh'"
+      --eth-key='key_file=/home/keeper/keystore/auction.json,pass_file=/home/keeper/keystore/auction.pass' \
+      --from-block 11000000 \
+      --safe-engine-system-coin-target 'ALL' \
+      --block-check-interval 5 \
+      --graph-endpoints https://subgraph.reflexer.finance/subgraphs/name/reflexer-labs/rai \
+      --model '/home/keeper/model/collateral_model.sh'"
 
   surplus_auction:
     image: reflexer/auction-keeper
     env_file:
       - .env
     volumes:
-      - $PWD/hush:/home/keeper/hush
-      - $PWD/model:/home/keeper/model
+      - $PWD/keystore:/home/keeper/keystore
+      - $PWD/models:/home/keeper/models
     command: >
-      bash -c "./auction-keeper --rpc-host=$${RPC_HOST} --rpc-port=$${RPC_PORT} \
+      bash -c "./auction-keeper \
+      --type surplus \   
+      --rpc-host=$${RPC_URI} \
       --eth-from=$${ETH_FROM} \
-      --eth-key='key_file=/home/keeper/hush/auction.json,pass_file=/home/keeper/hush/auction.pass' \
-      --surpus-auction-house=$${SURPLUS_AUCTION_HOUSE_ADDRESS} \
-      --accounting-engine=$${ACCOUNTING_ENGINE_ADDRESS} \
-      --model '/home/keeper/model/model.sh'"
+      --eth-key='key_file=/home/keeper/keystore/auction.json,pass_file=/home/keeper/keystore/auction.pass' \
+      --model '/home/keeper/models/surplus_model.sh'"
 
   debt_auction:
     image: reflexer/auction-keeper
     env_file:
       - .env
     volumes:
-      - $PWD/hush:/home/keeper/hush
-      - $PWD/model:/home/keeper/model
+      - $PWD/keystore:/home/keeper/keystore
+      - $PWD/models:/home/keeper/models
     command: >
-      bash -c "./auction-keeper --rpc-host=$${RPC_HOST} --rpc-port=$${RPC_PORT} \
+      bash -c "./auction-keeper \
+      --rpc-uri=$${RPC_URI} \
       --eth-from=$${ETH_FROM} \
-      --eth-key='key_file=/home/keeper/hush/auction.json,pass_file=/home/keeper/hush/auction.pass' \
-      --debt-auction-house=$${DEBT_AUCTION_HOUSE_ADDRESS} \
-      --accounting-engine=$${ACCOUNTING_ENGINE_ADDRESS} \
-      --model '/home/keeper/model/model.sh'"
+      --eth-key='key_file=/home/keeper/keystore/auction.json,pass_file=/home/keeper/keystore/auction.pass' \
+      --model '/home/keeper/models/debt_model.sh'"
