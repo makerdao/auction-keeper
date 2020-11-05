@@ -52,7 +52,7 @@ class AuctionKeeper:
     def __init__(self, args: list, **kwargs):
         parser = argparse.ArgumentParser(prog='auction-keeper')
 
-        parser.add_argument("--rpc-host", type=str, default="http://localhost:8545",
+        parser.add_argument("--rpc-uri", type=str, default="http://localhost:8545",
                             help="JSON-RPC endpoint URI with port (default: `http://localhost:8545')")
         parser.add_argument("--rpc-timeout", type=int, default=10,
                             help="JSON-RPC timeout (in seconds, default: 10)")
@@ -140,7 +140,7 @@ class AuctionKeeper:
 
         # Configure connection to the chain
         self.web3: Web3 = kwargs['web3'] if 'web3' in kwargs else web3_via_http(
-            endpoint_uri=self.arguments.rpc_host, timeout=self.arguments.rpc_timeout, http_pool_size=100)
+            endpoint_uri=self.arguments.rpc_uri, timeout=self.arguments.rpc_timeout, http_pool_size=100)
         self.web3.eth.defaultAccount = self.arguments.eth_from
         register_keys(self.web3, self.arguments.eth_key)
         self.our_address = Address(self.arguments.eth_from)
