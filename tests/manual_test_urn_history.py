@@ -33,13 +33,13 @@ logging.getLogger("asyncio").setLevel(logging.INFO)
 logging.getLogger("requests").setLevel(logging.INFO)
 
 web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
-vulcanize_endpoint = sys.argv[1]
-vulcanize_key = sys.argv[2]
+vulcanize_endpoint = os.environ["VULCANIZE_URL"]
+vulcanize_key = os.environ["VULCANIZE_APIKEY"]
 mcd = DssDeployment.from_node(web3)
-collateral_type = sys.argv[3] if len(sys.argv) > 3 else "ETH-A"
+collateral_type = sys.argv[1] if len(sys.argv) > 1 else "ETH-A"
 ilk = mcd.collaterals[collateral_type].ilk
-# on mainnet, use 8928152 for ETH-A/BAT-A, 9989448 for WBTC-A, 10350821 for ZRX-A/KNC-A
-from_block = int(sys.argv[4]) if len(sys.argv) > 4 else 8928152
+# on mainnet, use 8928152 for ETH-A/BAT-A; for others, use the block when the join contract was deployed/enabled
+from_block = int(sys.argv[2]) if len(sys.argv) > 2 else 8928152
 
 
 # Retrieve data from chain
