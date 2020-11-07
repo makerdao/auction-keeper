@@ -19,7 +19,7 @@ from pprint import pformat
 from typing import Optional
 from web3 import Web3
 
-from pygasprice_client import EthGasStation, EtherchainOrg, POANetwork
+from pygasprice_client.aggregator import Aggregator
 from pymaker.gas import GasPrice, GeometricGasPrice, NodeAwareGasPrice
 
 
@@ -46,12 +46,12 @@ class DynamicGasPrice(NodeAwareGasPrice):
         self.gas_station = None
         self.fixed_gas = None
         self.web3 = web3
-        if arguments.ethgasstation_api_key:
-            self.gas_station = EthGasStation(refresh_interval=60, expiry=600, api_key=arguments.ethgasstation_api_key)
-        elif arguments.etherchain_gas:
-            self.gas_station = EtherchainOrg(refresh_interval=60, expiry=600)
-        elif arguments.poanetwork_gas:
-            self.gas_station = POANetwork(refresh_interval=60, expiry=600, alt_url=arguments.poanetwork_url)
+        if arguments.oracle_gas_price:
+            self.gas_station = Aggregator(refresh_interval=60, expiry=600,
+                                          ethgasstation_api_key=arguments.ethgasstation_api_key,
+                                          poa_network_alt_url=arguments.poanetwork_url,
+                                          etherscan_api_key=arguments.etherscan_api_key,
+                                          gasnow_app_name="makerdao/auction-keeper")
         elif arguments.fixed_gas_price:
             self.fixed_gas = int(round(arguments.fixed_gas_price * self.GWEI))
         self.initial_multiplier = arguments.gas_initial_multiplier
@@ -59,6 +59,10 @@ class DynamicGasPrice(NodeAwareGasPrice):
         self.gas_maximum = int(round(arguments.gas_maximum * self.GWEI))
         if self.fixed_gas:
             assert self.fixed_gas <= self.gas_maximum
+
+    def __del__(self):
+        if self.gas_station:
+            self.gas_station.running = False
 
     def get_gas_price(self, time_elapsed: int) -> Optional[int]:
         # start with fast price from the configured gas API
@@ -81,7 +85,7 @@ class DynamicGasPrice(NodeAwareGasPrice):
 
     def __str__(self):
         if self.gas_station:
-            retval = f"{type(self.gas_station)} fast gas price with initial multiplier {self.initial_multiplier} "
+            retval = f"Medianized oracle fast gas price with initial multiplier {self.initial_multiplier} "
         elif self.fixed_gas:
             retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
         else:

@@ -18,7 +18,7 @@
 import pytest
 
 from auction_keeper.main import AuctionKeeper
-from pygasprice_client import EthGasStation, POANetwork, EtherchainOrg
+from pygasprice_client.aggregator import Aggregator
 
 from auction_keeper.gas import DynamicGasPrice
 from tests.conftest import get_node_gas_price
@@ -30,51 +30,19 @@ default_max_gas = 2000
 every_secs = 42
 
 class TestGasStrategy:
-    def test_ethgasstation(self, mcd, keeper_address):
+    def test_consolidated_gas_oracles(self, mcd, keeper_address):
         # given
         c = mcd.collaterals['ETH-A']
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type flip "
                                          f"--from-block 1 "
                                          f"--ilk {c.ilk.name} "
+                                         f"--oracle-gas-price "
                                          f"--ethgasstation-api-key MY_API_KEY "
+                                         f"--etherscan-api-key MY_API_KEY "
                                          f"--model ./bogus-model.sh"), web3=mcd.web3)
-        assert isinstance(keeper.gas_price.gas_station, EthGasStation)
-        assert keeper.gas_price.gas_station.URL == "https://ethgasstation.info/json/ethgasAPI.json?api-key=MY_API_KEY"
-
-    def test_etherchain(self, mcd, keeper_address):
-        # given
-        c = mcd.collaterals['ETH-A']
-        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                         f"--type flip "
-                                         f"--from-block 1 "
-                                         f"--ilk {c.ilk.name} "
-                                         f"--etherchain-gas-price "
-                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
-        assert isinstance(keeper.gas_price.gas_station, EtherchainOrg)
-        assert keeper.gas_price.gas_station.URL == "https://www.etherchain.org/api/gasPriceOracle"
-
-    def test_poanetwork(self, mcd, keeper_address):
-        # given
-        c = mcd.collaterals['ETH-A']
-        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                         f"--type flip "
-                                         f"--from-block 1 "
-                                         f"--ilk {c.ilk.name} "
-                                         f"--poanetwork-gas-price "
-                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
-        assert isinstance(keeper.gas_price.gas_station, POANetwork)
-        assert keeper.gas_price.gas_station.URL == "https://gasprice.poa.network"
-
-        keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                         f"--type flip "
-                                         f"--from-block 1 "
-                                         f"--ilk {c.ilk.name} "
-                                         f"--poanetwork-gas-price "
-                                         f"--poanetwork-url http://localhost:8000 "
-                                         f"--model ./bogus-model.sh"), web3=mcd.web3)
-        assert isinstance(keeper.gas_price.gas_station, POANetwork)
-        assert keeper.gas_price.gas_station.URL == "http://localhost:8000"
+        assert isinstance(keeper.gas_price.gas_station, Aggregator)
+        assert keeper.gas_price.gas_station.URL == "aggregator"
 
     def test_default_gas_config(self, web3, keeper_address):
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -134,11 +102,4 @@ class TestGasStrategy:
             missing_arg = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                                    f"--type flop --from-block 1 "
                                                    f"--gas-reactive-multiplier "
-                                                   f"--model ./bogus-model.sh"), web3=web3)
-
-        with pytest.raises(SystemExit):
-            conflicting_args = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                                   f"--type flop --from-block 1 "
-                                                   f"--etherchain-gas-price "
-                                                   f"--poanetwork-gas-price "
                                                    f"--model ./bogus-model.sh"), web3=web3)

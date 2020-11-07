@@ -110,14 +110,12 @@ class AuctionKeeper:
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
-        gas_group = parser.add_mutually_exclusive_group()
-        gas_group.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
-        gas_group.add_argument('--etherchain-gas-price', dest='etherchain_gas', action='store_true',
-                               help="Use etherchain.org gas price")
-        gas_group.add_argument('--poanetwork-gas-price', dest='poanetwork_gas', action='store_true',
-                               help="Use POANetwork gas price")
-        gas_group.add_argument('--fixed-gas-price', type=float, default=None,
-                               help="Uses a fixed value (in Gwei) instead of an external API to determine initial gas")
+        parser.add_argument("--oracle-gas-price", action='store_true',
+                            help="Use a fast gas price aggregated across multiple oracles")
+        parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
+        parser.add_argument("--etherscan-api-key", type=str, default=None, help="etherscan API key")
+        parser.add_argument('--fixed-gas-price', type=float, default=None,
+                            help="Uses a fixed value (in Gwei) instead of an external API to determine initial gas")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")
         parser.add_argument("--gas-initial-multiplier", type=float, default=1.0,
                             help="Adjusts the initial API-provided 'fast' gas price, default 1.0")
