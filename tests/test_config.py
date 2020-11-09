@@ -166,6 +166,7 @@ class TestConfig:
         assert isinstance(keeper.system_coin_join, CoinJoin)
         assert isinstance(keeper.collateral_join, BasicCollateralJoin)
 
+    @pytest.mark.skip("collateral-type has default for now")
     def test_collateral_keeper_negative(self, web3, keeper_address: Address):
         with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -203,6 +204,7 @@ class TestConfig:
         assert isinstance(keeper.liquidation_engine, LiquidationEngine)
         assert isinstance(keeper.accounting_engine, AccountingEngine)
 
+    @pytest.mark.skip("--from-block now has a default")
     def test_debt_keeper_negative(self, web3, keeper_address: Address):
         with pytest.raises(RuntimeError) as e:
             AuctionKeeper(args=args(f"--eth-from {keeper_address} "
@@ -273,12 +275,6 @@ class TestConfig:
         assert settle_all.settle_all
 
     def test_shouldnt_need_safe_history_when_only_bidding(self, web3, keeper_address: Address):
-        with pytest.raises(RuntimeError) as e:
-            AuctionKeeper(args=args(f"--eth-from {keeper_address} "
-                                    f"--type collateral "
-                                    f"--collateral-type ETH-A "
-                                    f"--model ./bogus-model.sh"), web3=web3)
-
         keeper = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                          f"--type collateral "
                                          f"--collateral-type ETH-A "

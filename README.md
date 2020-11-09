@@ -16,14 +16,9 @@ The keeper can be safely left running in background. The moment it notices or st
 
 This project uses *Python 3.6.6*.
 
-In order to clone the project and install required third-party packages please execute:
-```
-git clone https://github.com/reflexer-labs/auction-keeper.git
-cd auction-keeper
-git submodule update --init --recursive
-./install.sh
-source _virtualenv/bin/activate
-```
+Modify `run_auction_keeper.sh` with your `ETH_RPC_URL`, `KEEPER_ADDRESS`, `KEYSTORE_DIR` and `KEYSTORE_FILE` values.
+
+Then, `./run_auction_keeper.sh`
 
 ## Quickstart for Fixed Discount Collateral Auctions
 
@@ -31,37 +26,28 @@ source _virtualenv/bin/activate
 
 Buy RAI from [Uniswap v2](https://info.uniswap.org/pair/0xEBdE9F61e34B7aC5aAE5A4170E964eA85988008C) or open a SAFE and generate some RAI.
 
-### 2) Create a simple null bidding model in `model.sh`
+### 2) Run collateral auction-keeper
 
-Bidders of fixed discount auctions don't need to determine the price. They simply receive collateral at a fixed discount that's set in the auction smart contract. For debt and surplus auctions, the model will bid using a specific price. On the other hand, fixed discount collateral auctions do not need a price.
+After adding your values from above, `./run_auction_keeper.sh`
 
-For collateral auctions, put this in `model.sh`:
-```
-#!/usr/bin/env bash
-while true; do
-  echo "{}"
-  sleep 120                   
-done
-```
-
-And then execute `chmod +x model.sh`.
-
-### 3) Run collateral auction-keeper
-
-This will start a collateral `auction-keeper` for collateral type `ETH-A` using `model.sh` as the bidding model. The keeper will use the Ethereum node at
+This will start a collateral `auction-keeper` for collateral type `ETH-A`. The keeper will use the Ethereum node at
 `--rpc-host` and use the `--eth-from` Ethereum account, from keystore `--eth-key`.  The keystore password will be required upon startup.
 `ALL` system coins owned by `--eth-from` will be `join`ed and available for bidding on fixed discount auctions. By default, collateral won in auctions will be `exit`ed to your account upon keeper exit.
+
+#### Sample `run_auction_keeper.sh`
 ```
-bin/auction-keeper \
+docker run -it \
+        -v /my_keystore_dir:/keystore \
+        reflexer/auction-keeper \
         --type collateral \
-        --collateral-type ETH-A \
-        --rpc-host http://127.0.0.1:8545 \
-        --eth-from 0x12a70C78bc500FF8fe98Af7D84d443f875D047a8F \
-        --eth-key "key_file=keystore.json" \
-        --model ./model.sh \
-        --from-block 11120953 \
-        --safe-engine-system-coin-target 'ALL'
+        --rpc-uri http://localhost:8545 \
+        --eth-from 0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8 \
+        --eth-key "key_file=/keystore/my_key.json" \
+        --safe-engine-system-coin-target ALL \
+        --graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/prai-mainnet,https://subgraph.reflexer.finance/subgraphs/name/reflexer-
+labs/rai
 ```
+**NOTE**: If using the Infura free-tier and you wish to stay under the 100k requests/day quota, add `--block-check-interval 10` and `--bid-check-interval 60` to `run_auction_keeper.sh`. However, this will make your keeper slower in responding to collateral auctions.
 
 ## Architecture
 
@@ -380,8 +366,13 @@ to settle auctions for all participants, `ALL` is also supported.
 This project uses [pytest](https://docs.pytest.org/en/latest/) for unit testing.  Testing depends upon on a Dockerized
 local testchain included in `lib\pyflex\tests\config`.
 
-In order to be able to run tests, please install development dependencies first by executing:
+In order to be able to run tests:
 ```
+git clone https://github.com/reflexer-labs/auction-keeper.git
+cd auction-keeper
+git submodule update --init --recursive
+./install.sh
+source _virtualenv/bin/activate
 pip3 install -r requirements-dev.txt
 ```
 
