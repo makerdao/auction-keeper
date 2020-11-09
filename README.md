@@ -20,8 +20,8 @@ Buy RAI from [Uniswap v2](https://info.uniswap.org/pair/0xEBdE9F61e34B7aC5aAE5A4
 
 ### 2) Run collateral auction-keeper
 
-Modify `run_auction_keeper.sh` with your `ETH_RPC_UR`L, `KEEPER_ADDRESS`, `KEYSTORE_DIR` and `KEYSTORE_FIL`E values.
-Then `./run_auction_keeper.sh`
+Modify `run_auction_keeper.sh` with your `ETH_RPC_URL`, `KEEPER_ADDRESS`, `KEYSTORE_DIR` and `KEYSTORE_FILE` values.
+Then, `./run_auction_keeper.sh`
 
 This will start a collateral `auction-keeper` for collateral type `ETH-A`. The keeper will use the Ethereum node at
 `--rpc-host` and use the `--eth-from` Ethereum account, from keystore `--eth-key`.  The keystore password will be required upon startup.
