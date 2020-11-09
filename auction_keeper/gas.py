@@ -73,7 +73,7 @@ class DynamicGasPrice(NodeAwareGasPrice):
             if self.fixed_gas:
                 initial_price = self.fixed_gas
             else:
-                initial_price = self.get_node_gas_price()
+                initial_price = int(round(self.get_node_gas_price() * self.initial_multiplier))
         # otherwise, use the API's fast price, adjusted by a coefficient, as our starting point
         else:
             initial_price = int(round(fast_price * self.initial_multiplier))
@@ -90,7 +90,7 @@ class DynamicGasPrice(NodeAwareGasPrice):
             retval = f"Fixed gas price {round(self.fixed_gas / self.GWEI, 1)} Gwei "
         else:
             retval = f"Node gas price (currently {round(self.get_node_gas_price() / self.GWEI, 1)} Gwei, "\
-                     "changes over time) "
+                     f"changes over time) with initial multiplier {self.initial_multiplier} "
 
         retval += f"and will multiply by {self.reactive_multiplier} every {DynamicGasPrice.every_secs}s " \
                   f"to a maximum of {round(self.gas_maximum / self.GWEI, 1)} Gwei"

@@ -199,10 +199,9 @@ Auction keeper can use one of several sources for the initial gas price of a tra
  `--ethgasstation-api-key MY_API_KEY` and `--etherscan-api-key MY_API_KEY`, as both API keys are currently free.  
  * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 33.3`).
 
-When using `--oracle-gas-price` for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the 
-initial aggregate gas price.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no
-initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price
-determined by your node.
+If neither `--oracle-gas-price` nor `--fixed-gas-price` is configured, or if gas oracles are not producing prices, 
+the keeper will choose a starting gas price determined by your node.  When not using `--fixed-gas-price`, 
+`--gas-initial-multiplier` (default `1.0`, or 100%) allows you to configure a more aggressive initial gas price.
 
 Auction keeper periodically attempts to increase gas price when transactions are queueing.  After a few blocks, a
 transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `1.125`, an increase of 12.5%)
