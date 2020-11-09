@@ -60,6 +60,7 @@ class SAFEHistory:
     def _get_safes(self, use_graph: bool = True) -> Dict[Address, SAFE]:
         start = datetime.now()
         safe_addresses = set()
+        mods = None
 
         # Get a unique list of safe addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
@@ -69,7 +70,7 @@ class SAFEHistory:
             # Cycle through list of graph endpoints until fetch succeeds
             while self.graph_endpoint_idx < len(self.graph_endpoints):
                 try:
-                    self.logger.debug(f"Getting safe mods from {self.graph_endpoints[self.graph_endpoint_idx]}")
+                    self.logger.info(f"Getting safe mods from {self.graph_endpoints[self.graph_endpoint_idx]}")
                     mods = self.get_past_safe_mods_from_graph(self.graph_endpoints[self.graph_endpoint_idx], from_block=from_block,
                                                               to_block=to_block, collateral_type=self.collateral_type)
                     fetched_graph = True
@@ -81,7 +82,7 @@ class SAFEHistory:
                     # update latest block
                     to_block = self.web3.eth.blockNumber
             if not fetched_graph:
-                raise RuntimeError(f"Unable to fetch graph data from {self.graph_endpoints}")
+                self.logger.warn(f"Unable to fetch graph data from any graph endpoints {self.graph_endpoints}")
 
             self.logger.debug(f"Retrieved {len(mods)} past safe mods from graph")
 

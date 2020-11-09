@@ -39,7 +39,7 @@ from pyflex.auctions import FixedDiscountCollateralAuctionHouse
 
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
-from auction_keeper.model import ModelFactory
+from auction_keeper.model import ModelFactory, Stance
 from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy
 from auction_keeper.strategy import FixedDiscountCollateralAuctionStrategy
 from auction_keeper.safe_history import SAFEHistory
@@ -60,9 +60,9 @@ class AuctionKeeper:
                             help="Ethereum account from which to send transactions")
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
-        parser.add_argument('--type', type=str, choices=['collateral', 'surplus', 'debt'],
+        parser.add_argument('--type', type=str, choices=['collateral', 'surplus', 'debt'], default='collateral',
                             help="Auction type in which to participate")
-        parser.add_argument('--collateral-type', type=str,
+        parser.add_argument('--collateral-type', type=str, default='ETH-A',
                             help="Name of the collateral type for a collateral keeper (e.g. 'ETH-B', 'ZRX-A'); ")
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
                             help="Do not take opportunities to create new auctions")
@@ -92,7 +92,7 @@ class AuctionKeeper:
                             help="Comma-delimited list of graph endpoints. When specified, safe history will be initialized "
                                  "from a Graph node, reducing load on the Ethereum node for collateral auctions. "
                                  "If multiple nodes are passed, they will be tried in order")
-        parser.add_argument('--from-block', type=int,
+        parser.add_argument('--from-block', type=int, default=11120952,
                             help="Starting block from which to find vaults to liquidation or debt to queue "
                                  "(set to block where GEB was deployed)")
         parser.add_argument('--safe-engine-system-coin-target', type=str,
@@ -197,7 +197,7 @@ class AuctionKeeper:
         if self.arguments.model:
             model_command = ' '.join(self.arguments.model)
         else:
-            if self.arguments.bid_on_auctions:
+            if self.arguments.bid_on_auctions and not isinstance(self.collateral_auction_house, FixedDiscountCollateralAuctionHouse):
                 raise RuntimeError("--model must be specified to bid on auctions")
             else:
                 model_command = ":"
@@ -360,6 +360,7 @@ class AuctionKeeper:
         started = datetime.now()
         collateral_type = self.safe_engine.collateral_type(self.collateral_type.name)
         rate = collateral_type.accumulated_rate
+
         available_system_coin = self.geb.system_coin.balance_of(self.our_address) + Wad(self.safe_engine.coin_balance(self.our_address))
 
         # Look for critical safes and liquidate them

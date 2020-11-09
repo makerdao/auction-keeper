@@ -13,4 +13,3 @@ pip install $(cat requirements.txt $(find lib -name requirements.txt | sort) | s
 #pip install -r lib/pyflex/requirements.txt
 #pip install -r lib/pygasprice-client/requirements.txt
 #pip install -r requirements.txt
-
