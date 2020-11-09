@@ -40,7 +40,8 @@ from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
-from auction_keeper.urn_history import UrnHistory
+from auction_keeper.urn_history import ChainUrnHistoryProvider
+from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
 
 
 class AuctionKeeper:
@@ -172,8 +173,13 @@ class AuctionKeeper:
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
             self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
             if self.arguments.create_auctions:
-                self.urn_history = UrnHistory(self.web3, self.mcd, self.ilk, self.arguments.from_block,
-                                              self.arguments.vulcanize_endpoint, self.arguments.vulcanize_key)
+                if self.arguments.vulcanize_endpoint:
+                    self.urn_history = VulcanizeUrnHistoryProvider(self.mcd, self.ilk,
+                                                                   self.arguments.vulcanize_endpoint,
+                                                                   self.arguments.vulcanize_key)
+                else:
+                    self.urn_history = ChainUrnHistoryProvider(self.web3, self.mcd, self.ilk, self.arguments.from_block)
+
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
         elif self.flopper:
