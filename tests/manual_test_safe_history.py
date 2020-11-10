@@ -50,10 +50,8 @@ def wait(minutes_to_wait: int, sh: SAFEHistory):
         print(f"Testing cache for another {minutes_to_wait:.2f} minutes")
         state_update_started = datetime.now()
         sh.get_safes()
-        #minutes_elapsed = int((datetime.now() - state_update_started).seconds / 60)
         minutes_elapsed = (datetime.now() - state_update_started).seconds / 60
         minutes_to_wait -= minutes_elapsed
-
 
 # Retrieve data from chain
 started = datetime.now()
@@ -72,7 +70,6 @@ sh = SAFEHistory(web3, geb, collateral_type, from_block, GRAPH_ENDPOINTS)
 safes_graph = sh.get_safes()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(safes_graph)} safes from the Graph in {elapsed.seconds} seconds")
-
 
 wait(1, sh)
 
