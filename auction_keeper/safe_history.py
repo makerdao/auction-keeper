@@ -60,7 +60,7 @@ class SAFEHistory:
     def _get_safes(self, use_graph: bool = True) -> Dict[Address, SAFE]:
         start = datetime.now()
         safe_addresses = set()
-        mods = None
+        mods = []
 
         # Get a unique list of safe addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
