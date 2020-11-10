@@ -18,7 +18,7 @@
 import json
 import logging
 import requests
-from datetime import datetime
+from eth_utils import to_checksum_address
 from typing import Dict
 
 from pymaker import Address, Wad
@@ -45,13 +45,18 @@ class TokenFlowUrnHistoryProvider(UrnHistoryProvider):
         for item in data:
             urn = self.urn_from_tokenflow_item(item)
             self.cache[urn.address] = urn
+
+        # REMOVE BEFORE FLIGHT
+        from pprint import pprint
+        pprint(data)
+
         return self.cache
 
     def urn_from_tokenflow_item(self, item: dict) -> Urn:
         assert isinstance(item, dict)
 
-        address = Address(item['owner'])
-        ink = Wad(int(item['collateral']))
-        art = Wad(int(item['debt']))
+        address = Address(to_checksum_address(item['owner']))
+        ink = Wad.from_number(float(item['collateral']))
+        art = Wad.from_number(float(item['debt']))
 
         return Urn(address, self.ilk, ink, art)

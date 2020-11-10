@@ -37,70 +37,88 @@ logging.getLogger("requests").setLevel(logging.INFO)
 web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs={"timeout": 240}))
 vulcanize_endpoint = os.environ["VULCANIZE_URL"]
 vulcanize_key = os.environ["VULCANIZE_APIKEY"]
+tokenflow_endpoint = os.environ['TOKENFLOW_URL']
 mcd = DssDeployment.from_node(web3)
 collateral_type = sys.argv[1] if len(sys.argv) > 1 else "ETH-A"
 ilk = mcd.collaterals[collateral_type].ilk
 # on mainnet, use 8928152 for ETH-A/BAT-A; for others, use the block when the join contract was deployed/enabled
-from_block = int(sys.argv[2]) if len(sys.argv) > 2 else 8928152
+from_block = int(sys.argv[2]) if len(sys.argv) > 2 else None
+urns_chain = None
+urns_vdb = None
+urns_tf = None
 
 
-# Retrieve data from
-started = datetime.now()
-print(f"Connecting to {vulcanize_endpoint}...")
-uh = TokenFlowUrnHistoryProvider(mcd, ilk, os.environ['TOKENFLOW_URL'])
-urns_tf = uh.get_urns()
-elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_tf)} urns from TokenFlow in {elapsed.seconds} seconds")
-
-# # Retrieve data from chain
-# started = datetime.now()
-# print(f"Connecting to {sys.argv[1]}...")
-# uh = ChainUrnHistoryProvider(web3, mcd, ilk, from_block)
-# urns_logs = uh.get_urns()
-# elapsed: timedelta = datetime.now() - started
-# print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
-
+# Retrieve data from chain
+if from_block:
+    started = datetime.now()
+    print(f"Connecting to {sys.argv[1]}...")
+    uh = ChainUrnHistoryProvider(web3, mcd, ilk, from_block)
+    urns_chain = uh.get_urns()
+    elapsed: timedelta = datetime.now() - started
+    print(f"Found {len(urns_chain)} urns from block {from_block} in {elapsed.seconds} seconds")
+    assert len(urns_chain) > 0
 
 # Retrieve data from Vulcanize
-started = datetime.now()
-print(f"Connecting to {vulcanize_endpoint}...")
-uh = VulcanizeUrnHistoryProvider(mcd, ilk, vulcanize_endpoint, vulcanize_key)
-urns_vdb = uh.get_urns()
-elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
-exit(0)
+if vulcanize_endpoint:
+    started = datetime.now()
+    print(f"Connecting to {vulcanize_endpoint}...")
+    uh = VulcanizeUrnHistoryProvider(mcd, ilk, vulcanize_endpoint, vulcanize_key)
+    urns_vdb = uh.get_urns()
+    elapsed: timedelta = datetime.now() - started
+    print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+    assert len(urns_vdb) > 0
+
+# Retrieve data from TokenFlow
+assert tokenflow_endpoint
+if tokenflow_endpoint:
+    started = datetime.now()
+    print(f"Connecting to {tokenflow_endpoint}...")
+    uh = TokenFlowUrnHistoryProvider(mcd, ilk, tokenflow_endpoint)
+    urns_tf = uh.get_urns()
+    elapsed: timedelta = datetime.now() - started
+    print(f"Found {len(urns_tf)} urns from TokenFlow in {elapsed.seconds} seconds")
+    assert len(urns_tf) > 0
 
 
-# Reconcile the data
-mismatches = 0
-missing = 0
-total_art_logs = 0
-total_art_vdb = 0
-csv = "Urn,ChainInk,ChainArt,VulcanizeInk,VulcanizeArt\n"
+def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
+    mismatches = 0
+    missing = 0
+    total_art_left = 0
+    total_art_right = 0
+    csv = f"Urn,{left_name}Ink,{left_name}Art,{right_name}Ink,{right_name}Art\n"
 
-for key, value in urns_logs.items():
-    assert value.ilk.name == ilk.name
-    if key in urns_vdb:
-        if value.ink != urns_vdb[key].ink or value.art != urns_vdb[key].art:
-            csv += f"{key.address},{value.ink},{value.art},{urns_vdb[key].ink},{urns_vdb[key].art}\n"
-            mismatches += 1
-    else:
-        print(f"vdb is missing urn {key}")
-        csv += f"{key.address},{value.ink},{value.art},,\n"
-        missing += 1
-    total_art_logs += float(value.art)
+    for key, value in left.items():
+        assert value.ilk.name == ilk.name
+        if key in right:
+            if value.ink != right[key].ink or value.art != right[key].art:
+                csv += f"{key.address},{value.ink},{value.art},{right[key].ink},{right[key].art}\n"
+                mismatches += 1
+        else:
+            # print(f"{right_name} is missing urn {key}")
+            csv += f"{key.address},{value.ink},{value.art},,\n"
+            missing += 1
+        total_art_left += float(value.art)
+    
+    for key, value in right.items():
+        assert value.ilk.name == ilk.name
+        if key not in left:
+            # print(f"{left_name} is missing urn {key}")
+            csv += f"{key.address},,,{value.ink},{value.art}\n"
+            missing += 1
+        total_art_right += float(value.art)
 
-for key, value in urns_vdb.items():
-    assert value.ilk.name == ilk.name
-    if key not in urns_logs:
-        print(f"logs is missing urn {key}")
-        missing += 1
-    total_art_vdb += float(value.art)
+    with open(f"urn-reconciliation-{collateral_type}.csv", "w") as file:
+        file.write(csv)
 
-with open(f"urn-reconciliation-{collateral_type}.csv", "w") as file:
-    file.write(csv)
+    total = max(len(left), len(right))
+    print(f'Observed {mismatches} mismatched urns ({mismatches/total:.0%}) and '
+          f'{missing} missing urns ({missing/total:.0%})')
+    print(f"Total art from {left_name}: {total_art_left}, from {right_name}: {total_art_right}")
 
-total = max(len(urns_vdb), len(urns_logs))
-print(f'Observed {mismatches} mismatched urns ({mismatches/total:.0%}) and '
-      f'{missing} missing urns ({missing/total:.0%})')
-print(f"Total art from logs: {total_art_logs}, from vdb: {total_art_vdb}")
+
+if from_block:
+    reconcile(urns_chain, urns_vdb, "Chain", "TokenFlow")
+elif urns_tf:
+    reconcile(urns_vdb, urns_tf, "Vulcanize", "TokenFlow")
+else:
+    reconcile(urns_chain, urns_vdb, "Chain", "Vulcanize")
