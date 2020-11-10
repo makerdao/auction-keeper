@@ -96,11 +96,11 @@ At the same time, the `auction-keeper` reads one-line messages from the **standa
 process and tries to parse them as JSON documents. Then it extracts two fields from that document:
 * `price` - the maximum (for `flip` and `flop` auctions) or the minimum (for `flap` auctions) price
   the model is willing to bid.
-* `gasPrice` (optional) - gas price in Wei to use when sending the bid.
+* `gasPrice` (deprecated) - gas price in Wei to use when sending the bid.
 
 A sample message sent from the model to the keeper may look like:
 ```json
-{"price": "750.0", "gasPrice": 7000000000}
+{"price": "750.0"}
 ```
 
 Whenever the keeper and the model communicate in terms of prices, it is the MKR/DAI price (for `flap`
@@ -195,27 +195,24 @@ governance process.  A complete list of `ilk`s for a deployment may be gleaned f
 ## Gas price strategy
 
 Auction keeper can use one of several sources for the initial gas price of a transaction:  
- * **Ethgasstation** if a key is passed as `--ethgasstation-api-key` (e.g. `--ethgasstation-api-key MY_API_KEY`)  
- * **Etherchain.org** if keeper started with `--etherchain-gas-price` switch  
- * **POANetwork** if keeper started with `--poanetwork-gas-price` switch. An alternate URL can be passed as `--poanetwork-url`,
-    that is useful when server hosted locally (e.g. `--poanetwork-url http://localhost:8000`)  
- * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 12.4`)
+ * The `--oracle-gas-price` switch will use a gas price aggregated across multiple gas oracles.  Recommend passing 
+ `--ethgasstation-api-key MY_API_KEY` and `--etherscan-api-key MY_API_KEY`, as both API keys are currently free.  
+ * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 33.3`).
 
-When using an API source for initial gas price, `--gas-initial-multiplier` (default `1.0`, or 100%) tunes the initial
-value provided by the API.  This is ignored when using `--fixed-gas-price` and when no strategy is chosen.  If no
-initial gas source is configured, or the gas price API produces no result, then the keeper will start with a price
-determined by your node.
+If neither `--oracle-gas-price` nor `--fixed-gas-price` is configured, or if gas oracles are not producing prices, 
+the keeper will choose a starting gas price determined by your node.  When not using `--fixed-gas-price`, 
+`--gas-initial-multiplier` (default `1.0`, or 100%) allows you to configure a more aggressive initial gas price.
 
-Auction keeper periodically attempts to increase gas price when transactions are queueing.  Every 30 seconds, a
+Auction keeper periodically attempts to increase gas price when transactions are queueing.  After a few blocks, a
 transaction's gas price will be multiplied by `--gas-reactive-multiplier` (default `1.125`, an increase of 12.5%)
 until it is mined or `--gas-maximum` (default 2000 Gwei) is reached.  
 Note that [Parity](https://wiki.parity.io/Transactions-Queue#dropping-conditions), as of this writing, requires a
 minimum gas increase of `1.125` to propagate transaction replacement; this should be treated as a minimum
-value unless you want replacements to happen less frequently than 30 seconds (2+ blocks).
+value unless you want replacements to happen less frequently.
 
 This gas strategy is used by keeper in all interactions with chain.  When sending a bid, this strategy is used only
 when the model does not provide a gas price.  Unless your price model is aware of your transaction status, it is
-generally advisable to allow the keeper to manage gas prices for bids, and not supply a `gasPrice` in your model.
+generally advisable to allow the keeper to manage gas prices for bids, and _not_ supply a `gasPrice` in your model.
 
 
 ### Accounting
