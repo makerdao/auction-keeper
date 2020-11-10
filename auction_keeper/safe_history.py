@@ -83,6 +83,9 @@ class SAFEHistory:
                     to_block = self.web3.eth.blockNumber
             if not fetched_graph:
                 self.logger.warn(f"Unable to fetch graph data from any graph endpoints {self.graph_endpoints}")
+                # If all endpoints have been tried, start from beginning next time
+                if self.graph_endpoint_idx == len(self.graph_endpoints):
+                    self.graph_endpoint_idx = 0
 
             self.logger.debug(f"Retrieved {len(mods)} past safe mods from graph")
 
