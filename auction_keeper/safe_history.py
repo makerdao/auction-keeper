@@ -95,8 +95,8 @@ class SAFEHistory:
             safe_addresses.add(mod.safe)
 
         # Update state of already-cached safes
-        for address, safe in self.cache.items():
-            self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
+        #for address, safe in self.cache.items():
+        #    self.cache[address] = self.geb.safe_engine.safe(self.collateral_type, address)
 
         # Cache state of newly discovered safes
         for address in safe_addresses:
