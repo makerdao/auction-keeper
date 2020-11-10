@@ -12,14 +12,6 @@ The purpose of `auction-keeper` is to:
 
 The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
 
-## Installation
-
-This project uses *Python 3.6.6*.
-
-Modify `run_auction_keeper.sh` with your `ETH_RPC_URL`, `KEEPER_ADDRESS`, `KEYSTORE_DIR` and `KEYSTORE_FILE` values.
-
-Then, `./run_auction_keeper.sh`
-
 ## Quickstart for Fixed Discount Collateral Auctions
 
 ### 1) Send RAI (aka system coins) to your keeper address
@@ -28,7 +20,9 @@ Buy RAI from [Uniswap v2](https://info.uniswap.org/pair/0xEBdE9F61e34B7aC5aAE5A4
 
 ### 2) Run collateral auction-keeper
 
-After adding your values from above, `./run_auction_keeper.sh`
+Modify `run_auction_keeper.sh` with your `ETH_RPC_URL`, `KEEPER_ADDRESS`, `KEYSTORE_DIR` and `KEYSTORE_FILE` values.
+
+Then, `./run_auction_keeper.sh`
 
 This will start a collateral `auction-keeper` for collateral type `ETH-A`. The keeper will use the Ethereum node at
 `--rpc-host` and use the `--eth-from` Ethereum account, from keystore `--eth-key`.  The keystore password will be required upon startup.
