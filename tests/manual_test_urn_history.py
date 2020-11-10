@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from web3 import Web3, HTTPProvider
 
 from auction_keeper.urn_history import ChainUrnHistoryProvider
+from auction_keeper.urn_history_tokenflow import TokenFlowUrnHistoryProvider
 from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
 from pymaker.deployment import DssDeployment
 
@@ -43,13 +44,21 @@ ilk = mcd.collaterals[collateral_type].ilk
 from_block = int(sys.argv[2]) if len(sys.argv) > 2 else 8928152
 
 
-# Retrieve data from chain
+# Retrieve data from
 started = datetime.now()
-print(f"Connecting to {sys.argv[1]}...")
-uh = ChainUrnHistoryProvider(web3, mcd, ilk, from_block)
-urns_logs = uh.get_urns()
+print(f"Connecting to {vulcanize_endpoint}...")
+uh = TokenFlowUrnHistoryProvider(mcd, ilk, os.environ['TOKENFLOW_URL'])
+urns_tf = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
-print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
+print(f"Found {len(urns_tf)} urns from TokenFlow in {elapsed.seconds} seconds")
+
+# # Retrieve data from chain
+# started = datetime.now()
+# print(f"Connecting to {sys.argv[1]}...")
+# uh = ChainUrnHistoryProvider(web3, mcd, ilk, from_block)
+# urns_logs = uh.get_urns()
+# elapsed: timedelta = datetime.now() - started
+# print(f"Found {len(urns_logs)} urns from block {from_block} in {elapsed.seconds} seconds")
 
 
 # Retrieve data from Vulcanize
@@ -59,6 +68,7 @@ uh = VulcanizeUrnHistoryProvider(mcd, ilk, vulcanize_endpoint, vulcanize_key)
 urns_vdb = uh.get_urns()
 elapsed: timedelta = datetime.now() - started
 print(f"Found {len(urns_vdb)} urns from Vulcanize in {elapsed.seconds} seconds")
+exit(0)
 
 
 # Reconcile the data
