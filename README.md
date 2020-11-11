@@ -268,8 +268,25 @@ two ways to retrieve the list of urns:
     will be queried back to the last cached block to detect new urns.  The state of all urns will be queried
     continuously (>6 minutes for ETH-A).  The following table suggests `--from-block` values based on when the `join`
     contract was deployed for some collateral types and chains.
+    
+    | Ilk    | Mainnet  | Kovan    |
+    | :------| :--------| :--------|
+    | ETH-A  | 8928176  | 14764566 |
+    | ETH-B  | 11049708 | 21497286 |
+    | BAT-A  | 8928185  | 14764576 |
+    | WBTC-A | 9975676  | 18270296 |
+    | ZRX-A  | 10323394 | 19243343 |
+    | KNC-A  | 10323392 | 19243288 |
+    | MANA-A | 10743862 | 19731368 |
+    | USDT-A | 10790625 | 20611963 |
+    | COMP-A | 10967218 | 20805417 |
+    | LRC-A  | 10950762 | 20149845 |
+    | LINK-A | 10950763 | 20957887 |
+    | BAL-A  | 11198616 | 21647334 |
+    | YFI-A  | 11198626 | 21678352 |
+    
 
-    ![example from blocks](README-from-block.png)
+    
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for
