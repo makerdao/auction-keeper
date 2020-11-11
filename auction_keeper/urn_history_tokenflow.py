@@ -55,8 +55,8 @@ class TokenFlowUrnHistoryProvider(UrnHistoryProvider):
     def urn_from_tokenflow_item(self, item: dict) -> Urn:
         assert isinstance(item, dict)
 
-        address = Address(to_checksum_address(item['owner']))
+        address = Address(to_checksum_address(item['urn']))
         ink = Wad.from_number(float(item['collateral']))
-        art = Wad.from_number(float(item['debt']))
+        art = Wad(item['art'])
 
         return Urn(address, self.ilk, ink, art)
