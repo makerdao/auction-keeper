@@ -285,8 +285,8 @@ two ways to retrieve the list of urns:
     | BAL-A  | 11198616 | 21647334 |
     | YFI-A  | 11198626 | 21678352 |
     
+ * **Subscribe to TokenFlow** market data, which is not yet in production.
 
-    
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for
@@ -333,12 +333,13 @@ configuration and reduces gas-wasting transactions.
 This keeper connects to the Ethereum network using [Web3.py](https://github.com/ethereum/web3.py) and interacts with
 the Dai Stablecoin System (DSS) using [pymaker](https://github.com/makerdao/pymaker).  A connection to an Ethereum node
 (`--rpc-host`) is required.  [Parity](https://www.parity.io/ethereum/) and [Geth](https://geth.ethereum.org/) nodes are
-supported over HTTP. Websocket endpoints are not supported by `pymaker`.  A _full_ or _archive_ node is required;
-_light_ nodes are not supported.
+supported over HTTP.  Web3.py's `WebsocketProvider` [does not support](https://github.com/ethereum/web3.py/issues/1413) 
+multiple threads awaiting a response from the websocket.  A _full_ or _archive_ node is required; _light_ nodes are not 
+supported.
 
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
-with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/). Infura is incompatible over HTTP, however, because it does not support the  `eth_newBlockFilter` RPC method, which is [utilized in](https://github.com/makerdao/pymaker/blob/master/pymaker/lifecycle.py#L351) pymaker.
-
+with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/).  When using 
+[Infura](https://infura.io/) and kicking off flip auctions, reduce `--chunk-size` to 1/10th of the default.
 
 ## Testing
 

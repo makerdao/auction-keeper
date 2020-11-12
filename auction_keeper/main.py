@@ -41,6 +41,7 @@ from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
 from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
 from auction_keeper.urn_history import ChainUrnHistoryProvider
+from auction_keeper.urn_history_tokenflow import TokenFlowUrnHistoryProvider
 from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
 
 
@@ -90,14 +91,17 @@ class AuctionKeeper:
         parser.add_argument('--shards', type=int, default=1,
                             help="Number of shards; should be one greater than your highest --shard-id")
 
-        parser.add_argument("--vulcanize-endpoint", type=str,
-                            help="When specified, urn history will be initialized from a VulcanizeDB node, "
-                                 "reducing load on the Ethereum node for flip auctions")
-        parser.add_argument("--vulcanize-key", type=str,
-                            help="API key for the Vulcanize endpoint")
         parser.add_argument('--from-block', type=int,
                             help="Starting block from which to find vaults to bite or debt to queue "
                                  "(set to block where MCD was deployed)")
+        parser.add_argument('--chunk-size', type=int, default=20000,
+                            help="When batching chain history requests, this is the number of blocks for each request")
+        parser.add_argument("--tokenflow-url", type=str,
+                            help="When specified, urn history will be initialized using the TokenFlow API")
+        parser.add_argument("--tokenflow-key", type=str, help="API key for the TokenFlow endpoint")
+        parser.add_argument("--vulcanize-endpoint", type=str,
+                            help="When specified, urn history will be initialized from a VulcanizeDB node")
+        parser.add_argument("--vulcanize-key", type=str, help="API key for the Vulcanize endpoint")
 
         parser.add_argument('--vat-dai-target', type=str,
                             help="Amount of Dai to keep in the Vat contract or ALL to join entire token balance")
@@ -139,9 +143,11 @@ class AuctionKeeper:
 
         # Check configuration for retrieving urns/bites
         if self.arguments.type == 'flip' and self.arguments.create_auctions \
-                and self.arguments.from_block is None and self.arguments.vulcanize_endpoint is None:
-            raise RuntimeError("Either --from-block or --vulcanize-endpoint must be specified to kick off "
-                               "flip auctions")
+                and self.arguments.from_block is None \
+                and self.arguments.tokenflow_url is None \
+                and self.arguments.vulcanize_endpoint is None:
+            raise RuntimeError("One of --from-block, --tokenflow_url, or --vulcanize-endpoint must be specified "
+                               "to bite and kick off new flip auctions")
         if self.arguments.type == 'flip' and not self.arguments.ilk:
             raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
         if self.arguments.type == 'flop' and self.arguments.create_auctions \
@@ -177,8 +183,13 @@ class AuctionKeeper:
                     self.urn_history = VulcanizeUrnHistoryProvider(self.mcd, self.ilk,
                                                                    self.arguments.vulcanize_endpoint,
                                                                    self.arguments.vulcanize_key)
+                elif self.arguments.tokenflow_url:
+                    self.urn_history = TokenFlowUrnHistoryProvider(self.web3, self.mcd, self.ilk,
+                                                                   self.arguments.tokenflow_url,
+                                                                   self.arguments.chunk_size)
                 else:
-                    self.urn_history = ChainUrnHistoryProvider(self.web3, self.mcd, self.ilk, self.arguments.from_block)
+                    self.urn_history = ChainUrnHistoryProvider(self.web3, self.mcd, self.ilk,
+                                                               self.arguments.from_block, self.arguments.chunk_size)
 
         elif self.flapper:
             self.strategy = FlapperStrategy(self.flapper, self.mkr.address)

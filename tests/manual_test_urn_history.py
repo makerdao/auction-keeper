@@ -73,7 +73,7 @@ assert tokenflow_endpoint
 if tokenflow_endpoint:
     started = datetime.now()
     print(f"Connecting to {tokenflow_endpoint}...")
-    uh = TokenFlowUrnHistoryProvider(mcd, ilk, tokenflow_endpoint)
+    uh = TokenFlowUrnHistoryProvider(web3, mcd, ilk, tokenflow_endpoint)
     urns_tf = uh.get_urns()
     elapsed: timedelta = datetime.now() - started
     print(f"Found {len(urns_tf)} urns from TokenFlow in {elapsed.seconds} seconds")

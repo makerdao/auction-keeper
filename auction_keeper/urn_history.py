@@ -41,12 +41,14 @@ class UrnHistoryProvider:
 
 
 class ChainUrnHistoryProvider(UrnHistoryProvider):
-    def __init__(self, web3: Web3, mcd: DssDeployment, ilk: Ilk, from_block: int):
+    def __init__(self, web3: Web3, mcd: DssDeployment, ilk: Ilk, from_block: int, chunk_size=20000):
         assert isinstance(from_block, int)
+        assert isinstance(chunk_size, int)
         super().__init__(ilk)
         self.web3 = web3
         self.mcd = mcd
         self.cache_block = from_block
+        self.chunk_size = chunk_size
 
     def get_urns(self) -> Dict[Address, Urn]:
         start = datetime.now()
@@ -55,7 +57,8 @@ class ChainUrnHistoryProvider(UrnHistoryProvider):
         # Get a unique list of urn addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
-        frobs = self.mcd.vat.past_frobs(from_block=from_block, to_block=to_block, ilk=self.ilk)
+        frobs = self.mcd.vat.past_frobs(from_block=from_block, to_block=to_block, ilk=self.ilk,
+                                        chunk_size=self.chunk_size)
         for frob in frobs:
             urn_addresses.add(frob.urn)
 
