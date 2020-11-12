@@ -862,9 +862,16 @@ class AuctionKeeper:
             return
 
         self.logger.info(f"Swapping {str(safe_engine_balance)} {self.collateral_type.name} for system coin on Uniswap")
+        self.logger.info(f"system coin balance before swap {self.geb.system_coin.balance_of(self.our_address)}")
+        self.logger.info(f"collateral token {self.collateral.collateral.address}")
+        self.logger.info(f"{self.our_address} collateral token balance before swap: {self.collateral.collateral.balance_of(self.our_address)}")
         exchange_rate = self.syscoin_eth_uniswap.get_exchange_rate()
         min_amount_out = collateral_amount / exchange_rate * (Wad.from_number(1) - Wad.from_number(self.arguments.max_swap_slippage))
-        assert self.syscoin_eth_uniswap.swap_exact_eth_for_tokens(collateral_amount, min_amount_out, self.weth_syscoin_path).transact()
+        assert self.collateral.collateral.withdraw(collateral_amount).transact()
+        if not self.syscoin_eth_uniswap.swap_exact_eth_for_tokens(collateral_amount, min_amount_out, self.weth_syscoin_path).transact():
+            self.logger.warn(f"Unable to swap collateral for syscoin with less than {self.arguments.max_swap_slippage} slippage")
+        self.logger.info(f"system coin balance after swap {self.geb.system_coin.balance_of(self.our_address)}")
+        self.logger.info(f"{self.our_address} collateral token balance after swap: {self.collateral.collateral.balance_of(self.our_address)}")
 
     @staticmethod
     def _run_future(future):

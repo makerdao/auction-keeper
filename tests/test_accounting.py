@@ -386,16 +386,17 @@ class TestRebalance(TestSAFEEngineSystemCoin):
 
         self.give_away_system_coin()
 
-class TestCollateralSwap(TestSAFEEngineSystemCoin):
+#@pytest.mark.skip("")  
+class TestSwapCollateral(TestSAFEEngineSystemCoin):
     def create_keeper(self, mocker, system_coin_target="all"):
         # Create a keeper
         mocker.patch("web3.net.Net.peer_count", return_value=1)
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type collateral --collateral-type ETH-C --bid-only "
+                                         f"--type collateral --collateral-type ETH-B --bid-only "
                                          f"--safe-engine-system-coin-target {system_coin_target} "
                                          f"--return-collateral-interval 3 "
                                          f"--swap-collateral "
-                                         f"--max-swap-slippage 0.20 "
+                                         f"--max-swap-slippage 0.05 "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
         assert self.web3.eth.defaultAccount == self.keeper_address.address
         self.web3 = self.keeper.web3
@@ -429,97 +430,123 @@ class TestCollateralSwap(TestSAFEEngineSystemCoin):
 
         assert self.get_system_coin_safe_engine_balance() == Wad(0)
 
-    @pytest.mark.timeout(60)
-    def test_balance_added_after_startup(self, mocker):
-        try:
-            # given collateral balances after starting keeper
-            token_balance_before = self.get_system_coin_token_balance()
-            self.create_keeper(mocker)
-            time.sleep(6)  # wait for keeper to join everything on startup
-            safe_engine_balance_before = self.get_system_coin_safe_engine_balance()
-            assert self.get_system_coin_token_balance() == Wad(0)
-            assert safe_engine_balance_before == Wad(0)
-
-            # when adding SystemCoin
-            purchase_system_coin(Wad.from_number(77), self.keeper_address)
-            assert self.get_system_coin_token_balance() == Wad.from_number(77)
-            # and pretending there's a bid which requires SystemCoin
-            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
-            assert self.keeper.check_bid_cost(id=1, cost=Rad.from_number(20), reservoir=reservoir)
-
-            # then ensure all SystemCoin is joined
-            assert self.get_system_coin_token_balance() == Wad(0)
-            assert self.get_system_coin_safe_engine_balance() == Wad.from_number(77)
-
-            # when adding more SystemCoin and pretending there's a bid we cannot cover
-            purchase_system_coin(Wad.from_number(23), self.keeper_address)
-            assert self.get_system_coin_token_balance() == Wad.from_number(23)
-            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
-            assert not self.keeper.check_bid_cost(id=2, cost=Rad(Wad.from_number(120)), reservoir=reservoir)
-
-            # then ensure the added SystemCoin was joined anyway
-            assert self.get_system_coin_token_balance() == Wad(0)
-            assert self.get_system_coin_safe_engine_balance() == Wad.from_number(100)
-
-        finally:
-            self.shutdown_keeper()
-            self.give_away_system_coin()
-
-    @pytest.mark.timeout(600)
-    def test_fixed_system_coin_target(self, mocker):
-        try:
-            # given a keeper configured to maintained a fixed amount of SystemCoin
-            target = Wad.from_number(100)
-            purchase_system_coin(target * 2, self.keeper_address)
-            assert self.get_system_coin_token_balance() == Wad.from_number(200)
-
-            self.create_keeper(mocker, target)
-            time.sleep(6)  # wait for keeper to join 100 on startup
-            safe_engine_balance_before = self.get_system_coin_safe_engine_balance()
-            assert safe_engine_balance_before == target
-
-            # when spending SystemCoin
-            assert self.keeper.system_coin_join.exit(self.keeper_address, Wad.from_number(22)).transact()
-            assert self.get_system_coin_safe_engine_balance() == Wad.from_number(78)
-            # and pretending there's a bid which requires more SystemCoin
-            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
-            assert self.keeper.check_bid_cost(id=3, cost=Rad.from_number(79), reservoir=reservoir)
-
-            # then ensure SystemCoin was joined up to the target
-            assert self.get_system_coin_safe_engine_balance() == target
-
-            # when pretending there's a bid which we have plenty of SystemCoin to cover
-            reservoir = Reservoir(self.keeper.safe_engine.coin_balance(self.keeper_address))
-            assert self.keeper.check_bid_cost(id=4, cost=Rad(Wad.from_number(1)), reservoir=reservoir)
-
-            # then ensure SystemCoin levels haven't changed
-            assert self.get_system_coin_safe_engine_balance() == target
-
-        finally:
-            self.shutdown_keeper()
-
     @pytest.mark.timeout(30)
-    def test_collateral_removal(self, mocker):
+    def test_swap_collateral(self, mocker):
         try:
-            # given a keeper configured to return all collateral upon rebalance
+            # Starting collateral balances
             token_balance_before = self.get_collateral_token_balance()
             safe_engine_balance_before = self.get_collateral_safe_engine_balance()
+
+            # Start keeper
             self.create_keeper(mocker)
             time.sleep(6)  # wait for keeper to startup
+
+            # Collateral balances are unchanged after keeper startup
             assert self.get_collateral_token_balance() == token_balance_before
             assert self.get_collateral_safe_engine_balance() == safe_engine_balance_before
+            
+            # Keeper's starting syscoin balance
+            syscoin_balance_before = self.geb.system_coin.balance_of(self.keeper_address)
+
+            # when some ETH was wrapped and joined
+            wrap_eth(self.geb, self.keeper_address, Wad.from_number(1))
+            token_balance = self.get_collateral_token_balance()
+            assert token_balance > Wad(0)
+            self.collateral.adapter.join(self.keeper_address, Wad.from_number(1)).transact()
+            assert self.get_collateral_safe_engine_balance() == safe_engine_balance_before + Wad.from_number(1)
+
+            # then wait to ensure collateral was exited and swapped automatically
+            time.sleep(4)
+            # collateral exited
+            assert self.get_collateral_safe_engine_balance() == Wad(0)
+            # collateral withdrawn to ETH
+            assert self.get_collateral_token_balance() == token_balance - Wad.from_number(1)
+            # collateral swapped for syscoin
+            assert self.geb.system_coin.balance_of(self.keeper_address) > syscoin_balance_before
+
+        finally:
+            self.shutdown_keeper()
+
+        self.give_away_system_coin()
+
+@pytest.mark.skip("")  
+class TestSwapCollateralSlippage(TestSAFEEngineSystemCoin):
+    def create_keeper(self, mocker, system_coin_target="all"):
+        # Create a keeper
+        mocker.patch("web3.net.Net.peer_count", return_value=1)
+        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                         f"--type collateral --collateral-type ETH-B --bid-only "
+                                         f"--safe-engine-system-coin-target {system_coin_target} "
+                                         f"--return-collateral-interval 3 "
+                                         f"--swap-collateral "
+                                         f"--max-swap-slippage 0.00001 "
+                                         f"--model ./bogus-model.sh"), web3=self.web3)
+        assert self.web3.eth.defaultAccount == self.keeper_address.address
+        self.web3 = self.keeper.web3
+        self.geb = self.keeper.geb
+        assert self.keeper.auctions
+        # Changed the collateral to ETH-C because our testchain didn't have dust set for ETH-A or ETH-B
+        self.collateral = self.keeper.collateral
+        self.collateral.approve(self.keeper_address)
+
+        self.thread = threading.Thread(target=self.keeper.main, daemon=True)
+        self.thread.start()
+        return self.keeper
+
+    def shutdown_keeper(self):
+        self.keeper.shutdown()  # HACK: Lifecycle doesn't invoke this as expected
+        self.keeper.lifecycle.terminate("unit test completed")
+        self.thread.join()
+
+        # HACK: Lifecycle leaks threads; this needs to be fixed in pyflex
+        import ctypes
+        while threading.active_count() > 1:
+            for thread in threading.enumerate():
+                if thread is not threading.current_thread():
+                    print(f"Attempting to kill thread {thread}")
+                    sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
+                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
+                    time.sleep(1)
+
+        # Ensure we don't leak threads, which would break wait_for_other_threads() later on
+        assert threading.active_count() == 1
+
+        assert self.get_system_coin_safe_engine_balance() == Wad(0)
+
+    @pytest.mark.timeout(30)
+    def test_swap_collateral(self, mocker):
+        try:
+            # Starting collateral balances
+            token_balance_before = self.get_collateral_token_balance()
+            safe_engine_balance_before = self.get_collateral_safe_engine_balance()
+
+            # Start keeper
+            self.create_keeper(mocker)
+            time.sleep(6)  # wait for keeper to startup
+
+            # Collateral balances are unchanged after keeper startup
+            assert self.get_collateral_token_balance() == token_balance_before
+            assert self.get_collateral_safe_engine_balance() == safe_engine_balance_before
+            
+            # Keeper's starting syscoin balance
+            syscoin_balance_before = self.geb.system_coin.balance_of(self.keeper_address)
 
             # when some ETH was wrapped and joined
             wrap_eth(self.geb, self.keeper_address, Wad.from_number(1.53))
             token_balance = self.get_collateral_token_balance()
             assert token_balance > Wad(0)
             self.collateral.adapter.join(self.keeper_address, token_balance).transact()
-            assert self.get_collateral_safe_engine_balance() == safe_engine_balance_before + token_balance
 
-            # then wait to ensure collateral was exited automatically
+            # then wait to ensure collateral was exited but not swapped due to slippage
             time.sleep(4)
+            # collateral exited
             assert self.get_collateral_safe_engine_balance() == Wad(0)
-            assert self.get_collateral_token_balance() == token_balance_before
+            # collateral withdrawn to ETH
+            assert self.get_collateral_token_balance() == Wad(0)
+            # ETH not swapped for syscoin
+            assert not self.geb.system_coin.balance_of(self.keeper_address) > syscoin_balance_before
 
         finally:
             self.shutdown_keeper()
+
+        self.give_away_system_coin()
