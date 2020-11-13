@@ -1,7 +1,8 @@
 #!/bin/bash
 
 #CONFIG="testchain-value-english-governance-median-multisig-basic"
-CONFIG="testchain-value-fixed-discount-governance-median-multisig-basic"
+#CONFIG="testchain-value-fixed-discount-governance-median-multisig-basic"
+CONFIG="testchain-value-fixed-discount-uniswap-multisig-basic"
 while getopts :c:f: option
 do
 case "${option}"
@@ -25,7 +26,7 @@ docker-compose -f config/${CONFIG}.yml up -d
 sleep 2
 popd
 
-PYTHONPATH=$PYTHONPATH:./lib/pymaker:./lib/pygasprice-client:./lib/pyflex py.test \
+PYTHONPATH=$PYTHONPATH:./lib/pygasprice-client:./lib/pyflex:./lib/pyexchange py.test \
   --cov=auction_keeper --cov-report=term --cov-append \
   --log-format="%(asctime)s %(levelname)s %(message)s" --log-date-format="%H:%M:%S" \
   tests/${TEST_FILE}

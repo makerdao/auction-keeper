@@ -4,3 +4,6 @@
 [submodule "lib/pygasprice-client"]
 	path = lib/pygasprice-client
 	url = https://github.com/reflexer-labs/pygasprice-client.git
+[submodule "lib/pyexchange"]
+	path = lib/pyexchange
+	url = https://github.com/reflexer-labs/pyexchange.git

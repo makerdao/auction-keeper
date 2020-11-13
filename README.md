@@ -12,6 +12,8 @@ The purpose of `auction-keeper` is to:
 
 The keeper can be safely left running in background. The moment it notices or starts a new auction it will spawn a new instance of a _bidding model_ for it and then act according to its instructions. _Bidding models_ will be automatically terminated by the keeper the moment the auction expires.  The keeper can also settle expired auctions.
 
+**NOTE**: _Bidding models_ are only used for surplus and debt auctions, not collateral auctions.
+
 ## Quickstart for Fixed Discount Collateral Auctions
 
 ### 1) Send RAI (aka system coins) to your keeper address
@@ -85,18 +87,6 @@ Sample message sent from the keeper to the model looks like:
 {"id": "6", "surplus_auction_house": "0xf0afc3108bb8f196cf8d076c8c4877a4c53d4e7c", "bid_amount": "7.142857142857142857", "amount_to_sell": "10000.000000000000000000", "bid_increase": "1.050000000000000000", "high_bidder": "0x00531a10c4fbd906313768d277585292aa7c923a", "era": 1530530620, "bid_expiry": 1530541420, "auction_deadline": 1531135256, "price": "1400.000000000000000028"}
 ```
 
-#### Fixed discount auction status passed to bidding model
-
-The meaning of individual fields:
-* `id` - auction identifier.
-* `collateral_auction_house` - address of Fixed Discount Collateral Auction House
-* `amount_to_sell` - amount being currently auctioned
-* `amount_to_raise` - bid value which will cause the auction to settle
-* `sold_amount` - total collateral sold for this auction
-* `raised_amount` - total system coin raised from this auction
-* `block_time` - current time (in seconds since the UNIX epoch).
-* `auction_deadline` - time when the entire auction will expire.
-
 Bidding models should never make an assumption that messages will be sent only when auction state changes.
 
 At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the bidding model
@@ -106,15 +96,6 @@ process and tries to parse them as JSON documents. Then it extracts two fields f
 * `gasPrice` (optional) - gas price in Wei to use when sending the bid.
 
 ### Processing each bidding model output and submitting bids
-
-#### Sample model output for Fixed Discount Collateral Auction
-   **Collateral price is determined by the fixed discount percentage, so only `gasPrice` is supported for fixed discount
-     collateral auctions.**
-
-A sample message sent from the fixed discount model to the keeper may look like:
-```json
-{"gasPrice": 70000000000}
-```
 
 #### Sample model output from Debt Auction bidding model
 
@@ -139,24 +120,24 @@ This is the most convenient way of implementing logging from _bidding models_.
 
 **Currently no utility is provided to prevent you from bidding at an unprofitable price.**
 
-### Simplest possible fixed discount collateral auction bidding model
+### Simplest possible bidding model
 
 ```
 #!/usr/bin/env bash
 while true; do
-  echo "{}"
+  echo "{\"price\": \"723.0\"}"
   sleep 120                   
 done
 ```
 
-Gas price is optional for fixed discount models. If you want to start with a fixed gas price, you can add it like this:
+Gas price is optional. If you want to start with a fixed gas price, you can add it like this:
 
 ```
 #!/usr/bin/env bash
 
 while true; do
-  echo "{\"gasPrice\": \"70000000000\"}"    # put your desired gas price in Wei here
-  sleep 120                                 # locking the gas price for n seconds
+  echo "{\"price\": \"723.0\", \"gasPrice\": \"70000000000\"}"    # put your desired gas price in Wei here
+  sleep 120                                                       # locking the gas price for n seconds
 done
 ```
 

@@ -44,6 +44,8 @@ from auction_keeper.strategy import SurplusAuctionStrategy, DebtAuctionStrategy
 from auction_keeper.strategy import FixedDiscountCollateralAuctionStrategy
 from auction_keeper.safe_history import SAFEHistory
 
+from pyexchange.uniswapv2 import UniswapV2
+
 
 class AuctionKeeper:
     logger = logging.getLogger()
@@ -103,6 +105,10 @@ class AuctionKeeper:
                             help="Retain collateral in the SAFE Engine on exit")
         parser.add_argument('--return-collateral-interval', type=int, default=300,
                             help="Period of timer [in seconds] used to check and exit won collateral")
+        parser.add_argument('--swap-collateral', dest='swap_collateral', action='store_true',
+                            help="After exiting won collateral, swap it on Uniswap for system coin")
+        parser.add_argument('--max-swap-slippage', type=float, default=0.01,
+                            help="Maximum amount of slippage allowed when swapping collateral")
         parser.add_argument("--model", type=str, nargs='+',
                             help="Commandline to use in order to start the bidding model")
 
@@ -171,6 +177,16 @@ class AuctionKeeper:
             self.collateral = None
             self.collateral_type = None
             self.collateral_join = None
+
+        if self.arguments.swap_collateral:
+
+            self.token_syscoin = Token("Syscoin", Address(self.geb.system_coin.address), 18)
+            self.token_weth = Token("WETH", self.collateral.collateral.address, 18)
+            self.weth_syscoin_path = [self.token_weth.address.address, self.geb.system_coin.address.address]
+
+            self.syscoin_eth_uniswap = UniswapV2(self.web3, self.token_syscoin, self.token_weth, self.our_address,
+                                                 self.geb.uniswap_router, self.geb.uniswap_factory)
+
 
         # Configure auction contracts
         self.collateral_auction_house = self.collateral.collateral_auction_house if self.arguments.type == 'collateral' else None
@@ -270,7 +286,7 @@ class AuctionKeeper:
             if self.arguments.bid_on_auctions:
                 lifecycle.every(self.arguments.bid_check_interval, self.check_for_bids)
             if self.arguments.return_collateral_interval:
-                lifecycle.every(self.arguments.return_collateral_interval, self.exit_collateral)
+                lifecycle.every(self.arguments.return_collateral_interval, functools.partial(self.exit_collateral, swap=self.arguments.swap_collateral))
 
     def auction_notice(self) -> str:
         if self.arguments.type == 'collateral':
@@ -319,6 +335,10 @@ class AuctionKeeper:
         logging.info(f"Keeper will use {self.gas_price} for transactions and bids unless model instructs otherwise")
 
     def approve(self):
+        if self.arguments.swap_collateral:
+            self.syscoin_eth_uniswap.approve(self.token_syscoin)
+            self.syscoin_eth_uniswap.approve(self.token_weth)
+
         self.strategy.approve(gas_price=self.gas_price)
         time.sleep(1)
         if self.system_coin_join:
@@ -335,8 +355,8 @@ class AuctionKeeper:
             del self.auctions
         if self.arguments.exit_system_coin_on_shutdown:
             self.exit_system_coin_on_shutdown()
-        if not self.arguments.exit_collateral_on_shutdown:
-            self.exit_collateral()
+        if self.arguments.exit_collateral_on_shutdown:
+            self.exit_collateral(swap=False)# Don't swap collateral to syscoin when shutting down
 
     def is_shutting_down(self) -> bool:
         return self.lifecycle and self.lifecycle.terminated_externally
@@ -347,6 +367,7 @@ class AuctionKeeper:
         if safe_engine_balance > Wad(0):
             self.logger.info(f"Exiting {str(safe_engine_balance)} system coin from the SAFE Engine before shutdown")
             assert self.system_coin_join.exit(self.our_address, safe_engine_balance).transact(gas_price=self.gas_price)
+
 
     def auction_handled_by_this_shard(self, id: int) -> bool:
         assert isinstance(id, int)
@@ -824,15 +845,28 @@ class AuctionKeeper:
             self.is_joining_system_coin = False
         return amount
 
-    def exit_collateral(self):
+    def exit_collateral(self, swap: bool):
         if not self.collateral:
             return
 
         token = Token(self.collateral.collateral_type.name.split('-')[0], self.collateral.collateral.address, self.collateral.adapter.decimals())
         safe_engine_balance = self.safe_engine.token_collateral(self.collateral_type, self.our_address)
-        if safe_engine_balance > token.min_amount:
-            self.logger.info(f"Exiting {str(safe_engine_balance)} {self.collateral_type.name} from the SAFE Engine")
-            assert self.collateral_join.exit(self.our_address, token.unnormalize_amount(safe_engine_balance)).transact(gas_price=self.gas_price)
+        if safe_engine_balance <= token.min_amount:
+            return
+
+        collateral_amount = token.unnormalize_amount(safe_engine_balance)
+        self.logger.info(f"Exiting {str(safe_engine_balance)} {self.collateral_type.name} from the SAFE Engine")
+        assert self.collateral_join.exit(self.our_address, collateral_amount).transact(gas_price=self.gas_price)
+
+        if not swap:
+            return
+
+        self.logger.info(f"Swapping {str(safe_engine_balance)} {self.collateral_type.name} for system coin on Uniswap")
+        exchange_rate = self.syscoin_eth_uniswap.get_exchange_rate()
+        min_amount_out = collateral_amount / exchange_rate * (Wad.from_number(1) - Wad.from_number(self.arguments.max_swap_slippage))
+        assert self.collateral.collateral.withdraw(collateral_amount).transact()
+        if not self.syscoin_eth_uniswap.swap_exact_eth_for_tokens(collateral_amount, min_amount_out, self.weth_syscoin_path).transact():
+            self.logger.warn(f"Unable to swap collateral for syscoin with less than {self.arguments.max_swap_slippage} slippage")
 
     @staticmethod
     def _run_future(future):
@@ -846,7 +880,6 @@ class AuctionKeeper:
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
-
 
 if __name__ == '__main__':
     AuctionKeeper(sys.argv[1:]).main()
