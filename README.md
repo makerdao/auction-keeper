@@ -26,9 +26,8 @@ Modify `run_auction_keeper.sh` with your `ETH_RPC_URL`, `KEEPER_ADDRESS`, `KEYST
 
 Then, `./run_auction_keeper.sh`
 
-This will start a collateral `auction-keeper` for collateral type `ETH-A`. The keeper will use the Ethereum node at
-`--rpc-host` and use the `--eth-from` Ethereum account, from keystore `--eth-key`.  The keystore password will be required upon startup.
-`ALL` system coins owned by `--eth-from` will be `join`ed and available for bidding on fixed discount auctions. By default, collateral won in auctions will be `exit`ed to your account upon keeper exit.
+This will start a collateral `auction-keeper`. The keeper will use the Ethereum node at
+`--rpc-uri` and use the `--eth-from` Ethereum account, from keystore `--eth-key`.  The keystore password will be asked upon startup.
 
 #### Sample `run_auction_keeper.sh`
 ```
