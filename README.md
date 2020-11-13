@@ -35,12 +35,9 @@ This will start a collateral `auction-keeper` for collateral type `ETH-A`. The k
 docker run -it \
         -v /my_keystore_dir:/keystore \
         reflexer/auction-keeper \
-        --type collateral \
         --rpc-uri http://localhost:8545 \
         --eth-from 0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8 \
-        --eth-key "key_file=/keystore/my_key.json" \
-        --graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/prai-mainnet,https://subgraph.reflexer.finance/subgraphs/name/reflexer-
-labs/rai
+        --eth-key "key_file=/keystore/my_key.json"
 ```
 **NOTE**: If using the Infura free-tier and you wish to stay under the 100k requests/day quota, add `--block-check-interval 10` and `--bid-check-interval 60` to `run_auction_keeper.sh`. However, this will make your keeper slower in responding to collateral auctions.
 
