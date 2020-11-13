@@ -97,7 +97,7 @@ class AuctionKeeper:
         parser.add_argument('--from-block', type=int, default=11120952,
                             help="Starting block from which to find vaults to liquidation or debt to queue "
                                  "(set to block where GEB was deployed)")
-        parser.add_argument('--safe-engine-system-coin-target', type=str,
+        parser.add_argument('--safe-engine-system-coin-target', type=str, default='ALL',
                             help="Amount of system coin to keep in the SAFEEngine contract or 'ALL' to join entire token balance")
         parser.add_argument('--keep-system-coin-in-safe-engine-on-exit', dest='exit_system_coin_on_shutdown', action='store_false',
                             help="Retain system coin in the SAFE Engine on exit, saving gas when restarting the keeper")
