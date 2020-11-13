@@ -39,7 +39,6 @@ docker run -it \
         --rpc-uri http://localhost:8545 \
         --eth-from 0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8 \
         --eth-key "key_file=/keystore/my_key.json" \
-        --safe-engine-system-coin-target ALL \
         --graph-endpoints https://api.thegraph.com/subgraphs/name/reflexer-labs/prai-mainnet,https://subgraph.reflexer.finance/subgraphs/name/reflexer-
 labs/rai
 ```
