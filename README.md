@@ -38,7 +38,7 @@ docker run -it \
         --eth-from 0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8 \
         --eth-key "key_file=/keystore/my_key.json"
 ```
-**NOTE**: If using the Infura free-tier and you wish to stay under the 100k requests/day quota, add `--block-check-interval 10` and `--bid-check-interval 60` to `run_auction_keeper.sh`. However, this will make your keeper slower in responding to collateral auctions.
+**NOTE**: If using the Infura free-tier and you wish to stay under the 100k requests/day quota, add `--block-check-interval 10` and `--bid-check-interval 180` to `run_auction_keeper.sh`. However, this will make your keeper slower in responding to collateral auctions.
 
 ## Architecture
 

@@ -401,7 +401,6 @@ class AuctionKeeper:
                     self.logger.info(f"Ignoring safe {safe.address.address} with locked_collateral={safe.locked_collateral} < "
                                      f"min_lot={self.min_collateral_lot}")
                     continue
-
                 self._run_future(self.liquidation_engine.liquidate_safe(collateral_type, safe).transact_async(gas_price=self.gas_price))
 
         self.logger.info(f"Checked {len(safes)} safes in {(datetime.now()-started).seconds} seconds")

@@ -26,7 +26,7 @@ docker-compose -f config/${CONFIG}.yml up -d
 sleep 2
 popd
 
-PYTHONPATH=$PYTHONPATH:./lib/pygasprice-client:./lib/pyflex:./lib/pyexchange py.test \
+PYTHONPATH=$PYTHONPATH:./lib/pygasprice-client:./lib/pyflex:./lib/pyexchange py.test -s\
   --cov=auction_keeper --cov-report=term --cov-append \
   --log-format="%(asctime)s %(levelname)s %(message)s" --log-date-format="%H:%M:%S" \
   tests/${TEST_FILE}
