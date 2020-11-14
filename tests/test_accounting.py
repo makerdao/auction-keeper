@@ -150,7 +150,7 @@ class TestSAFEEngineSystemCoinTarget(TestSAFEEngineSystemCoin):
         assert self.get_system_coin_safe_engine_balance() == Wad.from_number(237)
 
 #@pytest.mark.skip("")  
-class TestEmptySAFEEngineOnExit(TestSAFEEngineSystemCoin):
+class TestEmptySAFEEngineOnExitTarget(TestSAFEEngineSystemCoin):
     def create_keeper(self, exit_system_coin_on_shutdown: bool, exit_collateral_on_shutdown: bool):
         assert isinstance(exit_system_coin_on_shutdown, bool)
         assert isinstance(exit_collateral_on_shutdown, bool)
@@ -161,6 +161,7 @@ class TestEmptySAFEEngineOnExit(TestSAFEEngineSystemCoin):
         keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                          f"--type collateral --collateral-type {self.collateral.collateral_type.name} "
                                          f"--from-block 1 "
+                                         f"--safe-engine-system-coin-target 30 "
                                          f"{safe_engine_system_coin_behavior} "
                                          f"{safe_engine_collateral_behavior} "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
@@ -247,6 +248,103 @@ class TestEmptySAFEEngineOnExit(TestSAFEEngineSystemCoin):
         # clean up
         self.give_away_system_coin()
 
+@pytest.mark.skip("")  
+class TestEmptySAFEEngineOnExitTargetAll(TestSAFEEngineSystemCoin):
+    def create_keeper(self, exit_system_coin_on_shutdown: bool, exit_collateral_on_shutdown: bool):
+        assert isinstance(exit_system_coin_on_shutdown, bool)
+        assert isinstance(exit_collateral_on_shutdown, bool)
+
+        safe_engine_system_coin_behavior = "" if exit_system_coin_on_shutdown else "--keep-system-coin-in-safe-engine-on-exit"
+        safe_engine_collateral_behavior = "" if exit_collateral_on_shutdown else "--keep-collateral-in-safe-engine-on-exit"
+
+        keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
+                                         f"--type collateral --collateral-type {self.collateral.collateral_type.name} "
+                                         f"--from-block 1 "
+                                         f"{safe_engine_system_coin_behavior} "
+                                         f"{safe_engine_collateral_behavior} "
+                                         f"--model ./bogus-model.sh"), web3=self.web3)
+        self.web3 = keeper.web3
+        self.geb = keeper.geb
+        assert self.web3.eth.defaultAccount == self.keeper_address.address
+        assert keeper.arguments.exit_system_coin_on_shutdown == exit_system_coin_on_shutdown
+        assert keeper.arguments.exit_collateral_on_shutdown == exit_collateral_on_shutdown
+        keeper.startup()
+        return keeper
+
+    def test_do_not_empty(self):
+        # given system_coin and collateral in the safe_engine
+        keeper = self.create_keeper(False, False)
+        purchase_system_coin(Wad.from_number(153), self.keeper_address)
+        assert self.get_system_coin_token_balance() >= Wad.from_number(153)
+        assert self.geb.system_coin_adapter.join(self.keeper_address, Wad.from_number(153)).transact(
+            from_address=self.keeper_address)
+        wrap_eth(self.geb, self.keeper_address, Wad.from_number(6))
+        # and balances before
+        system_coin_token_balance_before = self.get_system_coin_token_balance()
+        system_coin_safe_engine_balance_before = self.get_system_coin_safe_engine_balance()
+        collateral_token_balance_before = self.get_collateral_token_balance()
+        collateral_safe_engine_balance_before = self.get_collateral_safe_engine_balance()
+
+        # when creating and shutting down the keeper
+        keeper.shutdown()
+
+        # then ensure no balances changed
+        assert system_coin_token_balance_before == self.get_system_coin_token_balance()
+        assert system_coin_safe_engine_balance_before == self.get_system_coin_safe_engine_balance()
+        assert collateral_token_balance_before == self.get_collateral_token_balance()
+        assert collateral_safe_engine_balance_before == self.get_collateral_safe_engine_balance()
+
+    def test_empty_system_coin_only(self):
+        # given balances before
+        system_coin_token_balance_before = self.get_system_coin_token_balance()
+        system_coin_safe_engine_balance_before = self.get_system_coin_safe_engine_balance()
+        collateral_token_balance_before = self.get_collateral_token_balance()
+        collateral_safe_engine_balance_before = self.get_collateral_safe_engine_balance()
+
+        # when creating and shutting down the keeper
+        keeper = self.create_keeper(True, False)
+        keeper.shutdown()
+
+        # then ensure the system_coin was emptied
+        assert self.get_system_coin_token_balance() == system_coin_token_balance_before + system_coin_safe_engine_balance_before
+        assert self.get_system_coin_safe_engine_balance() == Wad(0)
+        # and collateral was not emptied
+        assert collateral_token_balance_before == self.get_collateral_token_balance()
+        assert collateral_safe_engine_balance_before == self.get_collateral_safe_engine_balance()
+
+    def test_empty_collateral_only(self):
+        # given collateral balances before
+        collateral_token_balance_before = self.get_collateral_token_balance()
+        collateral_safe_engine_balance_before = self.get_collateral_safe_engine_balance()
+
+        # when adding system_coin
+        purchase_system_coin(Wad.from_number(79), self.keeper_address)
+        assert self.geb.system_coin_adapter.join(self.keeper_address, Wad.from_number(79)).transact(
+            from_address=self.keeper_address)
+        system_coin_token_balance_before = self.get_system_coin_token_balance()
+        system_coin_safe_engine_balance_before = self.get_system_coin_safe_engine_balance()
+        # and creating and shutting down the keeper
+        keeper = self.create_keeper(False, True)
+        keeper.shutdown()
+
+        # then ensure system_coin was not emptied
+        assert self.get_system_coin_token_balance() == Wad(0)
+        assert system_coin_safe_engine_balance_before == self.get_system_coin_safe_engine_balance()
+        # and collateral was emptied
+        assert collateral_token_balance_before == collateral_token_balance_before + collateral_safe_engine_balance_before
+        assert self.get_collateral_safe_engine_balance() == Wad(0)
+
+    def test_empty_both(self):
+        # when creating and shutting down the keeper
+        keeper = self.create_keeper(True, True)
+        keeper.shutdown()
+
+        # then ensure the safe_engine is empty
+        assert self.get_system_coin_safe_engine_balance() == Wad(0)
+        assert self.get_collateral_safe_engine_balance() == Wad(0)
+
+        # clean up
+        self.give_away_system_coin()
 #@pytest.mark.skip("")  
 class TestRebalance(TestSAFEEngineSystemCoin):
     def create_keeper(self, mocker, system_coin_target="all"):
