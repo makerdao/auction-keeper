@@ -458,7 +458,7 @@ class AuctionKeeper:
             return
 
         unqueued_unauctioned_debt = self.accounting_engine.unqueued_unauctioned_debt()
-        debt_queue = self.accounting_engine.debt_queue()
+        debt_queue = self.accounting_engine.total_queued_debt()
         debt_auction_bid_size = self.accounting_engine.debt_auction_bid_size()
         pop_debt_delay = self.accounting_engine.pop_debt_delay()
 

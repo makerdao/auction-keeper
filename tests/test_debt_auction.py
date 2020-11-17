@@ -39,7 +39,7 @@ from web3 import Web3
 def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, other_address) -> int:
 
     total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
-    unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+    unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.total_queued_debt()) - geb.accounting_engine.total_on_auction_debt()
     print(f'total_surplus={str(total_surplus)[:6]}, unqueued_unauctioned_debt={str(unqueued_unauctioned_debt)[:6]}')
 
     if unqueued_unauctioned_debt < total_surplus or (unqueued_unauctioned_debt == Rad(0) and total_surplus == Rad(0)):
@@ -61,7 +61,7 @@ def auction_id(web3: Web3, geb: GfDeployment, auction_income_recipient_address, 
     pop_debt_and_settle_debt(web3, geb, past_blocks=1200, cancel_auctioned_debt=False)
 
     # Start the debt auction
-    unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+    unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.total_queued_debt()) - geb.accounting_engine.total_on_auction_debt()
     assert geb.accounting_engine.debt_auction_bid_size() <= unqueued_unauctioned_debt
     assert geb.safe_engine.coin_balance(geb.accounting_engine.address) == Rad(0)
     assert geb.accounting_engine.auction_debt().transact(from_address=auction_income_recipient_address)
@@ -132,8 +132,8 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         # then ensure testchain is in the appropriate state
         total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
         total_debt = geb.safe_engine.debt_balance(geb.accounting_engine.address)
-        unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
-        debt_queue = geb.accounting_engine.debt_queue()
+        unqueued_unauctioned_debt = (geb.safe_engine.debt_balance(geb.accounting_engine.address) - geb.accounting_engine.total_queued_debt()) - geb.accounting_engine.total_on_auction_debt()
+        debt_queue = geb.accounting_engine.total_queued_debt()
         debt_auction_bid_size = geb.accounting_engine.debt_auction_bid_size()
         wait = geb.accounting_engine.pop_debt_delay()
         assert total_surplus < total_debt
@@ -706,7 +706,7 @@ class TestAuctionKeeperDebtAuction(TransactionIgnoringTest):
         assert system_coin_accounting_engine >= system_coin_needed
         assert geb.accounting_engine.settle_debt(unqueued_unauctioned_debt).transact()
         assert geb.accounting_engine.unqueued_unauctioned_debt() == Rad(0)
-        assert geb.accounting_engine.debt_queue() == Rad(0)
+        assert geb.accounting_engine.total_queued_debt() == Rad(0)
 
         if geb.accounting_engine.total_on_auction_debt() > Rad(0):
             geb.accounting_engine.cancel_auctioned_debt_with_surplus(total_on_auction_debt).transact()
