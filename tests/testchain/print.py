@@ -39,10 +39,10 @@ address = auction_income_recipient_address(web3())
 def print_balances():
     total_surplus = geb.safe_engine.coin_balance(geb.accounting_engine.address)
     total_debt = geb.safe_engine.debt_balance(geb.accounting_engine.address)
-    unqueued_unauctioned_debt = (total_debt - geb.accounting_engine.debt_queue()) - geb.accounting_engine.total_on_auction_debt()
+    unqueued_unauctioned_debt = (total_debt - geb.accounting_engine.total_queued_debt()) - geb.accounting_engine.total_on_auction_debt()
     print(f"total_surplus={str(total_surplus)[:6]}, total_debt={str(total_debt)[:9]}, "
           f"unqueued_unauctioned_debt={str(unqueued_unauctioned_debt)[:9]}, "
-          f"debt_queue={str(geb.accounting_engine.debt_queue())[:9]}, "
+          f"total_queued_debt={str(geb.accounting_engine.total_queued_debt())[:9]}, "
           f"total_on_auction_debt={str(geb.accounting_engine.total_on_auction_debt())[:9]}, "
           f"global_debt={str(geb.safe_engine.global_debt())[:9]}, "
           f"global_unbacked_debt={str(geb.safe_engine.global_unbacked_debt())[:9]}")

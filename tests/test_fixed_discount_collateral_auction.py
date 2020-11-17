@@ -429,7 +429,7 @@ class TestAuctionKeeperFixedDiscountCollateralAuctionHouse(TransactionIgnoringTe
         assert system_coin_accounting_engine >= system_coin_needed
         assert geb.accounting_engine.settle_debt(unqueued_unauctioned_debt).transact()
         assert geb.accounting_engine.unqueued_unauctioned_debt() == Rad(0)
-        assert geb.accounting_engine.debt_queue() == Rad(0)
+        assert geb.accounting_engine.total_queued_debt() == Rad(0)
 
         if geb.accounting_engine.total_on_auction_debt() > Rad(0):
             geb.accounting_engine.cancel_auctioned_debt_with_surplus(total_on_auction_debt).transact()
