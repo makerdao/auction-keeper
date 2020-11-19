@@ -90,8 +90,7 @@ class AuctionKeeper:
                             help="When sharding auctions across multiple keepers, this identifies the shard")
         parser.add_argument('--shards', type=int, default=1,
                             help="Number of shards; should be one greater than your highest --shard-id")
-        parser.add_argument("--graph-endpoints", type=str, default='https://api.thegraph.com/subgraphs/name/reflexer-labs/prai-mainnet,'
-                            'https://subgraph.reflexer.finance/subgraphs/name/reflexer-labs/rai',
+        parser.add_argument("--graph-endpoints", type=str, default=None,
                             help="Comma-delimited list of graph endpoints. When specified, safe history will be initialized "
                                  "from a Graph node, reducing load on the Ethereum node for collateral auctions. "
                                  "If multiple nodes are passed, they will be tried in order")

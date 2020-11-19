@@ -38,8 +38,6 @@ class TestAuctionKeeperLiquidate(TransactionIgnoringTest):
                                          f"--from-block 1 "
                                          f"--collateral-type {c.collateral_type.name} "
                                          f"--model ./bogus-model.sh"), web3=geb.web3)
-        # By default keeper uses graph. For testing, disable and use testchain parity
-        keeper.safe_history.graph_endpoints = None
         keeper.approve()
         unsafe_safe = create_critical_safe(geb, c, Wad.from_number(1.2), auction_income_recipient_address)
         assert len(geb.active_auctions()["collateral_auctions"][c.collateral_type.name]) == 0
