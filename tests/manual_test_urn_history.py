@@ -38,6 +38,7 @@ web3 = Web3(HTTPProvider(endpoint_uri=os.environ["ETH_RPC_URL"], request_kwargs=
 vulcanize_endpoint = os.environ["VULCANIZE_URL"]
 vulcanize_key = os.environ["VULCANIZE_APIKEY"]
 tokenflow_endpoint = os.environ['TOKENFLOW_URL']
+tokenflow_key = os.environ['TOKENFLOW_APIKEY']
 mcd = DssDeployment.from_node(web3)
 collateral_type = sys.argv[1] if len(sys.argv) > 1 else "ETH-A"
 ilk = mcd.collaterals[collateral_type].ilk
@@ -73,7 +74,7 @@ assert tokenflow_endpoint
 if tokenflow_endpoint:
     started = datetime.now()
     print(f"Connecting to {tokenflow_endpoint}...")
-    uh = TokenFlowUrnHistoryProvider(web3, mcd, ilk, tokenflow_endpoint)
+    uh = TokenFlowUrnHistoryProvider(web3, mcd, ilk, tokenflow_endpoint, tokenflow_key)
     urns_tf = uh.get_urns()
     elapsed: timedelta = datetime.now() - started
     print(f"Found {len(urns_tf)} urns from TokenFlow in {elapsed.seconds} seconds")

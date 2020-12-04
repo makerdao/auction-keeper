@@ -31,33 +31,36 @@ logger = logging.getLogger()
 
 
 class TokenFlowUrnHistoryProvider(UrnHistoryProvider):
-    def __init__(self, web3: Web3, mcd: DssDeployment, ilk: Ilk, tokenflow_endpoint: str, chunk_size=20000):
+    def __init__(self, web3: Web3, mcd: DssDeployment, ilk: Ilk, tokenflow_endpoint: str, tokenflow_key: str,
+                 chunk_size=20000):
         assert isinstance(tokenflow_endpoint, str)
         assert isinstance(chunk_size, int)
         super().__init__(ilk)
         self.web3 = web3
         self.mcd = mcd
         self.tokenflow_endpoint = tokenflow_endpoint + "/api"
+        self.tokenflow_key = tokenflow_key
         self.chunk_size = chunk_size
 
     def get_urns(self) -> Dict[Address, Urn]:
         # Determine what block TokenFlow data represents
-        response = requests.get(self.tokenflow_endpoint + f"/last_block", timeout=30)
-        if response.ok:
-            last_block = response.json()['Message']['last_block']
-        else:
-            logger.error(f"Unable to determine last_block for TokenFlow data: {response.text}")
+        try:
+            response = self.query_tokenflow(f"/last_block")
+            last_block = response['Message']['last_block']
+        except (RuntimeError, ValueError) as ex:
+            logging.error(f"Unable to determine last_block for TokenFlow data; using a failsafe: {ex}")
             last_block = self.web3.eth.blockNumber - 538  # 2 hours of history
 
         # Retrieve state from TokenFlow
-        response = requests.get(self.tokenflow_endpoint + f"/vaults_list?ilk[in]={self.ilk.name}", timeout=30)
-        if not response.ok:
-            error_msg = f"{response.status_code} {response.reason} ({response.text})"
-            raise RuntimeError(f"TokenFlow query failed: {error_msg}")
-        data = response.json()['Message']['vaults']
+        data = self.query_tokenflow(f"/vaults_list?ilk[in]={self.ilk.name}", timeout=45)['Message']['vaults']
+        logging.info(f"Found {len(data)} vaults for {self.ilk.name}")
         for item in data:
-            urn = self.urn_from_tokenflow_item(item)
-            self.cache[urn.address] = urn
+            address = Address(to_checksum_address(item['urn']))
+            try:
+                urn = self.urn_from_tokenflow_item(item)
+                self.cache[urn.address] = urn
+            except (ArithmeticError, TypeError):
+                logging.error(f"Could not process {address}")
 
         # Fill in data from recent blocks
         to_block = self.web3.eth.blockNumber
@@ -83,3 +86,13 @@ class TokenFlowUrnHistoryProvider(UrnHistoryProvider):
         art = Wad(item['art'])
 
         return Urn(address, self.ilk, ink, art)
+
+    def query_tokenflow(self, query: str, timeout=30):
+        assert isinstance(query, str)
+        tokenflow_endpoint = self.tokenflow_endpoint
+        headers = {'Authorization': 'Bearer ' + self.tokenflow_key}
+        response = requests.get(tokenflow_endpoint + query, headers=headers, timeout=timeout)
+        if not response.ok:
+            error_msg = f"{response.status_code} {response.reason} ({response.text})"
+            raise RuntimeError(f"TokenFlow query failed: {error_msg}")
+        return response.json()

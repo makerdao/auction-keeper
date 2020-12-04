@@ -186,6 +186,7 @@ class AuctionKeeper:
                 elif self.arguments.tokenflow_url:
                     self.urn_history = TokenFlowUrnHistoryProvider(self.web3, self.mcd, self.ilk,
                                                                    self.arguments.tokenflow_url,
+                                                                   self.arguments.tokenflow_key,
                                                                    self.arguments.chunk_size)
                 else:
                     self.urn_history = ChainUrnHistoryProvider(self.web3, self.mcd, self.ilk,
