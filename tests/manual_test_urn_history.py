@@ -84,28 +84,33 @@ if tokenflow_endpoint:
 def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
     mismatches = 0
     missing = 0
+    total_ink_left = 0
+    total_ink_right = 0
     total_art_left = 0
     total_art_right = 0
-    csv = f"Urn,{left_name}Ink,{left_name}Art,{right_name}Ink,{right_name}Art\n"
+    csv = f"Urn,{left_name}Ink,{left_name}Art,{right_name}Ink,{right_name}Art,DiffInk,DiffArt\n"
 
     for key, value in left.items():
         assert value.ilk.name == ilk.name
         if key in right:
             if value.ink != right[key].ink or value.art != right[key].art:
-                csv += f"{key.address},{value.ink},{value.art},{right[key].ink},{right[key].art}\n"
+                csv += f"{key.address},{value.ink},{value.art},{right[key].ink},{right[key].art}," \
+                       f"{value.ink-right[key].ink},{value.art-right[key].art}\n"
                 mismatches += 1
         else:
             # print(f"{right_name} is missing urn {key}")
-            csv += f"{key.address},{value.ink},{value.art},,\n"
+            csv += f"{key.address},{value.ink},{value.art},,,,\n"
             missing += 1
+        total_ink_left += float(value.ink)
         total_art_left += float(value.art)
     
     for key, value in right.items():
         assert value.ilk.name == ilk.name
         if key not in left:
             # print(f"{left_name} is missing urn {key}")
-            csv += f"{key.address},,,{value.ink},{value.art}\n"
+            csv += f"{key.address},,,{value.ink},{value.art},,\n"
             missing += 1
+        total_ink_right += float(value.ink)
         total_art_right += float(value.art)
 
     with open(f"urn-reconciliation-{collateral_type}.csv", "w") as file:
@@ -114,7 +119,10 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
     total = max(len(left), len(right))
     print(f'Observed {mismatches} mismatched urns ({mismatches/total:.0%}) and '
           f'{missing} missing urns ({missing/total:.0%})')
-    print(f"Total art from {left_name}: {total_art_left}, from {right_name}: {total_art_right}")
+    print(f"Total ink from {left_name}: {total_ink_left}, from {right_name}: {total_ink_right}, "
+          f"difference: {total_ink_left-total_ink_right}")
+    print(f"Total art from {left_name}: {total_art_left}, from {right_name}: {total_art_right}, "
+          f"difference: {total_art_left-total_art_right}")
 
 
 if from_block:

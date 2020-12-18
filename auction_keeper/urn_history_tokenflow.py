@@ -46,13 +46,13 @@ class TokenFlowUrnHistoryProvider(UrnHistoryProvider):
         # Determine what block TokenFlow data represents
         try:
             response = self.query_tokenflow(f"/last_block")
-            last_block = response['Message']['last_block']
+            last_block = response['message']['last_block']
         except (RuntimeError, ValueError) as ex:
             logging.error(f"Unable to determine last_block for TokenFlow data; using a failsafe: {ex}")
             last_block = self.web3.eth.blockNumber - 538  # 2 hours of history
 
         # Retrieve state from TokenFlow
-        data = self.query_tokenflow(f"/vaults_list?ilk[in]={self.ilk.name}", timeout=45)['Message']['vaults']
+        data = self.query_tokenflow(f"/vaults_list?ilk[in]={self.ilk.name}", timeout=45)['message']['vaults']
         logging.info(f"Found {len(data)} vaults for {self.ilk.name}")
         for item in data:
             address = Address(to_checksum_address(item['urn']))
