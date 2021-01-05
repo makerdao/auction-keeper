@@ -84,7 +84,6 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
         data = json.loads(response.text)['data']
 
         if data['untransformed']['totalCount'] > 0:
-            # TODO: check this implementation once untransformed diffs exist
             return min(map(lambda n: int(n), data['untransformed']['nodes']))
         else:
             return int(data['lastBlock']['nodes'][0]['blockNumber'])
