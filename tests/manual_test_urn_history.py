@@ -49,16 +49,6 @@ urns_vdb = None
 urns_tf = None
 
 
-# Retrieve data from chain
-if from_block:
-    started = datetime.now()
-    print(f"Connecting to {sys.argv[1]}...")
-    uh = ChainUrnHistoryProvider(web3, mcd, ilk, from_block)
-    urns_chain = uh.get_urns()
-    elapsed: timedelta = datetime.now() - started
-    print(f"Found {len(urns_chain)} urns from block {from_block} in {elapsed.seconds} seconds")
-    assert len(urns_chain) > 0
-
 # Retrieve data from Vulcanize
 if vulcanize_endpoint:
     started = datetime.now()
@@ -70,7 +60,6 @@ if vulcanize_endpoint:
     assert len(urns_vdb) > 0
 
 # Retrieve data from TokenFlow
-assert tokenflow_endpoint
 if tokenflow_endpoint:
     started = datetime.now()
     print(f"Connecting to {tokenflow_endpoint}...")
@@ -79,6 +68,16 @@ if tokenflow_endpoint:
     elapsed: timedelta = datetime.now() - started
     print(f"Found {len(urns_tf)} urns from TokenFlow in {elapsed.seconds} seconds")
     assert len(urns_tf) > 0
+
+# Retrieve data from chain
+if from_block:
+    started = datetime.now()
+    print(f"Connecting to {sys.argv[1]}...")
+    uh = ChainUrnHistoryProvider(web3, mcd, ilk, from_block)
+    urns_chain = uh.get_urns()
+    elapsed: timedelta = datetime.now() - started
+    print(f"Found {len(urns_chain)} urns from block {from_block} in {elapsed.seconds} seconds")
+    assert len(urns_chain) > 0
 
 
 def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):

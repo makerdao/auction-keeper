@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2019-2020 EdNoepel
+# Copyright (C) 2019-2021 EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -42,15 +42,15 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
     def get_urns(self) -> Dict[Address, Urn]:
         start = datetime.now()
 
-        response = self.run_query(self.lag_query)
-        self.cache_block = int(json.loads(response.text)['data']['lastStorageDiffProcessed']['nodes'][0]['blockHeight'])
+        self.cache_block = self.get_cached_block()
 
-        response = self.run_query(self.init_query)
-        raw = json.loads(response.text)['data']['allUrns']['nodes']
-        for item in raw:
-            if item['ilkIdentifier'] == self.ilk.name:
+        urns_for_ilk = self.get_urns_by_ilk(self.ilk.name)
+        for item in urns_for_ilk:
+            try:
                 urn = self.urn_from_vdb_node(item)
                 self.cache[urn.address] = urn
+            except TypeError as ex:
+                logger.warning(f"Urn data {item} could not be processed: {ex}")
         logger.debug(f"Found {len(self.cache)} urns from VulcanizeDB up to block {self.cache_block} "
                      f"in {(datetime.now() - start).seconds} seconds")
 
@@ -78,6 +78,35 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
                      f"in {(datetime.now() - start).seconds} seconds")
         self.cache_block = current_block
         return self.cache
+
+    def get_cached_block(self):
+        response = self.run_query(self.lag_query)
+        data = json.loads(response.text)['data']
+
+        if data['untransformed']['totalCount'] > 0:
+            # TODO: check this implementation once untransformed diffs exist
+            return min(map(lambda n: int(n), data['untransformed']['nodes']))
+        else:
+            return int(data['lastBlock']['nodes'][0]['blockNumber'])
+
+    def get_urns_by_ilk(self, ilk: str):
+        assert isinstance(ilk, str)
+        nodes = []
+        data_needed = True
+        page_size = 10000
+        offset = 0
+        while data_needed:
+            urn_response = self.run_query(query=self.init_query, variables={'ilk': ilk, 'offset': offset})
+            result = json.loads(urn_response.text)
+            node_count = len(result['data']['getUrnsByIlk']['nodes'])
+            logging.debug(f"Found {node_count} {ilk} urns from Vulcanize offset {offset}")
+            if node_count > 0:  # There are more results to add
+                nodes += result['data']['getUrnsByIlk']['nodes']
+                offset += page_size
+            else:  # No more results were returned, assume we read all the records
+                data_needed = False
+
+        return nodes
 
     def run_query(self, query: str, variables=None):
         assert isinstance(query, str)
@@ -111,11 +140,11 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
 
         return Urn(address, self.ilk, ink, art)
 
-    init_query = """query {
-      allUrns {
+    init_query = """query ($ilk: String, $offset: Int) {
+      getUrnsByIlk(ilkIdentifier: $ilk, first:10000, offset: $offset) {
         nodes {
-          urnIdentifier
           ilkIdentifier
+          urnIdentifier
           ink
           art
         }
@@ -123,15 +152,19 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
     }"""
 
     lag_query = """query {
-      lastStorageDiffProcessed: allStorageDiffs(last: 1, condition: {checked: true}) {
+      untransformed: getBlockHeightsForNewUntransformedDiffs(first:50) {
+        totalCount
+        nodes
+      }
+      lastBlock: allHeaders(last: 1) {
         nodes {
-          blockHeight
+          blockNumber
         }
       }
     }"""
 
     recent_changes_query = """query($fromBlock: BigInt) {
-      allVatFrobs(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      allVatFrobs(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}}, first:10000)
       {
         nodes {
           rawUrnByUrnId {
@@ -142,7 +175,7 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
           }
         }
       }
-      allRawBites(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      allRawBites(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}}, first:10000)
       {
         nodes {
           rawUrnByUrnId {
@@ -153,7 +186,7 @@ class VulcanizeUrnHistoryProvider(UrnHistoryProvider):
           }
         }
       }
-      allVatForks(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}})
+      allVatForks(filter: {headerByHeaderId: {blockNumber: {greaterThan: $fromBlock}}}, first:10000)
       {
         nodes {
           rawIlkByIlkId {
