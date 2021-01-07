@@ -94,7 +94,7 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
         if key in right:
             if value.ink != right[key].ink or value.art != right[key].art:
                 csv += f"{key.address},{value.ink},{value.art},{right[key].ink},{right[key].art}," \
-                       f"{value.ink-right[key].ink},{value.art-right[key].art}\n"
+                       f"{abs(value.ink-right[key].ink)},{abs(value.art-right[key].art)}\n"
                 mismatches += 1
         else:
             # print(f"{right_name} is missing urn {key}")
@@ -119,14 +119,14 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
     print(f'Observed {mismatches} mismatched urns ({mismatches/total:.0%}) and '
           f'{missing} missing urns ({missing/total:.0%})')
     print(f"Total ink from {left_name}: {total_ink_left}, from {right_name}: {total_ink_right}, "
-          f"difference: {total_ink_left-total_ink_right}")
+          f"difference: {abs(total_ink_left-total_ink_right)}")
     print(f"Total art from {left_name}: {total_art_left}, from {right_name}: {total_art_right}, "
-          f"difference: {total_art_left-total_art_right}")
+          f"difference: {abs(total_art_left-total_art_right)}")
 
 
 if from_block:
     reconcile(urns_chain, urns_tf, "Chain", "TokenFlow")
-elif urns_tf:
+elif not from_block and urns_tf:
     reconcile(urns_vdb, urns_tf, "Vulcanize", "TokenFlow")
 else:
     reconcile(urns_chain, urns_vdb, "Chain", "Vulcanize")
