@@ -331,8 +331,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         (model, model_factory) = models(self.keeper, kick)
         # and
         auction = self.flapper.bids(kick)
-        assert self.flapper.tend(kick, auction.lot, Wad.from_number(16)).transact(from_address=self.other_address)
-        assert self.flapper.bids(kick).bid == Wad.from_number(16)
+        assert self.flapper.tend(kick, auction.lot, Wad.from_number(1)).transact(from_address=self.other_address)
+        assert self.flapper.bids(kick).bid == Wad.from_number(1)
 
         # when
         simulate_model_output(model=model, price=Wad.from_number(0.0000005))

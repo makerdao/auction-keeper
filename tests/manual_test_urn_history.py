@@ -125,9 +125,9 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
           f"difference: {total_art_left-total_art_right}")
 
 
-if from_block:
+if from_block and False:
     reconcile(urns_chain, urns_tf, "Chain", "TokenFlow")
-elif urns_tf:
-    reconcile(urns_vdb, urns_tf, "Vulcanize", "TokenFlow")
+# elif urns_tf:
+#     reconcile(urns_vdb, urns_tf, "Vulcanize", "TokenFlow")
 else:
     reconcile(urns_chain, urns_vdb, "Chain", "Vulcanize")
