@@ -159,7 +159,7 @@ class FlapperStrategy(Strategy):
                       era=era(self.flapper.web3),
                       tic=bid.tic,
                       end=bid.end,
-                      price=Wad(bid.lot / Rad(bid.bid)) if bid.bid != Wad(0) else None)
+                      price=Wad(bid.lot / Rad(bid.bid)) if bid.bid > Wad.from_number(0.000001) else None)
 
     def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)

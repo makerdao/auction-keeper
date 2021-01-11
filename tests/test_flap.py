@@ -348,6 +348,28 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         time_travel_by(self.web3, self.flapper.ttl() + 1)
         assert self.flapper.deal(kick).transact()
 
+    def test_should_outbid_a_zero_bid(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+        # and
+        auction = self.flapper.bids(kick)
+        assert self.flapper.tend(kick, auction.lot, Wad(1)).transact(from_address=self.other_address)
+        assert self.flapper.bids(kick).bid == Wad(1)
+
+        # when
+        simulate_model_output(model=model, price=Wad.from_number(0.0000006))
+        # and
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        # then
+        auction = self.flapper.bids(kick)
+        assert round(Wad(auction.lot) / auction.bid, 2) == round(Wad.from_number(0.0000006), 2)
+
+        # cleanup
+        time_travel_by(self.web3, self.flapper.ttl() + 1)
+        assert self.flapper.deal(kick).transact()
+
     def test_should_overbid_itself_if_model_has_updated_the_price(self, kick):
         # given
         (model, model_factory) = models(self.keeper, kick)
