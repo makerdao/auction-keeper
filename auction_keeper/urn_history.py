@@ -67,7 +67,7 @@ class ChainUrnHistoryProvider(UrnHistoryProvider):
                 urn_addresses.add(log.dst)
 
         # Update state of already-cached urns
-        for count, address, urn in enumerate(self.cache.items()):
+        for count, (address, urn) in enumerate(self.cache.items()):
             if count % 100 == 0:
                 logger.debug(f"Updated state of {count} out of {len(self.cache)} urns")
             self.cache[address] = self.mcd.vat.urn(self.ilk, address)
