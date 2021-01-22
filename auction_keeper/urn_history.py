@@ -23,7 +23,7 @@ from web3 import Web3
 
 from pymaker import Address
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Ilk, Urn
+from pymaker.dss import Ilk, Urn, Vat
 
 logger = logging.getLogger()
 
@@ -57,17 +57,24 @@ class ChainUrnHistoryProvider(UrnHistoryProvider):
         # Get a unique list of urn addresses
         from_block = max(0, self.cache_block - self.cache_lookback)
         to_block = self.web3.eth.blockNumber
-        frobs = self.mcd.vat.past_frobs(from_block=from_block, to_block=to_block, ilk=self.ilk,
-                                        chunk_size=self.chunk_size)
-        for frob in frobs:
-            urn_addresses.add(frob.urn)
+        logs = self.mcd.vat.past_logs(from_block=from_block, to_block=to_block, ilk=self.ilk,
+                                      chunk_size=self.chunk_size)
+        for log in logs:
+            if isinstance(log, Vat.LogFrob):
+                urn_addresses.add(log.urn)
+            if isinstance(log, Vat.LogFork) or isinstance(log, Vat.LogMove):
+                urn_addresses.add(log.dst)
 
         # Update state of already-cached urns
-        for address, urn in self.cache.items():
+        for count, (address, urn) in enumerate(self.cache.items()):
+            if count % 100 == 0:
+                logger.debug(f"Updated state of {count} out of {len(self.cache)} urns")
             self.cache[address] = self.mcd.vat.urn(self.ilk, address)
 
         # Cache state of newly discovered urns
-        for address in urn_addresses:
+        for count, address in enumerate(urn_addresses):
+            if count % 100 == 0:
+                logger.debug(f"Updated state of {count} out of {len(urn_addresses)} newly found urns")
             if address not in self.cache:
                 self.cache[address] = self.mcd.vat.urn(self.ilk, address)
 

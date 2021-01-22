@@ -66,7 +66,7 @@ class Process:
                         try:
                             self._read_queue.append(json.loads(line))
                         except JSONDecodeError:
-                            self.logger.exception(f"Incorrect JSON message received from model #{process.pid} process")
+                            self.logger.exception(f"Incorrect JSON message received from model #{process.pid} process: {line}")
             except OSError:
                 pass  # the os throws an exception if there is no data
 

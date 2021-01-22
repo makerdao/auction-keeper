@@ -1,6 +1,6 @@
 # auction-keeper
 
-[![Build Status](https://travis-ci.org/makerdao/auction-keeper.svg?branch=master)](https://travis-ci.org/makerdao/auction-keeper)
+[![Build Status](https://travis-ci.com/makerdao/auction-keeper.svg?branch=master)](https://travis-ci.com/makerdao/auction-keeper)
 [![codecov](https://codecov.io/gh/makerdao/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/makerdao/auction-keeper)
 
 The _DAI Stablecoin System_ incentivizes external agents, called _keepers_, to automate certain operations around the
@@ -277,7 +277,7 @@ two ways to retrieve the list of urns:
     | WBTC-A | 9975676  | 18270296 |
     | ZRX-A  | 10323394 | 19243343 |
     | KNC-A  | 10323392 | 19243288 |
-    | MANA-A | 10743862 | 19731368 |
+    | MANA-A | 10510886 | 19731368 |
     | USDT-A | 10790625 | 20611963 |
     | COMP-A | 10967218 | 20805417 |
     | LRC-A  | 10950762 | 20149845 |

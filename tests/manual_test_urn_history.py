@@ -26,6 +26,7 @@ from auction_keeper.urn_history import ChainUrnHistoryProvider
 from auction_keeper.urn_history_tokenflow import TokenFlowUrnHistoryProvider
 from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
 from pymaker.deployment import DssDeployment
+from pymaker.numeric import Wad
 
 
 logging.basicConfig(format='%(asctime)-15s %(levelname)-8s %(message)s', level=logging.DEBUG)
@@ -70,7 +71,6 @@ if vulcanize_endpoint:
     assert len(urns_vdb) > 0
 
 # Retrieve data from TokenFlow
-assert tokenflow_endpoint
 if tokenflow_endpoint:
     started = datetime.now()
     print(f"Connecting to {tokenflow_endpoint}...")
@@ -95,10 +95,10 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
         if key in right:
             if value.ink != right[key].ink or value.art != right[key].art:
                 csv += f"{key.address},{value.ink},{value.art},{right[key].ink},{right[key].art}," \
-                       f"{value.ink-right[key].ink},{value.art-right[key].art}\n"
+                       f"{abs(value.ink-right[key].ink)},{abs(value.art-right[key].art)}\n"
                 mismatches += 1
-        else:
-            # print(f"{right_name} is missing urn {key}")
+        elif value.ink != Wad(0) or value.art != Wad(0):
+            print(f"{right_name} is missing urn {key}")
             csv += f"{key.address},{value.ink},{value.art},,,,\n"
             missing += 1
         total_ink_left += float(value.ink)
@@ -106,8 +106,8 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
     
     for key, value in right.items():
         assert value.ilk.name == ilk.name
-        if key not in left:
-            # print(f"{left_name} is missing urn {key}")
+        if key not in left and (value.ink != Wad(0) or value.art != Wad(0)):
+            print(f"{left_name} is missing urn {key}")
             csv += f"{key.address},,,{value.ink},{value.art},,\n"
             missing += 1
         total_ink_right += float(value.ink)
@@ -120,14 +120,14 @@ def reconcile(left: dict, right: dict, left_name="Left", right_name="Right"):
     print(f'Observed {mismatches} mismatched urns ({mismatches/total:.0%}) and '
           f'{missing} missing urns ({missing/total:.0%})')
     print(f"Total ink from {left_name}: {total_ink_left}, from {right_name}: {total_ink_right}, "
-          f"difference: {total_ink_left-total_ink_right}")
+          f"difference: {abs(total_ink_left-total_ink_right)}")
     print(f"Total art from {left_name}: {total_art_left}, from {right_name}: {total_art_right}, "
-          f"difference: {total_art_left-total_art_right}")
+          f"difference: {abs(total_art_left-total_art_right)}")
 
 
 if from_block:
     reconcile(urns_chain, urns_tf, "Chain", "TokenFlow")
-elif urns_tf:
+elif not from_block and urns_tf:
     reconcile(urns_vdb, urns_tf, "Vulcanize", "TokenFlow")
 else:
     reconcile(urns_chain, urns_vdb, "Chain", "Vulcanize")
