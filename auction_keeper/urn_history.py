@@ -63,7 +63,6 @@ class ChainUrnHistoryProvider(UrnHistoryProvider):
             if isinstance(log, Vat.LogFrob):
                 urn_addresses.add(log.urn)
             if isinstance(log, Vat.LogFork) or isinstance(log, Vat.LogMove):
-                urn_addresses.add(log.src)
                 urn_addresses.add(log.dst)
 
         # Update state of already-cached urns
