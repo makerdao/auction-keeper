@@ -284,13 +284,20 @@ two ways to retrieve the list of urns:
     | LINK-A | 10950763 | 20957887 |
     | BAL-A  | 11198616 | 21647334 |
     | YFI-A  | 11198626 | 21678352 |
+    | UNI-A  | 11420948 | 22432437 |
+    | RENBTC-A | 11420957 | 22406388 |
+    | AAVE-A   | 11471509 | 22609978 |
+    | UNIV2DAIETH-A  | 11477786 | 22636280 |
+    | UNIV2WBTCETH-A | 11700394 | n/a |
+    | UNIV2USDCETH-A | 11700453 | n/a |
     
- * **Subscribe to TokenFlow** market data, which is not yet in production.
+ * **Subscribe to TokenFlow** market data, which is currently in beta.  Visit https://api.mcdstate.info/ for more 
+    information.
 
  * **Deploy a [VulcanizeDB instance](https://github.com/makerdao/vdb-mcd-transformers) to maintain your own
     copy of urn state** in PostgresQL, and then set `--vulcanize-endpoint` to your instance.  This will conserve
     resources on your node and keeper.  If you're using a hosted Vulcanize endpoint, you can provide an API key for
-    basic authentication with the `--vulcanize-key` argument.  This reduces urn check time (<10 seconds for ETH-A).
+    basic authentication with the `--vulcanize-key` argument.
 
 To start `flop` auctions, the keeper needs a list of bites to queue debt.  To manage performance, periodically
 adjust `--from-block` to the block where the first bite which has not been `flog`ged.
