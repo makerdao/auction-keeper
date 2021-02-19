@@ -117,8 +117,9 @@ class AuctionKeeper:
 
         parser.add_argument("--oracle-gas-price", action='store_true',
                             help="Use a fast gas price aggregated across multiple oracles")
-        parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="ethgasstation API key")
-        parser.add_argument("--etherscan-api-key", type=str, default=None, help="etherscan API key")
+        parser.add_argument("--ethgasstation-api-key", type=str, default=None, help="EthGasStation API key")
+        parser.add_argument("--etherscan-api-key", type=str, default=None, help="Etherscan API key")
+        parser.add_argument("--blocknative-api-key", type=str, default=None, help="Blocknative API key")
         parser.add_argument('--fixed-gas-price', type=float, default=None,
                             help="Uses a fixed value (in Gwei) instead of an external API to determine initial gas")
         parser.add_argument("--poanetwork-url", type=str, default=None, help="Alternative POANetwork URL")

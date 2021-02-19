@@ -51,7 +51,8 @@ class DynamicGasPrice(NodeAwareGasPrice):
                                           ethgasstation_api_key=arguments.ethgasstation_api_key,
                                           poa_network_alt_url=arguments.poanetwork_url,
                                           etherscan_api_key=arguments.etherscan_api_key,
-                                          gasnow_app_name="makerdao/auction-keeper")
+                                          gasnow_app_name="makerdao/auction-keeper",
+                                          blocknative_api_key=arguments.blocknative_api_key)
         elif arguments.fixed_gas_price:
             self.fixed_gas = int(round(arguments.fixed_gas_price * self.GWEI))
         self.initial_multiplier = arguments.gas_initial_multiplier
