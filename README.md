@@ -292,6 +292,8 @@ two ways to retrieve the list of urns:
     | UNIV2USDCETH-A | 11700453 | n/a |
     | UNIV2DAIUSDC-A | 11791208 | n/a |
     | UNIV2ETHUSDT-A | 11791262 | n/a |
+    | UNIV2WBTCDAI-A | 11882262 | n/a |
+    | UNIV2AAVEETH-A | 11882246 | n/a |
 
  * **Subscribe to TokenFlow** market data, which is currently in beta.  Visit https://api.mcdstate.info/ for more 
     information.
