@@ -197,6 +197,7 @@ governance process.  A complete list of `ilk`s for a deployment may be gleaned f
 Auction keeper can use one of several sources for the initial gas price of a transaction:  
  * The `--oracle-gas-price` switch will use a gas price aggregated across multiple gas oracles.  Recommend passing 
  `--ethgasstation-api-key MY_API_KEY` and `--etherscan-api-key MY_API_KEY`, as both API keys are currently free.  
+   The [Blocknative Gas Platform](https://www.blocknative.com/gas) requires a key.
  * The `--fixed-gas-price` switch allows specifying a **fixed** initial price in Gwei (e.g. `--fixed-gas-price 33.3`).
 
 If neither `--oracle-gas-price` nor `--fixed-gas-price` is configured, or if gas oracles are not producing prices, 
@@ -292,6 +293,8 @@ two ways to retrieve the list of urns:
     | UNIV2USDCETH-A | 11700453 | n/a |
     | UNIV2DAIUSDC-A | 11791208 | n/a |
     | UNIV2ETHUSDT-A | 11791262 | n/a |
+    | UNIV2WBTCDAI-A | 11882262 | n/a |
+    | UNIV2AAVEETH-A | 11882246 | n/a |
 
  * **Subscribe to TokenFlow** market data, which is currently in beta.  Visit https://api.mcdstate.info/ for more 
     information.
