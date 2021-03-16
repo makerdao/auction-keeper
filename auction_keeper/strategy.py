@@ -22,7 +22,7 @@ from web3 import Web3
 from auction_keeper.model import Status
 from pymaker import Address, Transact
 from pymaker.approval import directly, hope_directly
-from pymaker.auctions import AuctionContract, Flopper, Flapper, Flipper
+from pymaker.auctions import AuctionContract, Clipper, Flapper, Flipper, Flopper
 from pymaker.gas import GasPrice
 from pymaker.numeric import Wad, Ray, Rad
 
@@ -51,6 +51,33 @@ class Strategy:
         return self.contract.tick(id)
 
 
+class ClipperStrategy(Strategy):
+    def __init__(self, clipper: Clipper):
+        assert isinstance(clipper, Clipper)
+
+        self.clipper = clipper
+
+    def approve(self, gas_price: GasPrice):
+        assert isinstance(gas_price, GasPrice)
+        self.clipper.approve(self.clipper.vat.address, hope_directly(gas_price=gas_price))
+
+    def kicks(self) -> int:
+        return self.flipper.kicks()
+
+    def get_input(self, id: int) -> Status:
+        assert isinstance(id, int)
+        # TODO: implement
+        raise NotImplementedError("work in progress")
+
+    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
+        assert isinstance(id, int)
+        assert isinstance(price, Wad)
+
+        # TODO: call self.clipper.status() to determine remaining lot and current price
+        #   and then determine whether/how much to bid
+        raise NotImplementedError("work in progress")
+
+
 class FlipperStrategy(Strategy):
     def __init__(self, flipper: Flipper, min_lot: Wad):
         assert isinstance(flipper, Flipper)
@@ -76,6 +103,7 @@ class FlipperStrategy(Strategy):
 
         # Prepare the model input from auction state
         return Status(id=id,
+                      clipper=None,
                       flipper=self.flipper.address,
                       flapper=None,
                       flopper=None,
@@ -148,6 +176,7 @@ class FlapperStrategy(Strategy):
 
         # Prepare the model input from auction state
         return Status(id=id,
+                      clipper=None,
                       flipper=None,
                       flapper=self.flapper.address,
                       flopper=None,
@@ -197,6 +226,7 @@ class FlopperStrategy(Strategy):
 
         # Prepare the model input from auction state
         return Status(id=id,
+                      clipper=None,
                       flipper=None,
                       flapper=None,
                       flopper=self.flopper.address,

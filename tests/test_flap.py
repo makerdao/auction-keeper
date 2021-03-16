@@ -22,7 +22,7 @@ from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
 from pymaker.approval import directly, hope_directly
-from pymaker.dss import Collateral
+from pymaker.collateral import Collateral
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import c, mcd, mint_mkr, reserve_dai, set_collateral_price, web3, \
     our_address, keeper_address, other_address, gal_address, get_node_gas_price, \
@@ -96,10 +96,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=None,
-                                                                      flapper=self.flapper.address,
-                                                                      flopper=None,
-                                                                      id=kick))
+        model_factory.create_model.assert_called_once_with(Parameters(auction_contract=self.keeper.mcd.flapper, id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
@@ -674,7 +671,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
     @classmethod
     def repay_vault(cls, web3, mcd, c, gal_address):
-        # Borrow dai from ETH-C to repay the ETH-B vault
+        # Borrow dai from ETH-C to repay the ETH-A vault
 
         urn = mcd.vat.urn(c.ilk, gal_address)
 

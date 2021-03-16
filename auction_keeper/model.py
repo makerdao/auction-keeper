@@ -21,31 +21,24 @@ from typing import Optional
 
 from auction_keeper.process import Process
 from pymaker import Address
+from pymaker.auctions import AuctionContract, Clipper, Flipper, Flapper, Flopper
 from pymaker.numeric import Wad, Ray, Rad
 
 
 class Parameters:
-    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address], id: int):
-        assert isinstance(flipper, Address) or (flipper is None)
-        assert isinstance(flapper, Address) or (flapper is None)
-        assert isinstance(flopper, Address) or (flopper is None)
+    def __init__(self, auction_contract: AuctionContract, id: int):
+        assert isinstance(auction_contract, AuctionContract)
         assert isinstance(id, int)
 
-        self.flipper = flipper
-        self.flapper = flapper
-        self.flopper = flopper
+        self.auction_contract = auction_contract
         self.id = id
 
     def __eq__(self, other):
         assert isinstance(other, Parameters)
-
-        return self.flipper == other.flipper and \
-               self.flapper == other.flapper and \
-               self.flopper == other.flopper and \
-               self.id == other.id
+        return self.auction_contract == other.auction_contract and self.id == other.id
 
     def __hash__(self):
-        return hash((self.flipper, self.flapper, self.flopper, self.id))
+        return hash((self.auction_contract.address, self.id))
 
     def __repr__(self):
         return pformat(vars(self))
@@ -54,19 +47,21 @@ class Parameters:
 class Status:
     def __init__(self,
                  id: int,
+                 clipper: Optional[Address],
                  flipper: Optional[Address],
                  flapper: Optional[Address],
                  flopper: Optional[Address],
                  bid: Wad,
                  lot: Wad,
                  tab: Optional[Wad],
-                 beg: Wad,
+                 beg: Optional[Wad],
                  guy: Address,
                  era: int,
                  tic: int,
                  end: int,
                  price: Optional[Wad]):
         assert isinstance(id, int)
+        assert isinstance(clipper, Address) or (clipper is None)
         assert isinstance(flipper, Address) or (flipper is None)
         assert isinstance(flapper, Address) or (flapper is None)
         assert isinstance(flopper, Address) or (flopper is None)
@@ -74,7 +69,7 @@ class Status:
         assert isinstance(bid, Wad) or isinstance(bid, Rad)
         assert isinstance(lot, Wad) or isinstance(lot, Rad)
         assert isinstance(tab, Rad) or (tab is None)
-        assert isinstance(beg, Wad)
+        assert isinstance(beg, Wad) or (beg is None)
         assert isinstance(guy, Address)
         assert isinstance(era, int)
         assert isinstance(tic, int)
@@ -82,6 +77,7 @@ class Status:
         assert isinstance(price, Wad) or (price is None)
 
         self.id = id
+        self.clipper = clipper
         self.flipper = flipper
         self.flapper = flapper
         self.flopper = flopper
@@ -99,6 +95,7 @@ class Status:
         assert isinstance(other, Status)
 
         return self.id == other.id and \
+               self.clipper == other.clipper and \
                self.flipper == other.flipper and \
                self.flapper == other.flapper and \
                self.flopper == other.flopper and \
@@ -114,6 +111,7 @@ class Status:
 
     def __hash__(self):
         return hash((self.id,
+                     self.clipper,
                      self.flipper,
                      self.flapper,
                      self.flopper,
@@ -160,10 +158,18 @@ class Model:
         assert isinstance(parameters, Parameters)
 
         self._command = command
+
         self._arguments = f"--id {parameters.id}"
-        self._arguments += f" --flipper {parameters.flipper}" if parameters.flipper is not None else ""
-        self._arguments += f" --flapper {parameters.flapper}" if parameters.flapper is not None else ""
-        self._arguments += f" --flopper {parameters.flopper}" if parameters.flopper is not None else ""
+
+        if isinstance(parameters.auction_contract, Clipper):
+            self._arguments += f" --clipper {parameters.auction_contract.address}"
+        elif isinstance(parameters.auction_contract, Flipper):
+            self._arguments += f" --flipper {parameters.auction_contract.address}"
+        elif isinstance(parameters.auction_contract, Flapper):
+            self._arguments += f" --flapper {parameters.auction_contract.address}"
+        elif isinstance(parameters.auction_contract, Flopper):
+            self._arguments += f" --flopper {parameters.auction_contract.address}"
+
         self._last_output = None
 
         self.logger.info(f"Instantiated model using process '{self._command} {self._arguments}'")
@@ -186,7 +192,6 @@ class Model:
             "id": str(input.id),
             "bid": str(input.bid),
             "lot": str(input.lot),
-            "beg": str(input.beg),
             "guy": str(input.guy),
             "era": int(input.era),
             "tic": int(input.tic),
@@ -197,12 +202,15 @@ class Model:
         if input.tab:
             record['tab'] = str(input.tab)
 
+        if input.beg:
+            record['beg'] = str(input.beg)
+
+        if input.clipper:
+            record['clipper'] = str(input.clipper)
         if input.flipper:
             record['flipper'] = str(input.flipper)
-
         if input.flapper:
             record['flapper'] = str(input.flapper)
-
         if input.flopper:
             record['flopper'] = str(input.flopper)
 

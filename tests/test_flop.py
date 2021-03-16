@@ -42,7 +42,7 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
 
     if woe < joy:
         # Bite gal CDP
-        c = mcd.collaterals['ETH-B']
+        c = mcd.collaterals['ETH-A']
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(2), other_address, draw_dai=False)
         flip_kick = bite(mcd, c, unsafe_cdp)
 
@@ -157,10 +157,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=None,
-                                                                      flapper=None,
-                                                                      flopper=self.flopper.address,
-                                                                      id=kick))
+        model_factory.create_model.assert_called_once_with(Parameters(auction_contract=self.keeper.mcd.flopper, id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick

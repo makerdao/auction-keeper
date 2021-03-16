@@ -25,8 +25,9 @@ from web3 import Web3
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address, web3_via_http
+from pymaker.collateral import Collateral
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral, Ilk, Urn
+from pymaker.dss import Ilk, Urn
 from pymaker.feed import DSValue
 from pymaker.gas import NodeAwareGasPrice
 from pymaker.keys import register_keys
@@ -106,7 +107,7 @@ def mcd(web3):
 
 @pytest.fixture(scope="session")
 def c(mcd):
-    return mcd.collaterals['ETH-B']
+    return mcd.collaterals['ETH-A']
 
 
 def get_collateral_price(collateral: Collateral):

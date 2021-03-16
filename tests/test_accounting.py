@@ -34,7 +34,7 @@ class TestVatDai:
         self.mcd.approve_dai(self.keeper_address)
         self.our_address = our_address(web3())
         self.mcd.approve_dai(self.our_address)
-        self.collateral = self.mcd.collaterals['ETH-B']
+        self.collateral = self.mcd.collaterals['ETH-A']
 
     def get_dai_token_balance(self) -> Wad:
         return self.mcd.dai.balance_of(self.keeper_address)

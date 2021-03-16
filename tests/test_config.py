@@ -22,8 +22,9 @@ import pytest
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address, Transact, Wad
 from pymaker.auctions import Flipper, Flapper, Flopper
-from pymaker.dss import Cat, DaiJoin, GemJoin, Vow
+from pymaker.dss import Vow
 from pymaker.gas import GeometricGasPrice
+from pymaker.join import DaiJoin, GemJoin
 from pymaker.token import DSToken
 from tests.conftest import get_node_gas_price, keeper_address, mcd, web3
 from tests.helper import args, TransactionIgnoringTest, wait_for_other_threads
@@ -162,12 +163,9 @@ class TestConfig:
                                          f"--ilk USDC-A "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
-        assert isinstance(keeper.flipper, Flipper)
-        assert keeper.collateral.flipper == keeper.flipper
+        assert isinstance(keeper.get_contract(), Flipper)
+        assert keeper.collateral.flipper == keeper.get_contract()
         assert keeper.collateral.ilk.name == 'USDC-A'
-        assert keeper.flapper is None
-        assert keeper.flopper is None
-        assert isinstance(keeper.cat, Cat)
         assert isinstance(keeper.dai_join, DaiJoin)
         assert isinstance(keeper.gem_join, GemJoin)
 
@@ -185,10 +183,9 @@ class TestConfig:
                                          f"--from-block 1 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
-        assert isinstance(keeper.flapper, Flapper)
+        assert isinstance(keeper.get_contract(), Flapper)
         assert isinstance(keeper.dai_join, DaiJoin)
         assert isinstance(keeper.mkr, DSToken)
-        assert isinstance(keeper.cat, Cat)
         assert isinstance(keeper.vow, Vow)
 
     def test_flap_keeper_negative(self, web3, keeper_address: Address):
@@ -202,10 +199,9 @@ class TestConfig:
                                          f"--from-block 1 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
-        assert isinstance(keeper.flopper, Flopper)
+        assert isinstance(keeper.get_contract(), Flopper)
         assert isinstance(keeper.dai_join, DaiJoin)
         assert isinstance(keeper.mkr, DSToken)
-        assert isinstance(keeper.cat, Cat)
         assert isinstance(keeper.vow, Vow)
 
     def test_flop_keeper_negative(self, web3, keeper_address: Address):
@@ -218,7 +214,7 @@ class TestConfig:
         return AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                        f"--type flip "
                                        f"--from-block 1 "
-                                       f"--ilk ETH-B "
+                                       f"--ilk ETH-A "
                                        f"--shards 3 --shard-id {shard} "
                                        f"--model ./bogus-model.sh"), web3=web3)
 

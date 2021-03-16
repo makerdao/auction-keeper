@@ -29,6 +29,7 @@ from typing import Optional
 from web3 import Web3
 
 from pymaker import Address, get_pending_transactions, web3_via_http
+from pymaker.auctions import Clipper, Flipper, Flapper, Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Ilk, Urn
 from pymaker.keys import register_keys
@@ -39,7 +40,7 @@ from pymaker.numeric import Wad, Ray, Rad
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
-from auction_keeper.strategy import FlopperStrategy, FlapperStrategy, FlipperStrategy
+from auction_keeper.strategy import ClipperStrategy, FlipperStrategy, FlopperStrategy, FlapperStrategy
 from auction_keeper.urn_history import ChainUrnHistoryProvider
 from auction_keeper.urn_history_tokenflow import TokenFlowUrnHistoryProvider
 from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
@@ -62,10 +63,10 @@ class AuctionKeeper:
         parser.add_argument("--eth-key", type=str, nargs='*',
                             help="Ethereum private key(s) to use (e.g. 'key_file=aaa.json,pass_file=aaa.pass')")
 
-        parser.add_argument('--type', type=str, choices=['flip', 'flap', 'flop'],
+        parser.add_argument('--type', type=str, choices=['clip', 'flip', 'flap', 'flop'],
                             help="Auction type in which to participate")
         parser.add_argument('--ilk', type=str,
-                            help="Name of the collateral type for a flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
+                            help="Name of the collateral type for a clip or flip keeper (e.g. 'ETH-B', 'ZRX-A'); "
                                  "available collateral types can be found at the left side of the Oasis Borrow")
 
         parser.add_argument('--bid-only', dest='create_auctions', action='store_false',
@@ -143,14 +144,14 @@ class AuctionKeeper:
         self.our_address = Address(self.arguments.eth_from)
 
         # Check configuration for retrieving urns/bites
-        if self.arguments.type == 'flip' and self.arguments.create_auctions \
+        if self.arguments.type in ['clip', 'flip'] and self.arguments.create_auctions \
                 and self.arguments.from_block is None \
                 and self.arguments.tokenflow_url is None \
                 and self.arguments.vulcanize_endpoint is None:
             raise RuntimeError("One of --from-block, --tokenflow_url, or --vulcanize-endpoint must be specified "
-                               "to bite and kick off new flip auctions")
-        if self.arguments.type == 'flip' and not self.arguments.ilk:
-            raise RuntimeError("--ilk must be supplied when configuring a flip keeper")
+                               "to bite and kick off new collateral auctions")
+        if self.arguments.type in ['clip', 'flip'] and not self.arguments.ilk:
+            raise RuntimeError("--ilk must be supplied when configuring a collateral auction keeper")
         if self.arguments.type == 'flop' and self.arguments.create_auctions \
                 and self.arguments.from_block is None:
             raise RuntimeError("--from-block must be specified to kick off flop auctions")
@@ -158,11 +159,10 @@ class AuctionKeeper:
         # Configure core and token contracts
         self.mcd = DssDeployment.from_node(web3=self.web3)
         self.vat = self.mcd.vat
-        self.cat = self.mcd.cat
         self.vow = self.mcd.vow
         self.mkr = self.mcd.mkr
         self.dai_join = self.mcd.dai_adapter
-        if self.arguments.type == 'flip':
+        if self.arguments.type in ['clip', 'flip']:
             self.collateral = self.mcd.collaterals[self.arguments.ilk]
             self.ilk = self.collateral.ilk
             self.gem_join = self.collateral.adapter
@@ -172,33 +172,35 @@ class AuctionKeeper:
             self.gem_join = None
 
         # Configure auction contracts
-        self.flipper = self.collateral.flipper if self.arguments.type == 'flip' else None
-        self.flapper = self.mcd.flapper if self.arguments.type == 'flap' else None
-        self.flopper = self.mcd.flopper if self.arguments.type == 'flop' else None
+        auction_contract = self.get_contract()
+        is_collateral_auction = False
         self.urn_history = None
-        if self.flipper:
-            self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
-            self.strategy = FlipperStrategy(self.flipper, self.min_flip_lot)
-            if self.arguments.create_auctions:
-                if self.arguments.vulcanize_endpoint:
-                    self.urn_history = VulcanizeUrnHistoryProvider(self.mcd, self.ilk,
-                                                                   self.arguments.vulcanize_endpoint,
-                                                                   self.arguments.vulcanize_key)
-                elif self.arguments.tokenflow_url:
-                    self.urn_history = TokenFlowUrnHistoryProvider(self.web3, self.mcd, self.ilk,
-                                                                   self.arguments.tokenflow_url,
-                                                                   self.arguments.tokenflow_key,
-                                                                   self.arguments.chunk_size)
-                else:
-                    self.urn_history = ChainUrnHistoryProvider(self.web3, self.mcd, self.ilk,
-                                                               self.arguments.from_block, self.arguments.chunk_size)
 
-        elif self.flapper:
-            self.strategy = FlapperStrategy(self.flapper, self.mkr.address)
-        elif self.flopper:
-            self.strategy = FlopperStrategy(self.flopper)
-        else:
-            raise RuntimeError("Please specify auction type")
+        if isinstance(auction_contract, Clipper):
+            is_collateral_auction = True
+            self.strategy = ClipperStrategy(auction_contract)
+        elif isinstance(auction_contract, Flipper):
+            is_collateral_auction = True
+            self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
+            self.strategy = FlipperStrategy(auction_contract, self.min_flip_lot)
+        elif isinstance(auction_contract, Flapper):
+            self.strategy = FlapperStrategy(auction_contract, self.mkr.address)
+        elif isinstance(auction_contract, Flopper):
+            self.strategy = FlopperStrategy(auction_contract)
+
+        if is_collateral_auction and self.arguments.create_auctions:
+            if self.arguments.vulcanize_endpoint:
+                self.urn_history = VulcanizeUrnHistoryProvider(self.mcd, self.ilk,
+                                                               self.arguments.vulcanize_endpoint,
+                                                               self.arguments.vulcanize_key)
+            elif self.arguments.tokenflow_url:
+                self.urn_history = TokenFlowUrnHistoryProvider(self.web3, self.mcd, self.ilk,
+                                                               self.arguments.tokenflow_url,
+                                                               self.arguments.tokenflow_key,
+                                                               self.arguments.chunk_size)
+            else:
+                self.urn_history = ChainUrnHistoryProvider(self.web3, self.mcd, self.ilk,
+                                                           self.arguments.from_block, self.arguments.chunk_size)
 
         # Create the collection used to manage auctions relevant to this keeper
         if self.arguments.model:
@@ -208,10 +210,7 @@ class AuctionKeeper:
                 raise RuntimeError("--model must be specified to bid on auctions")
             else:
                 model_command = ":"
-        self.auctions = Auctions(flipper=self.flipper.address if self.flipper else None,
-                                 flapper=self.flapper.address if self.flapper else None,
-                                 flopper=self.flopper.address if self.flopper else None,
-                                 model_factory=ModelFactory(model_command))
+        self.auctions = Auctions(auction_contract=auction_contract, model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
         # Since we don't want periodically-pollled bidding threads to back up, use a flag instead of a lock.
         self.is_joining_dai = False
@@ -264,11 +263,11 @@ class AuctionKeeper:
             self.lifecycle = lifecycle
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
-            if self.flipper and self.cat:
+            if self.arguments.type in ['clip', 'flip']:
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_vaults))
-            elif self.flapper and self.vow:
+            elif self.arguments.type == 'flap':
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
-            elif self.flopper and self.vow:
+            elif self.arguments.type == 'flip':
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flop))
             else:  # unusual corner case
                 lifecycle.on_block(self.check_all_auctions)
@@ -279,9 +278,8 @@ class AuctionKeeper:
                 lifecycle.every(self.arguments.return_gem_interval, self.exit_gem)
 
     def auction_notice(self) -> str:
-        if self.arguments.type == 'flip':
-            return "--> Check all urns and kick off new auctions if any" + \
-                   " unsafe urns need to be bitten"
+        if self.arguments.type in ['clip', 'flip']:
+            return "--> Check all urns and kick off new auctions if unsafe urns need to be bitten"
         else:
             return "--> Check thresholds in Vow Contract and kick off new" + \
                   f" {self.arguments.type} auctions once reached"
@@ -290,7 +288,7 @@ class AuctionKeeper:
         self.plunge()
         self.approve()
         self.rebalance_dai()
-        if self.flapper:
+        if self.arguments.type == 'flap':
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
         notice_string = []
@@ -317,7 +315,7 @@ class AuctionKeeper:
             logging.info("Keeper will perform the following operation(s) in parallel:")
             [logging.info(line) for line in notice_string]
 
-            if self.flipper and self.ilk and self.ilk.name == "ETH-A":
+            if (self.arguments.type in ['clip', 'flip']) and self.ilk and self.ilk.name == "ETH-A":
                 logging.info("*** When Keeper is dealing/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
                 logging.info("*** When Keeper is kicking, initializing urn history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
@@ -365,6 +363,19 @@ class AuctionKeeper:
             self.logger.info(f"Exiting {str(vat_balance)} Dai from the Vat before shutdown")
             assert self.dai_join.exit(self.our_address, vat_balance).transact(gas_price=self.gas_price)
 
+    def get_contract(self):
+        if self.arguments.type in ['clip', 'flip']:
+            if self.collateral.clipper:
+                return self.collateral.clipper
+            elif self.collateral.flipper:
+                return self.collateral.flipper
+        elif self.arguments.type == 'flap':
+            return self.mcd.flapper
+        elif self.arguments.type == 'flop':
+            return self.mcd.flopper
+        else:
+            raise RuntimeError(f"{self.arguments.type} auctions are not supported")
+
     def auction_handled_by_this_shard(self, id: int) -> bool:
         assert isinstance(id, int)
         if id % self.arguments.shards == self.arguments.shard_id:
@@ -372,6 +383,18 @@ class AuctionKeeper:
         else:
             logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
             return False
+
+    def can_bark(self, ilk: Ilk, urn: Urn) -> bool:
+        # Typechecking intentionally omitted to improve performance
+        rate = ilk.rate
+
+        # Collateral value should be less than the product of our stablecoin debt and the debt multiplier
+        safe = Ray(urn.ink) * ilk.spot >= Ray(urn.art) * rate
+        if safe:
+            return False
+
+        # TODO: Ensure there's room in the dog.hole and collateral-specific hole
+        return True
 
     def can_bite(self, ilk: Ilk, urn: Urn, box: Rad, dunk: Rad, chop: Wad) -> bool:
         # Typechecking intentionally omitted to improve performance
@@ -383,7 +406,7 @@ class AuctionKeeper:
             return False
 
         # Ensure there's room in the litter box
-        litter = self.cat.litter()
+        litter = self.mcd.cat.litter()
         room: Rad = box - litter
         if litter >= box:
             return False
@@ -396,13 +419,21 @@ class AuctionKeeper:
         return dart > Wad(0) and dink > Wad(0)
 
     def check_vaults(self):
+        auction_contract = self.get_contract()
+        is_clipper = isinstance(auction_contract, Clipper)
+        is_flipper = isinstance(auction_contract, Flipper)
+        assert is_clipper != is_flipper
         started = datetime.now()
         available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
-        box = self.cat.box()
-        dunk = self.cat.dunk(self.ilk)
-        chop = self.cat.chop(self.ilk)
+        box = self.mcd.cat.box()
+        dunk = self.mcd.cat.dunk(self.ilk)
+        chop = self.mcd.cat.chop(self.ilk)
 
-        if not self.collateral.flipper.wards(self.mcd.cat.address):
+        # Handle new collaterals and circuit breakers
+        if is_clipper and not self.collateral.clipper.wards(self.mcd.dog.address):
+            self.logger.warning(f"Dog is not authorized to kick on this clipper")
+            return
+        if is_flipper and not self.collateral.flipper.wards(self.mcd.cat.address):
             self.logger.warning(f"Cat is not authorized to kick on this flipper")
             return
 
@@ -417,18 +448,25 @@ class AuctionKeeper:
                 time.sleep(1)
                 ilk = self.vat.ilk(self.ilk.name)  # ilk.rate changes every block
 
-            if self.can_bite(ilk, urn, box, dunk, chop):
+            if is_clipper and self.can_bark(ilk, urn):
+                if self.arguments.bid_on_auctions and available_dai == Wad(0):
+                    self.logger.warning(f"Skipping opportunity to bark urn {urn.address} "
+                                        "because there is no Dai to bid")
+                    break
+                self.mcd.dog.bark(ilk, urn).transact(gas_price=self.gas_price)
+
+            if is_flipper and self.can_bite(ilk, urn, box, dunk, chop):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")
                     break
 
+                # TODO: There's only one clip.kick for each urn; is the `min_flip_lot` mechanism still useful?
                 if urn.ink < self.min_flip_lot:
                     self.logger.info(f"Ignoring urn {urn.address.address} with ink={urn.ink} < "
                                      f"min_lot={self.min_flip_lot}")
                     continue
-
-                self.cat.bite(ilk, urn).transact(gas_price=self.gas_price)
+                self.mcd.cat.bite(ilk, urn).transact(gas_price=self.gas_price)
 
         self.logger.info(f"Checked {len(urns)} urns in {(datetime.now()-started).seconds} seconds")
         # Cat.bite implicitly kicks off the flip auction; no further action needed.
@@ -438,7 +476,7 @@ class AuctionKeeper:
         joy = self.vat.dai(self.vow.address)
         awe = self.vat.sin(self.vow.address)
 
-        if not self.flapper.wards(self.mcd.vow.address):
+        if not self.mcd.flapper.wards(self.mcd.vow.address):
             self.logger.warning(f"Vow is not authorized to kick on this flapper")
             return
 
@@ -483,7 +521,7 @@ class AuctionKeeper:
         joy = self.vat.dai(self.vow.address)
         awe = self.vat.sin(self.vow.address)
 
-        if not self.flopper.wards(self.mcd.vow.address):
+        if not self.mcd.flopper.wards(self.mcd.vow.address):
             self.logger.warning(f"Vow is not authorized to kick on this flopper")
             return
 
@@ -512,9 +550,9 @@ class AuctionKeeper:
                 self.reconcile_debt(joy, ash, woe)
 
             # Convert enough sin in woe to have woe >= sump + joy
-            if woe < (sump + joy) and self.cat is not None:
+            if woe < (sump + joy) and self.mcd.cat is not None:
                 past_blocks = self.web3.eth.blockNumber - self.arguments.from_block
-                for bite_event in self.cat.past_bites(past_blocks):  # TODO: cache ?
+                for bite_event in self.mcd.cat.past_bites(past_blocks):  # TODO: cache ?
                     era = bite_event.era(self.web3)
                     now = self.web3.eth.getBlock('latest')['timestamp']
                     sin = self.vow.sin_of(era)
@@ -575,9 +613,9 @@ class AuctionKeeper:
         # Initialize the reservoir with Dai/MKR balance for this round of bid submissions.
         # This isn't a perfect solution as it omits the cost of bids submitted from the last round.
         # Recreating the reservoir preserves the stateless design of this keeper.
-        if self.flipper or self.flopper:
+        if self.arguments.type in ['clip', 'flip', 'flop']:
             reservoir = Reservoir(self.vat.dai(self.our_address))
-        elif self.flapper:
+        elif self.arguments.type == 'flap':
             reservoir = Reservoir(Rad(self.mkr.balance_of(self.our_address)))
         else:
             raise RuntimeError("Unsupported auction type")
@@ -628,7 +666,7 @@ class AuctionKeeper:
             elif self.deal_all or input.guy in self.deal_for:
                 self.strategy.deal(id).transact(gas_price=self.gas_price)
 
-                # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
+                # Upon winning a clip, flip or flop auction, we may need to replenish Dai to the Vat.
                 # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
                 self.rebalance_dai()
             else:
@@ -733,7 +771,7 @@ class AuctionKeeper:
         assert isinstance(cost, Rad)
 
         # If this is an auction where we bid with Dai...
-        if self.flipper or self.flopper:
+        if self.arguments.type in ['clip', 'flip', 'flop']:
             if not reservoir.check_bid_cost(id, cost):
                 if not already_rebalanced:
                     # Try to synchronously join Dai the Vat
@@ -751,7 +789,7 @@ class AuctionKeeper:
                                   "bid will not be submitted")
                 return False
         # If this is an auction where we bid with MKR...
-        elif self.flapper:
+        elif self.arguments.type == 'flap':
             mkr_balance = self.mkr.balance_of(self.our_address)
             if cost > Rad(mkr_balance):
                 self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "

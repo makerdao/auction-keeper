@@ -24,8 +24,8 @@ from datetime import datetime
 from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
+from pymaker.collateral import Collateral
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, keeper_address, mcd, models, \
                            reserve_dai, simulate_model_output, web3
@@ -56,7 +56,9 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         self.web3 = web3()
         self.mcd = mcd(self.web3)
         self.keeper_address = keeper_address(self.web3)
-        self.collateral = self.mcd.collaterals['ETH-B']
+        self.collateral = self.mcd.collaterals['ETH-A']
+        assert not self.collateral.clipper
+        assert self.collateral.flipper
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
                                      f"--type flip "
                                      f"--from-block 1 "
@@ -142,7 +144,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     def test_flipper_address(self):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
-        assert self.keeper.flipper.address == self.collateral.flipper.address
+        assert self.keeper.get_contract().address == self.collateral.flipper.address
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
         # given
@@ -154,10 +156,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         wait_for_other_threads()
         initial_bid = self.collateral.flipper.bids(kick)
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=flipper.address,
-                                                                      flapper=None,
-                                                                      flopper=None,
-                                                                      id=kick))
+        model_factory.create_model.assert_called_once_with(Parameters(auction_contract=self.keeper.collateral.flipper, id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
@@ -421,7 +420,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         (model, model_factory) = models(self.keeper, kick)
 
         # when
-        our_bid_price = Wad.from_number(150)
+        our_bid_price = Wad.from_number(160)
         assert our_bid_price * flipper.bids(kick).lot > Wad(flipper.bids(1).tab)
 
         self.simulate_model_bid(self.mcd, self.collateral, model, our_bid_price)
@@ -455,7 +454,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         flipper = self.collateral.flipper
 
         # when
-        first_bid_price = Wad.from_number(140)
+        first_bid_price = Wad.from_number(150)
         self.simulate_model_bid(self.mcd, self.collateral, model, first_bid_price)
         # and
         self.keeper.check_all_auctions()
@@ -467,7 +466,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert auction.lot == tend_lot
 
         # when
-        second_bid_price = Wad.from_number(150)
+        second_bid_price = Wad.from_number(160)
         self.simulate_model_bid(self.mcd, self.collateral, model, second_bid_price)
         # and
         self.keeper.check_all_auctions()
