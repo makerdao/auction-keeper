@@ -645,7 +645,6 @@ class AuctionKeeper:
 
         # Read auction information from the chain
         input = self.strategy.get_input(id)
-        auction_deleted = (input.end == 0)
 
         # Determine if the auction has ended
         if self.arguments.type == 'clip':
@@ -653,8 +652,10 @@ class AuctionKeeper:
             # TODO: Get remaining lot size from clipper.status once contracts have been updated
             sale = clipper.sales(id)
             (done, price) = clipper.status(id)
-            auction_finished = sale.lot <= Wad(0) or done
+            auction_deleted = id < 1 or sale.lot <= Wad(0) or done
+            auction_finished = (sale.lot <= Wad(0) or done) and input.tic != 0
         else:
+            auction_deleted = (input.end == 0)
             auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
 
         if auction_deleted:

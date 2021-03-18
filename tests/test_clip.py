@@ -68,7 +68,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         # FIXME: Shouldn't need to set --min-auction 1 instead of 0
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
                                               f"--type clip "
-                                              f"--from-block 1 --min-auction 1 "
+                                              f"--from-block 1 "
                                               f"--ilk {self.collateral.ilk.name} "
                                               f"--model ./bogus-model.sh"), web3=self.mcd.web3)
         self.keeper.approve()
@@ -94,9 +94,20 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert id == 1
         lot = self.clipper.sales(id).lot
         assert lot > Wad(0)
-        # FIXME: blows up because usr=0x0000...
         self.clipper.validate_take(id, lot, price, address)
         assert self.clipper.take(id, lot, price, address).transact(from_address=address)
+
+    def take_below_price(self, id: int, our_price: Ray, address: Address):
+        lot = self.clipper.sales(id).lot
+        (done, auction_price) = self.clipper.status(id)
+        while not done and lot > Wad(0):
+            time_travel_by(self.web3, 1)
+            lot = self.clipper.sales(id).lot
+            (done, auction_price) = self.clipper.status(id)
+            if auction_price < our_price:
+                self.take_with_dai(id, our_price, address)
+                break
+        assert self.clipper.sales(id).lot == Wad(0)
 
     def test_keeper_config(self):
         assert self.keeper.arguments.type == 'clip'
@@ -133,12 +144,4 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert status.price == Wad(price)
 
         # cleanup
-        lot = self.clipper.sales(kick).lot
-        while not done and lot > Wad(0):
-            time_travel_by(self.web3, 1)
-            lot = self.clipper.sales(kick).lot
-            (done, price) = self.clipper.status(kick)
-            if price < Ray.from_number(200):
-                self.take_with_dai(kick, Ray.from_number(200), other_address)
-                break
-        assert self.clipper.sales(kick).lot == Wad(0)
+        self.take_below_price(kick, Ray.from_number(150), other_address)
