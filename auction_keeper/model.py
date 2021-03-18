@@ -55,10 +55,10 @@ class Status:
                  lot: Wad,
                  tab: Optional[Wad],
                  beg: Optional[Wad],
-                 guy: Address,
+                 guy: Optional[Address],
                  era: int,
                  tic: int,
-                 end: int,
+                 end: Optional[int],
                  price: Optional[Wad]):
         assert isinstance(id, int)
         assert isinstance(clipper, Address) or (clipper is None)
@@ -70,10 +70,10 @@ class Status:
         assert isinstance(lot, Wad) or isinstance(lot, Rad)
         assert isinstance(tab, Rad) or (tab is None)
         assert isinstance(beg, Wad) or (beg is None)
-        assert isinstance(guy, Address)
+        assert isinstance(guy, Address) or (guy is None)
         assert isinstance(era, int)
         assert isinstance(tic, int)
-        assert isinstance(end, int)
+        assert isinstance(end, int) or (end is None)
         assert isinstance(price, Wad) or (price is None)
 
         self.id = id

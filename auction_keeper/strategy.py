@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus, bargst
+# Copyright (C) 2018-2021 reverendus, bargst, EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -62,20 +62,52 @@ class ClipperStrategy(Strategy):
         self.clipper.approve(self.clipper.vat.address, hope_directly(gas_price=gas_price))
 
     def kicks(self) -> int:
-        return self.flipper.kicks()
+        return self.clipper.kicks()
 
     def get_input(self, id: int) -> Status:
         assert isinstance(id, int)
-        # TODO: implement
-        raise NotImplementedError("work in progress")
 
-    def bid(self, id: int, price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
+        # Read auction state
+        # TODO: Get lot from clipper.status once added
+        sale = self.clipper.sales(id)
+        (done, price) = self.clipper.status(id)
+
+        # Prepare the model input from auction state
+        return Status(id=id,
+                      clipper=self.clipper.address,
+                      flipper=None,
+                      flapper=None,
+                      flopper=None,
+                      bid=Wad(price),   # should we make this bid*lot?
+                      lot=sale.lot,     # Wad
+                      tab=sale.tab,
+                      beg=None,
+                      guy=None,
+                      era=era(self.clipper.web3),
+                      tic=sale.tic,
+                      end=None,
+                      price=Wad(price))
+
+    def bid(self, id: int, our_bid: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
-        assert isinstance(price, Wad)
+        assert isinstance(our_bid, Wad)
 
-        # TODO: call self.clipper.status() to determine remaining lot and current price
-        #   and then determine whether/how much to bid
-        raise NotImplementedError("work in progress")
+        # TODO: Get lot from clipper.status once added
+        sale = self.clipper.sales(id)
+        (done, auction_price) = self.clipper.status(id)
+
+        if Ray(our_bid) >= auction_price:
+            self.logger.debug(f"taking {sale.lot} from auction {id} at {our_bid}")
+            return our_bid, self.clipper.take(id, Wad(sale.lot), Ray(our_bid)), our_bid
+        else:
+            self.logger.debug(f"auction {id} price is {auction_price}; cannot take at {our_bid}")
+            return None, None, None
+
+    def deal(self, id: int) -> Transact:
+        raise RuntimeError("Clipper auctions cannot be dealt")
+
+    def tick(self, id: int) -> Transact:
+        return self.clipper.redo(id, None)
 
 
 class FlipperStrategy(Strategy):
@@ -146,7 +178,7 @@ class FlipperStrategy(Strategy):
             our_price = price if our_bid < bid.tab else Wad(bid.bid) / bid.lot
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
-                return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
+                return our_price, self.flipper.tend(id, bid.lot, our_bid), Rad(our_bid)
             else:
                 self.logger.debug(f"tend bid {our_bid} would not exceed the bid increment for auction {id}")
                 return None, None, None
