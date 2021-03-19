@@ -66,6 +66,7 @@ def wait_for_other_threads(max_secs=60):
         if (datetime.now() - started).total_seconds() > max_secs:
             raise TimeoutError("Worker threads took too long to complete")
         time.sleep(0.5)
+    return  # To manually break out of debugger
 
 
 class TransactionIgnoringTest:

@@ -51,22 +51,22 @@ class Status:
                  flipper: Optional[Address],
                  flapper: Optional[Address],
                  flopper: Optional[Address],
-                 bid: Wad,
-                 lot: Wad,
+                 bid,
+                 lot,
                  tab: Optional[Wad],
                  beg: Optional[Wad],
                  guy: Optional[Address],
                  era: int,
                  tic: int,
                  end: Optional[int],
-                 price: Optional[Wad]):
+                 price):
         assert isinstance(id, int)
         assert isinstance(clipper, Address) or (clipper is None)
         assert isinstance(flipper, Address) or (flipper is None)
         assert isinstance(flapper, Address) or (flapper is None)
         assert isinstance(flopper, Address) or (flopper is None)
         # Numeric type of bid and lot depends on auction type; Dai values are bid in Rad, collateral and MKR in Wad.
-        assert isinstance(bid, Wad) or isinstance(bid, Rad)
+        assert isinstance(bid, Wad) or isinstance(bid, Rad) or isinstance(bid, Ray)
         assert isinstance(lot, Wad) or isinstance(lot, Rad)
         assert isinstance(tab, Rad) or (tab is None)
         assert isinstance(beg, Wad) or (beg is None)
@@ -74,7 +74,7 @@ class Status:
         assert isinstance(era, int)
         assert isinstance(tic, int)
         assert isinstance(end, int) or (end is None)
-        assert isinstance(price, Wad) or (price is None)
+        assert isinstance(price, Wad) or isinstance(price, Ray) or (price is None)
 
         self.id = id
         self.clipper = clipper
