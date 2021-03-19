@@ -565,6 +565,18 @@ class AuctionKeeper:
                         if self.vow.woe() - joy >= sump:
                             break
 
+                for bark_event in self.mcd.dog.past_barks(past_blocks):
+                    era = bark_event.era(self.web3)
+                    now = self.web3.eth.getBlock('latest')['timestamp']
+                    sin = self.vow.sin_of(era)
+                    if sin > Rad(0) and era + wait <= now:
+                        self.vow.flog(era).transact(gas_price=self.gas_price)
+
+                        # flog() sin until woe is above sump + joy
+                        joy = self.vat.dai(self.vow.address)
+                        if self.vow.woe() - joy >= sump:
+                            break
+
             # Reduce on-auction debt and reconcile remaining joy
             joy = self.vat.dai(self.vow.address)
             if joy > Rad(0):
