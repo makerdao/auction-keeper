@@ -34,6 +34,7 @@ from pymaker.keys import register_keys
 from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken, DSToken
+from tests.helper import time_travel_by
 
 
 @pytest.fixture(scope="session")
@@ -177,6 +178,9 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, ex
     assert isinstance(amount, Wad)
     assert amount > Wad(0)
 
+    # Ensure dust limits are reached
+    amount: Wad = max(amount, Wad(c.ilk.dust))
+
     # Determine how much collateral is needed
     ilk = mcd.vat.ilk(c.ilk.name)
     rate = ilk.rate  # Ray
@@ -291,19 +295,22 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     # Ensure there is no debt which a previous test failed to clean up
     assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
-    ink = Wad.from_number(1)
-    art = Wad.from_number(50)
+    joy_before = mcd.vat.dai(mcd.vow.address)
+    print(f"joy_before={float(joy_before)}")
+
+    ink = Wad.from_number(20)
+    art = Wad.from_number(2666)
     wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)
-    assert c.adapter.join(gal_address, ink).transact(
-        from_address=gal_address)
-    assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(
-        from_address=gal_address)
+    assert c.adapter.join(gal_address, ink).transact(from_address=gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(from_address=gal_address)
     assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
-    print(f"dai(vow)={str(mcd.vat.dai(mcd.vow.address))} >? sin(vow)={str(mcd.vat.sin(mcd.vow.address))} " 
-          f"+ vow.bump={str(mcd.vow.bump())} + vow.hump={str(mcd.vow.hump())}")
-    assert mcd.vat.dai(mcd.vow.address) > mcd.vat.sin(mcd.vow.address) + mcd.vow.bump() + mcd.vow.hump()
+    joy = mcd.vat.dai(mcd.vow.address)
+    awe = mcd.vat.sin(mcd.vow.address)
+    print(f"joy={float(joy)} >? awe={float(awe)} + bump={float(mcd.vow.bump())} + hump={float(mcd.vow.hump())}")
+    assert float(joy) > float(awe) + float(mcd.vow.bump()) + float(mcd.vow.hump())
+    assert joy > joy_before
     return mcd.vat.urn(c.ilk, gal_address)
 
 

@@ -631,7 +631,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     @classmethod
     def teardown_class(cls):
         cls.mcd = mcd(web3())
-        cls.liquidate_urn(web3(), cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
+        # cls.liquidate_urn(web3(), cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
         cls.repay_vault(web3(), cls.mcd, c(cls.mcd), gal_address(web3()))
 
     @classmethod
@@ -648,18 +648,21 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         urn = mcd.vat.urn(c.ilk, gal_address)
         bites_required = math.ceil(urn.art / dunk)
         print(f"art={urn.art} and dunk={dunk} so {bites_required} bites are required")
+        if urn.art > Wad(mcd.cat.box()):
+            print(f"but art exceeds box of {float(mcd.cat.box())} so this method cannot liquidate it")
+            return
         c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=our_address))
         first_kick = c.flipper.kicks() + 1
 
         # Bite and bid on each auction
         for i in range(bites_required):
+            print(f"biting {i} of {bites_required}")
             kick = bite(mcd, c, urn)
             assert kick > 0
             auction = c.flipper.bids(kick)
-            print(f"biting {i} of {bites_required} and bidding tab of {auction.tab}")
-            bid = Wad(auction.tab) + Wad(1)
+            bid = Wad(auction.tab)
             reserve_dai(mcd, c, our_address, bid)
-            print(f"bidding tab of {auction.tab}")
+            print(f"bidding tab of {auction.tab} for {auction.lot} with {mcd.vat.dai(our_address)} Dai remaining")
             assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=our_address)
 
         time_travel_by(web3, c.flipper.ttl())
@@ -673,18 +676,19 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def repay_vault(cls, web3, mcd, c, gal_address):
         # Borrow dai from ETH-C to repay the ETH-A vault
 
-        urn = mcd.vat.urn(c.ilk, gal_address)
-
         # Procure enough Dai to close the vault
+        urn = mcd.vat.urn(c.ilk, gal_address)
+        debt = urn.art * Wad(c.ilk.rate)
+        print(f"Urn debt is {debt}")
         dai_balance: Wad = mcd.dai.balance_of(gal_address)
         vat_balance: Wad = Wad(mcd.vat.dai(gal_address))
-        if vat_balance < urn.art:
-            needed_in_vat = urn.art - vat_balance
+        if vat_balance < debt:
+            needed_in_vat = debt - vat_balance
             if dai_balance < needed_in_vat:
-                print("Purchasing Dai to repay vault")
+                print(f"Purchasing {needed_in_vat - dai_balance} Dai to repay vault")
                 purchase_dai(needed_in_vat - dai_balance, gal_address)
-            print("Joining Dai to repay vault")
-            mcd.dai_adapter.join(needed_in_vat).transact(from_address=gal_address)
+            print(f"Joining {needed_in_vat} Dai to repay vault")
+            assert mcd.dai_adapter.join(gal_address, needed_in_vat).transact(from_address=gal_address)
         print(f"We have {mcd.vat.dai(gal_address)} Dai to pay off {urn.art} debt")
 
         print("Closing vault")

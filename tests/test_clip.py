@@ -31,7 +31,6 @@ from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import collateral_clip, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
     models, other_address, reserve_dai, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
-from typing import Optional
 
 
 @pytest.fixture()
@@ -114,12 +113,14 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         simulate_model_output(model=model, price=Wad(price))
 
     def take_below_price(self, id: int, our_price: Ray, address: Address):
-        lot = self.clipper.sales(id).lot
-        (done, auction_price) = self.clipper.status(id)
-        while not done and lot > Wad(0):
+        assert isinstance(id, int)
+        assert isinstance(our_price, Ray)
+        assert isinstance(address, Address)
+
+        (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
+        while lot > Wad(0):
             time_travel_by(self.web3, 1)
-            lot = self.clipper.sales(id).lot
-            (done, auction_price) = self.clipper.status(id)
+            (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
             if auction_price < our_price:
                 self.take_with_dai(id, our_price, address)
                 break
@@ -129,13 +130,11 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert self.keeper.arguments.type == 'clip'
         assert self.keeper.get_contract().address == self.clipper.address
 
-    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
-        # setup
-        self.approve(other_address)  # prepare for cleanup
+    def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
 
         # given
         (model, model_factory) = models(self.keeper, kick)
-        (done, price) = self.clipper.status(kick)
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
 
         # when
         self.keeper.check_all_auctions()
@@ -157,7 +156,22 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert time.time() - 5 < status.tic < time.time() + 5
         assert status.price == price
 
+    def test_should_do_nothing_if_no_output_from_model(self, other_address):
+        # setup
+        self.approve(other_address)  # prepare for cleanup
+        # given previous kick
+        previous_block_number = self.web3.eth.blockNumber
+
+        # when
+        # [no output from model]
+        # and
+        self.keeper.check_all_auctions()
+        wait_for_other_threads()
+        # then
+        assert self.web3.eth.blockNumber == previous_block_number
+
         # cleanup
+        kick = self.clipper.kicks()
         self.take_below_price(kick, Ray.from_number(150), other_address)
 
     def test_should_take_when_price_appropriate(self, kick):
@@ -174,13 +188,13 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
             self.keeper.check_for_bids()
             wait_for_other_threads()
             lot = self.clipper.sales(kick).lot
-            (done, auction_price) = self.clipper.status(kick)
+            (needs_redo, auction_price, lot, tab) = self.clipper.status(kick)
 
             # when auction price is unacceptable
             if auction_price > our_price:
                 # then ensure no action is taken
                 assert self.clipper.sales(kick).lot > Wad(0)
-                assert not done
+                assert not needs_redo
             # when auction price is acceptable
             else:
                 # then ensure take was called
@@ -196,13 +210,12 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         # given
         (model, model_factory) = models(self.keeper, kick)
         sale = self.clipper.sales(kick)
-        (done, price) = self.clipper.status(kick)
         assert sale.lot == Wad.from_number(1)
 
         # when another actor took most of the lot
         time_travel_by(self.web3, 12)
         sale = self.clipper.sales(kick)
-        (done, price) = self.clipper.status(kick)
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
         their_amt = Wad.from_number(0.6)
         their_bid = Wad(Ray(their_amt) * price)
         assert Rad(their_bid) < sale.tab  # ensure some collateral will be left over
@@ -214,7 +227,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
 
         # and our model is configured to bid a few seconds into the auction
         sale = self.clipper.sales(kick)
-        (done, price) = self.clipper.status(kick)
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
         assert Rad(price) > sale.tab
         self.simulate_model_bid(model, price)
         self.keeper.check_all_auctions()
@@ -224,7 +237,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         # then ensure we took the remaining lot
         our_take = self.last_log()
         assert isinstance(our_take, Clipper.TakeLog)
-        assert Wad(0) < our_take.lot < Wad.from_number(0.2)
+        assert Wad(0) < our_take.lot <= lot
 
     @staticmethod
     def print_imbalance(mcd: DssDeployment):

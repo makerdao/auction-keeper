@@ -68,11 +68,7 @@ class ClipperStrategy(Strategy):
         assert isinstance(id, int)
 
         # Read auction state
-        # TODO: Get lot from clipper.status once added
-        sale = self.clipper.sales(id)
-        (done, price) = self.clipper.status(id)
-
-        # Calculating end time based on abaci parameters is nontrivial and omitted from this implementation.
+        (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
 
         # Prepare the model input from auction state
         return Status(id=id,
@@ -80,30 +76,28 @@ class ClipperStrategy(Strategy):
                       flipper=None,
                       flapper=None,
                       flopper=None,
-                      bid=price * Ray(sale.lot),    # Cost to take rest of auction at current price
-                      lot=sale.lot,                 # Wad
-                      tab=sale.tab,
+                      bid=auction_price * Ray(lot),    # Cost to take rest of auction at current price
+                      lot=lot,                 # Wad
+                      tab=tab,
                       beg=None,
                       guy=None,
                       era=era(self.clipper.web3),
-                      tic=sale.tic,
+                      tic=self.clipper.sales(id).tic,
                       end=None,
-                      price=price)             # Current price of auction
+                      price=auction_price)             # Current price of auction
 
     def bid(self, id: int, our_price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(our_price, Wad)
 
-        # TODO: Get lot from clipper.status once added
-        sale = self.clipper.sales(id)
-        (done, auction_price) = self.clipper.status(id)
+        (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
 
         # TODO: Calculate how much of the lot we can afford with Dai available, don't bid for more than that
 
         if Ray(our_price) >= auction_price:
-            self.logger.debug(f"taking {sale.lot} from auction {id} at {our_price}")
-            cost = Rad(sale.lot) * Rad(our_price)
-            return Wad(our_price), self.clipper.take(id, Wad(sale.lot), Ray(our_price)), cost
+            self.logger.debug(f"taking {lot} from auction {id} at {our_price}")
+            cost = Rad(lot) * Rad(our_price)
+            return Wad(our_price), self.clipper.take(id, Wad(lot), Ray(our_price)), cost
         else:
             self.logger.debug(f"auction {id} price is {auction_price}; cannot take at {our_price}")
             return None, None, None
