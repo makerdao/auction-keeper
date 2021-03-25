@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import threading
 import time
 
 from auction_keeper.gas import DynamicGasPrice
@@ -659,15 +660,16 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert self.flopper.deal(kick).transact()
 
     @classmethod
-    def teardown_class(cls):
-        cls.cleanup_debt(web3(), mcd(web3()), other_address(web3()))
-
-    @classmethod
     def cleanup_debt(cls, web3, mcd, address):
         # Cancel out surplus and debt
         dai_vow = mcd.vat.dai(mcd.vow.address)
         assert dai_vow <= mcd.vow.woe()
         assert mcd.vow.heal(dai_vow).transact()
+
+    @classmethod
+    def teardown_class(cls):
+        cls.cleanup_debt(web3(), mcd(web3()), other_address(web3()))
+        assert threading.active_count() == 1
 
 
 class MockFlopper:

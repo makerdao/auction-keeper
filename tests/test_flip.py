@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import threading
 
 from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
@@ -784,3 +785,4 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
     @classmethod
     def teardown_class(cls):
         flog_and_heal(web3(), mcd(web3()), past_blocks=1200, require_heal=False)
+        assert threading.active_count() == 1

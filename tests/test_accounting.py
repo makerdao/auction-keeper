@@ -23,7 +23,7 @@ from auction_keeper.logic import Reservoir
 from auction_keeper.main import AuctionKeeper
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import keeper_address, mcd, our_address, web3, wrap_eth, purchase_dai
-from tests.helper import args
+from tests.helper import args, kill_other_threads
 
 
 class TestVatDai:
@@ -275,17 +275,7 @@ class TestRebalance(TestVatDai):
         self.thread.join()
 
         # HACK: Lifecycle leaks threads; this needs to be fixed in pymaker
-        import ctypes
-        while threading.active_count() > 1:
-            for thread in threading.enumerate():
-                if thread is not threading.current_thread():
-                    print(f"Attempting to kill thread {thread}")
-                    sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
-                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
-                    time.sleep(1)
-
-        # Ensure we don't leak threads, which would break wait_for_other_threads() later on
-        assert threading.active_count() == 1
+        kill_other_threads()
 
         assert self.get_dai_vat_balance() == Wad(0)
 

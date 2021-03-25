@@ -17,6 +17,7 @@
 
 import math
 import pytest
+import threading
 
 from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
@@ -629,12 +630,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.flapper.deal(kick).transact()
 
     @classmethod
-    def teardown_class(cls):
-        cls.mcd = mcd(web3())
-        # cls.liquidate_urn(web3(), cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
-        cls.repay_vault(web3(), cls.mcd, c(cls.mcd), gal_address(web3()))
-
-    @classmethod
     def liquidate_urn(cls, web3, mcd, c, gal_address, our_address):
         # Ensure the CDP isn't safe
         urn = mcd.vat.urn(c.ilk, gal_address)
@@ -700,3 +695,10 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         urn = mcd.vat.urn(c.ilk, gal_address)
         assert urn.ink == Wad(0)
         assert urn.art == Wad(0)
+
+    @classmethod
+    def teardown_class(cls):
+        cls.mcd = mcd(web3())
+        # cls.liquidate_urn(web3(), cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
+        cls.repay_vault(web3(), cls.mcd, c(cls.mcd), gal_address(web3()))
+        assert threading.active_count() == 1

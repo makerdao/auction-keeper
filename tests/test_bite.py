@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import threading
 
 from auction_keeper.main import AuctionKeeper
 from pymaker.approval import hope_directly
@@ -82,6 +83,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
     def teardown_class(cls):
         w3 = web3()
         cls.eliminate_queued_debt(w3, mcd(w3), keeper_address(w3))
+        assert threading.active_count() == 1
 
     @classmethod
     def eliminate_queued_debt(cls, web3, mcd, keeper_address):

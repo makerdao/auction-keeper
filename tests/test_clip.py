@@ -17,6 +17,7 @@
 
 import logging
 import pytest
+import threading
 import time
 
 from auction_keeper.gas import DynamicGasPrice
@@ -48,6 +49,7 @@ def kick(mcd, collateral_clip: Collateral, gal_address) -> int:
     return collateral_clip.clipper.kicks()
 
 
+@pytest.mark.skip("testing file rename effects")
 @pytest.mark.timeout(500)
 class TestAuctionKeeperClipper(TransactionIgnoringTest):
     def setup_class(self):
@@ -277,5 +279,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
             self.keeper.reconcile_debt(joy, ash, woe)
 
         self.print_imbalance(self.mcd)
-        # TODO: Uncomment after I've got a few more tests which hit the tab
+        # FIXME: sin left after this test will break the flap tests
         # assert self.mcd.vat.sin(self.mcd.vow.address) == Rad(0)
+
+        assert threading.active_count() == 1
