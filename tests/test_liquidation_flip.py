@@ -51,24 +51,25 @@ def kick(mcd, c: Collateral, gal_address) -> int:
 
 @pytest.mark.timeout(500)
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
-    def setup_class(self):
+    @classmethod
+    def setup_class(cls):
         """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
         to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
-        self.web3 = web3()
-        self.mcd = mcd(self.web3)
-        self.keeper_address = keeper_address(self.web3)
-        self.collateral = self.mcd.collaterals['ETH-A']
-        assert not self.collateral.clipper
-        assert self.collateral.flipper
-        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
+        cls.web3 = web3()
+        cls.mcd = mcd(cls.web3)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.collateral = cls.mcd.collaterals['ETH-A']
+        assert not cls.collateral.clipper
+        assert cls.collateral.flipper
+        cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
                                      f"--type flip "
                                      f"--from-block 1 "
-                                     f"--ilk {self.collateral.ilk.name} "
-                                     f"--model ./bogus-model.sh"), web3=self.mcd.web3)
-        self.keeper.approve()
+                                     f"--ilk {cls.collateral.ilk.name} "
+                                     f"--model ./bogus-model.sh"), web3=cls.mcd.web3)
+        cls.keeper.approve()
 
-        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
-        self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
+        assert isinstance(cls.keeper.gas_price, DynamicGasPrice)
+        cls.default_gas_price = cls.keeper.gas_price.get_gas_price(0)
 
     @staticmethod
     def gem_balance(address: Address, c: Collateral) -> Wad:
@@ -784,5 +785,5 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     @classmethod
     def teardown_class(cls):
-        flog_and_heal(web3(), mcd(web3()), past_blocks=1200, require_heal=False)
+        flog_and_heal(cls.web3, cls.mcd, past_blocks=1200, require_heal=False)
         assert threading.active_count() == 1

@@ -296,21 +296,25 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
     joy_before = mcd.vat.dai(mcd.vow.address)
-    print(f"joy_before={float(joy_before)}")
 
-    ink = Wad.from_number(20)
-    art = Wad.from_number(2666)
+    ink = Wad.from_number(10)
+    art = max_dart(mcd, c, gal_address)
     wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)
+    print(f"collateral={c.ilk.name}, ink={float(ink)}, art={float(art)}, joy_before={float(joy_before)}")
     assert c.adapter.join(gal_address, ink).transact(from_address=gal_address)
     assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(from_address=gal_address)
-    assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
-    # total surplus > total debt + surplus auction lot size + surplus buffer
     joy = mcd.vat.dai(mcd.vow.address)
     awe = mcd.vat.sin(mcd.vow.address)
-    print(f"joy={float(joy)} >? awe={float(awe)} + bump={float(mcd.vow.bump())} + hump={float(mcd.vow.hump())}")
-    assert float(joy) > float(awe) + float(mcd.vow.bump()) + float(mcd.vow.hump())
-    assert joy > joy_before
+    # total surplus > total debt + surplus auction lot size + surplus buffer
+    while float(joy) <= float(awe) + float(mcd.vow.bump()) + float(mcd.vow.hump()):
+        print(f"joy={float(joy)}; waiting for fees to accumulate")
+        time_travel_by(mcd.web3, 3)
+        assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
+        joy = mcd.vat.dai(mcd.vow.address)
+        awe = mcd.vat.sin(mcd.vow.address)
+    print(f"joy={float(joy)} > awe={float(awe)} + bump={float(mcd.vow.bump())} + hump={float(mcd.vow.hump())}")
+    assert joy >= joy_before
     return mcd.vat.urn(c.ilk, gal_address)
 
 

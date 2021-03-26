@@ -52,30 +52,31 @@ def kick(mcd, collateral_clip: Collateral, gal_address) -> int:
 @pytest.mark.skip("testing file rename effects")
 @pytest.mark.timeout(500)
 class TestAuctionKeeperClipper(TransactionIgnoringTest):
-    def setup_class(self):
-        self.web3 = web3()
-        self.mcd = mcd(self.web3)
-        self.gal_address = gal_address(self.web3)
-        self.keeper_address = keeper_address(self.web3)
-        self.other_address = other_address(self.web3)
-        self.collateral = collateral_clip(self.mcd)
-        assert self.collateral.clipper
-        assert not self.collateral.flipper
-        self.clipper = self.collateral.clipper
+    @classmethod
+    def setup_class(cls):
+        cls.web3 = web3()
+        cls.mcd = mcd(cls.web3)
+        cls.gal_address = gal_address(cls.web3)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.other_address = other_address(cls.web3)
+        cls.collateral = collateral_clip(cls.mcd)
+        assert cls.collateral.clipper
+        assert not cls.collateral.flipper
+        cls.clipper = cls.collateral.clipper
         # FIXME: Shouldn't need to set --min-auction 1 instead of 0
-        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
+        cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
                                               f"--type clip "
                                               f"--from-block 1 "
-                                              f"--ilk {self.collateral.ilk.name} "
-                                              f"--model ./bogus-model.sh"), web3=self.mcd.web3)
-        self.keeper.approve()
+                                              f"--ilk {cls.collateral.ilk.name} "
+                                              f"--model ./bogus-model.sh"), web3=cls.mcd.web3)
+        cls.keeper.approve()
 
         # approve another taker
-        self.collateral.approve(self.other_address)
-        self.collateral.clipper.approve(self.mcd.vat.address, hope_directly(from_address=self.other_address))
+        cls.collateral.approve(cls.other_address)
+        cls.collateral.clipper.approve(cls.mcd.vat.address, hope_directly(from_address=cls.other_address))
 
-        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
-        self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
+        assert isinstance(cls.keeper.gas_price, DynamicGasPrice)
+        cls.default_gas_price = cls.keeper.gas_price.get_gas_price(0)
 
     def approve(self, address: Address):
         assert isinstance(address, Address)
@@ -250,8 +251,9 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         sump = mcd.vow.sump()
         print(f"balance={float(balance)}, sump={float(sump)}, woe={float(woe)}, joy={float(joy)}, awe={float(awe)}")
 
-    def teardown_class(self):
-        self.print_imbalance(self.mcd)
+    @classmethod
+    def teardown_class(cls):
+        cls.print_imbalance(cls.mcd)
         # FIXME: Because sump is so low, we can't easily kill bad debt by flopping
 
         # # Start a flop auction
@@ -272,13 +274,13 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         # assert self.mcd.flopper.deal(kick).transact()
         # self.print_imbalance(self.mcd)
 
-        joy = self.mcd.vat.dai(self.mcd.vow.address)
-        ash = self.mcd.vow.ash()
-        woe = self.mcd.vow.woe()
+        joy = cls.mcd.vat.dai(cls.mcd.vow.address)
+        ash = cls.mcd.vow.ash()
+        woe = cls.mcd.vow.woe()
         if joy > Rad(0):
-            self.keeper.reconcile_debt(joy, ash, woe)
+            cls.keeper.reconcile_debt(joy, ash, woe)
 
-        self.print_imbalance(self.mcd)
+        cls.print_imbalance(cls.mcd)
         # FIXME: sin left after this test will break the flap tests
         # assert self.mcd.vat.sin(self.mcd.vow.address) == Rad(0)
 

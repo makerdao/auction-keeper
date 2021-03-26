@@ -692,10 +692,10 @@ class MockFlopper:
 
 
 class TestFlopStrategy:
-    def setup_class(self):
-        self.mcd = mcd(web3())
-        self.strategy = FlopperStrategy(self.mcd.flopper)
-        self.mock_flopper = MockFlopper()
+    def setup_class(cls):
+        cls.mcd = mcd(web3())
+        cls.strategy = FlopperStrategy(cls.mcd.flopper)
+        cls.mock_flopper = MockFlopper()
 
     def test_price(self, mocker):
         mocker.patch("pymaker.auctions.Flopper.bids", return_value=self.mock_flopper.bids(1))
