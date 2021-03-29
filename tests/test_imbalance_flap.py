@@ -15,19 +15,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import math
 import pytest
-import threading
+from pymaker.approval import directly
+from pymaker.collateral import Collateral
+from pymaker.numeric import Wad, Rad
 
 from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
-from pymaker.approval import directly, hope_directly
-from pymaker.collateral import Collateral
-from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import c, mcd, mint_mkr, reserve_dai, set_collateral_price, web3, \
-    our_address, keeper_address, other_address, gal_address, get_node_gas_price, \
-    max_dart, is_cdp_safe, bite, create_cdp_with_surplus, purchase_dai, simulate_model_output, models
+from tests.conftest import c, mcd, mint_mkr, web3, \
+    gal_address, keeper_address, other_address, our_address, \
+    create_cdp_with_surplus, get_node_gas_price, liquidate_urn, models, repay_urn, simulate_model_output
 from tests.helper import args, kill_other_threads, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
@@ -50,7 +48,7 @@ def kick(mcd, c: Collateral, gal_address) -> int:
     return kick
 
 
-@pytest.mark.timeout(400)
+@pytest.mark.timeout(1200)
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = web3()
@@ -635,74 +633,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.flapper.deal(kick).transact()
 
     @classmethod
-    def liquidate_urn(cls, web3, mcd, c, gal_address, our_address):
-        # Ensure the CDP isn't safe
-        urn = mcd.vat.urn(c.ilk, gal_address)
-        dart = max_dart(mcd, c, gal_address) - Wad.from_number(1)
-        assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
-        set_collateral_price(mcd, c, Wad.from_number(66))
-        assert not is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn)
-
-        # Determine how many bites will be required
-        dunk = Wad(mcd.cat.dunk(c.ilk))
-        urn = mcd.vat.urn(c.ilk, gal_address)
-        bites_required = math.ceil(urn.art / dunk)
-        print(f"art={urn.art} and dunk={dunk} so {bites_required} bites are required")
-        if urn.art > Wad(mcd.cat.box()):
-            print(f"but art exceeds box of {float(mcd.cat.box())} so this method cannot liquidate it")
-            return
-        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=our_address))
-        first_kick = c.flipper.kicks() + 1
-
-        # Bite and bid on each auction
-        for i in range(bites_required):
-            print(f"biting {i} of {bites_required}")
-            kick = bite(mcd, c, urn)
-            assert kick > 0
-            auction = c.flipper.bids(kick)
-            bid = Wad(auction.tab)
-            reserve_dai(mcd, c, our_address, bid)
-            print(f"bidding tab of {auction.tab} for {auction.lot} with {mcd.vat.dai(our_address)} Dai remaining")
-            assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=our_address)
-
-        time_travel_by(web3, c.flipper.ttl())
-        for kick in range(first_kick, c.flipper.kicks()):
-            assert c.flipper.deal(kick).transact()
-
-        set_collateral_price(mcd, c, Wad.from_number(200))
-        urn = mcd.vat.urn(c.ilk, gal_address)
-
-    @classmethod
-    def repay_vault(cls, web3, mcd, c, gal_address):
-        # Borrow dai from ETH-C to repay the ETH-A vault
-
-        # Procure enough Dai to close the vault
-        urn = mcd.vat.urn(c.ilk, gal_address)
-        debt = urn.art * Wad(c.ilk.rate)
-        print(f"Urn debt is {debt}")
-        dai_balance: Wad = mcd.dai.balance_of(gal_address)
-        vat_balance: Wad = Wad(mcd.vat.dai(gal_address))
-        if vat_balance < debt:
-            needed_in_vat = debt - vat_balance
-            if dai_balance < needed_in_vat:
-                print(f"Purchasing {needed_in_vat - dai_balance} Dai to repay vault")
-                purchase_dai(needed_in_vat - dai_balance, gal_address)
-            print(f"Joining {needed_in_vat} Dai to repay vault")
-            assert mcd.dai_adapter.join(gal_address, needed_in_vat).transact(from_address=gal_address)
-        print(f"We have {mcd.vat.dai(gal_address)} Dai to pay off {urn.art} debt")
-
-        print("Closing vault")
-        assert mcd.vat.frob(c.ilk, urn.address, Wad(0), urn.art*-1).transact(from_address=gal_address)
-        assert mcd.vat.frob(c.ilk, urn.address, urn.ink * -1, Wad(0)).transact(from_address=gal_address)
-
-        urn = mcd.vat.urn(c.ilk, gal_address)
-        assert urn.ink == Wad(0)
-        assert urn.art == Wad(0)
-
-    @classmethod
     def teardown_class(cls):
         cls.mcd = mcd(web3())
-        # cls.liquidate_urn(web3(), cls.mcd, c(cls.mcd), gal_address(web3()), our_address(web3()))
-        # TODO: uncomment once the tests pass
-        # cls.repay_vault(web3(), cls.mcd, c(cls.mcd), gal_address(web3()))
+        if not repay_urn(cls.mcd, c(cls.mcd), gal_address(web3())):
+            liquidate_urn(cls.mcd, c(cls.mcd), gal_address(web3()), keeper_address(web3()))
         kill_other_threads()

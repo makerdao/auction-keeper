@@ -30,7 +30,8 @@ from pymaker.auctions import Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
-    models, our_address, other_address, reserve_dai, simulate_model_output, web3
+    models, our_address, other_address, repay_urn, reserve_dai, set_collateral_price, simulate_model_output, web3, \
+    liquidate_urn
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
 
@@ -69,17 +70,19 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
 
 @pytest.mark.timeout(600)
 class TestAuctionKeeperFlopper(TransactionIgnoringTest):
+    @classmethod
+    def setup_class(cls):
+        cls.web3 = web3()
+        cls.our_address = our_address(cls.web3)
+        cls.gal_address = gal_address(cls.web3)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.other_address = other_address(cls.web3)
+        cls.mcd = mcd(cls.web3)
+        cls.flopper = cls.mcd.flopper
+        cls.flopper.approve(cls.mcd.vat.address, approval_function=hope_directly(from_address=cls.keeper_address))
+        cls.flopper.approve(cls.mcd.vat.address, approval_function=hope_directly(from_address=cls.other_address))
+    
     def setup_method(self):
-        self.web3 = web3()
-        self.our_address = our_address(self.web3)
-        self.keeper_address = keeper_address(self.web3)
-        self.other_address = other_address(self.web3)
-        self.gal_address = gal_address(self.web3)
-        self.mcd = mcd(self.web3)
-        self.flopper = self.mcd.flopper
-        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(from_address=self.keeper_address))
-        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(from_address=self.other_address))
-
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
                                               f"--from-block 1 "
@@ -89,6 +92,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert isinstance(self.keeper.gas_price, DynamicGasPrice)
         self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
 
+        # FIXME: shouldn't need the extra collateral
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.keeper_address, Wad.from_number(200.00000))
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
 
@@ -660,7 +664,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert self.flopper.deal(kick).transact()
 
     @classmethod
-    def cleanup_debt(cls, web3, mcd, address):
+    def cleanup_debt(cls, web3, mcd):
         # Cancel out surplus and debt
         dai_vow = mcd.vat.dai(mcd.vow.address)
         assert dai_vow <= mcd.vow.woe()
@@ -668,7 +672,12 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
 
     @classmethod
     def teardown_class(cls):
-        cls.cleanup_debt(web3(), mcd(web3()), other_address(web3()))
+        cls.cleanup_debt(cls.web3, cls.mcd)
+        c = cls.mcd.collaterals['ETH-A']
+        # TODO: Should probably reset collateral price after each kick or test
+        set_collateral_price(cls.mcd, c, Wad.from_number(200.00))
+        # if not repay_urn(cls.mcd, c, cls.gal_address):
+        #     liquidate_urn(cls.mcd, c, cls.gal_address, cls.keeper_address)
         assert threading.active_count() == 1
 
 

@@ -22,7 +22,9 @@ from auction_keeper.main import AuctionKeeper
 from pymaker.approval import hope_directly
 from pymaker.numeric import Wad, Ray, Rad
 
-from tests.conftest import web3, mcd, create_unsafe_cdp, keeper_address, reserve_dai, purchase_dai
+from tests.conftest import web3, mcd, \
+    create_unsafe_cdp, get_collateral_price, keeper_address, liquidate_urn, purchase_dai, repay_urn, reserve_dai, \
+    set_collateral_price
 from tests.helper import args, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 
 
@@ -43,13 +45,21 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
                                      f"--model ./bogus-model.sh"), web3=cls.mcd.web3)
         cls.keeper.approve()
 
+        assert get_collateral_price(cls.c) == Wad.from_number(200)
+        if not repay_urn(cls.mcd, cls.c, cls.keeper_address):
+            liquidate_urn(cls.mcd, cls.c, cls.keeper_address, cls.keeper_address)
+
         # Keeper won't bid with a 0 Dai balance
-        purchase_dai(Wad.from_number(20), cls.keeper_address)
+        if cls.mcd.vat.dai(cls.keeper_address) == Rad(0):
+            purchase_dai(Wad.from_number(20), cls.keeper_address)
         assert cls.mcd.dai_adapter.join(cls.keeper_address, Wad.from_number(20)).transact(
             from_address=cls.keeper_address)
 
     def test_bite_and_flip(self, mcd, gal_address):
-        # given 21 Dai / (200 price * 1.2 mat) == 0.0875 vault size
+        # setup
+        repay_urn(mcd, self.c, gal_address)
+
+        # given 21 Dai / (200 price * 1.5 mat) == 0.1575 vault size
         unsafe_cdp = create_unsafe_cdp(mcd, self.c, Wad.from_number(0.1575), gal_address, draw_dai=False)
         assert len(mcd.active_auctions()["flips"][self.c.ilk.name]) == 0
         kicks_before = self.c.flipper.kicks()
@@ -64,8 +74,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
         assert urn.art == Wad(0)  # unsafe cdp has been bitten
         assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
-        # FIXME: figure out where the other flip is coming from
-        # assert self.c.flipper.kicks() == 1  # One auction started
+        assert self.c.flipper.kicks() == kicks_before + 1  # One auction started
 
     def test_should_not_bite_dusty_urns(self, mcd, gal_address):
         # given a lot smaller than the dust limit
@@ -108,6 +117,7 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
 
     @classmethod
     def teardown_class(cls):
-        if cls.mcd.vat.sin(cls.mcd.vow.address) > Rad(0):
-            cls.eliminate_queued_debt()
+        # if cls.mcd.vat.sin(cls.mcd.vow.address) > Rad(0):
+        #     cls.eliminate_queued_debt()
+        set_collateral_price(cls.mcd, cls.c, Wad.from_number(200.00))
         assert threading.active_count() == 1

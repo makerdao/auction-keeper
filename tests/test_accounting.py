@@ -253,7 +253,7 @@ class TestRebalance(TestVatDai):
         # Create a keeper
         mocker.patch("web3.net.Net.peer_count", return_value=1)
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flip --ilk ETH-C --bid-only "
+                                         f"--type flip --ilk ETH-A --bid-only "
                                          f"--vat-dai-target {dai_target} "
                                          f"--return-gem-interval 3 "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
@@ -261,7 +261,6 @@ class TestRebalance(TestVatDai):
         self.web3 = self.keeper.web3
         self.mcd = self.keeper.mcd
         assert self.keeper.auctions
-        # Changed the collateral to ETH-C because our testchain didn't have dust set for ETH-A or ETH-B
         self.collateral = self.keeper.collateral
         self.collateral.approve(self.keeper_address)
 
