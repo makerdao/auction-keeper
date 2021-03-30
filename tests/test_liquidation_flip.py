@@ -178,7 +178,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         initial_bid = flipper.bids(model.id)
         assert initial_bid.lot > Wad(0)
         our_bid = price * initial_bid.lot
-        reserve_dai(mcd, c, self.keeper_address, our_bid, extra_collateral=Wad.from_number(2))
+        reserve_dai(mcd, c, self.keeper_address, our_bid)
         simulate_model_output(model=model, price=price, gas_price=gas_price)
 
     @staticmethod
@@ -230,7 +230,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=address))
         previous_bid = flipper.bids(id)
         c.approve(address)
-        reserve_dai(mcd, c, address, Wad(bid), extra_collateral=Wad.from_number(2))
+        reserve_dai(mcd, c, address, Wad(bid))
         TestAuctionKeeperFlipper.tend(flipper, id, address, previous_bid.lot, bid)
 
     def test_flipper_address(self):

@@ -95,7 +95,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert isinstance(address, Address)
 
         logging.debug("reserving Dai")
-        reserve_dai(self.mcd, self.collateral, address, Wad(price), extra_collateral=Wad.from_number(2))
+        reserve_dai(self.mcd, self.collateral, address, Wad(price))
         assert self.mcd.vat.dai(address) >= Rad(price)
 
         logging.debug(f"attempting to take clip {id} at {price}")
@@ -114,7 +114,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert sale.lot > Wad(0)
 
         our_bid = Ray(sale.lot) * price
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, Wad(our_bid) + Wad(1), extra_collateral=Wad.from_number(2))
+        reserve_dai(self.mcd, self.collateral, self.keeper_address, Wad(our_bid) + Wad(1))
         simulate_model_output(model=model, price=Wad(price))
 
     def take_below_price(self, id: int, our_price: Ray, address: Address):

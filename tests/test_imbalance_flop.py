@@ -55,7 +55,7 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
         flip_kick = bite(mcd, c, unsafe_cdp)
 
         # Generate some Dai, bid on and win the flip auction without covering all the debt
-        reserve_dai(mcd, c, gal_address, Wad.from_number(100), extra_collateral=Wad.from_number(1.1))
+        reserve_dai(mcd, c, gal_address, Wad.from_number(100))
         c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=gal_address))
         current_bid = c.flipper.bids(flip_kick)
         bid = Rad.from_number(1.9)
@@ -98,7 +98,6 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert isinstance(self.keeper.gas_price, DynamicGasPrice)
         self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
 
-        # FIXME: shouldn't need the extra collateral
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.keeper_address, Wad.from_number(200.00000))
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
 

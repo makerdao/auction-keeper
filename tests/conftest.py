@@ -195,7 +195,7 @@ def max_dart_for_ink(mcd: DssDeployment, collateral: Collateral, ink: Wad) -> Wa
     return dart
 
 
-def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, extra_collateral=Wad.from_number(1)):
+def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(usr, Address)
@@ -208,14 +208,12 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, ex
     # Determine how much collateral is needed
     ilk = mcd.vat.ilk(c.ilk.name)
     rate = ilk.rate  # Ray
-    spot = ilk.spot  # Ray
     assert rate >= Ray.from_number(1)
     urn = mcd.vat.urn(ilk, usr)
     tab: Rad = (Rad(mcd.vat.dai(usr)) + Rad(amount)) * ilk.rate
     assert tab > Rad(0)
     print(f"attempting to reserve {amount} Dai using urn {urn}")
-    # TODO: extra_collateral was a hack I'd like to remove
-    ink_required = Wad(tab) * extra_collateral + Wad(1)
+    ink_required = Wad(tab) + Wad(1)  # extra to prevent Rad-to-Wad rounding issues
     dink = max(Wad(0), ink_required - urn.ink)
     if dink > Wad(0):
         print(f'ink={str(urn.ink)} art={str(urn.art)}; {str(dink)} more {ilk.name} is required to draw {str(amount)} Dai')
