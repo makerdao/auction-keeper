@@ -29,11 +29,17 @@ from pymaker.approval import hope_directly
 from pymaker.auctions import Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
-    models, our_address, other_address, repay_urn, reserve_dai, set_collateral_price, simulate_model_output, web3, \
-    liquidate_urn
+from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, get_collateral_price, keeper_address, \
+    liquidate_urn, mcd, models, our_address, other_address, repay_urn, reserve_dai, set_collateral_price, \
+    simulate_model_output, web3
+
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
+
+
+@pytest.fixture(scope="session")
+def c(mcd):
+    return mcd.collaterals['ETH-A']
 
 
 @pytest.fixture()
@@ -97,6 +103,10 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
 
         self.sump = self.mcd.vow.sump()  # Rad
+
+    def teardown_method(self):
+        c = self.mcd.collaterals['ETH-A']
+        set_collateral_price(self.mcd, c, Wad.from_number(200.00))
 
     def dent(self, id: int, address: Address, lot: Wad, bid: Rad):
         assert (isinstance(id, int))
@@ -674,8 +684,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
     def teardown_class(cls):
         cls.cleanup_debt(cls.web3, cls.mcd)
         c = cls.mcd.collaterals['ETH-A']
-        # TODO: Should probably reset collateral price after each kick or test
-        set_collateral_price(cls.mcd, c, Wad.from_number(200.00))
+        assert get_collateral_price(c) == Wad.from_number(200.00)
         if not repay_urn(cls.mcd, c, cls.gal_address):
             liquidate_urn(cls.mcd, c, cls.gal_address, cls.keeper_address)
         assert threading.active_count() == 1

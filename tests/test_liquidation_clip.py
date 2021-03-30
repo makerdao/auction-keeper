@@ -27,11 +27,15 @@ from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.auctions import Clipper
 from pymaker.collateral import Collateral
-from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import collateral_clip, create_unsafe_cdp, gal_address, keeper_address, mcd, \
-    models, other_address, reserve_dai, set_collateral_price, simulate_model_output, web3
+from tests.conftest import create_unsafe_cdp, gal_address, keeper_address, mcd, models, other_address, reserve_dai, \
+    set_collateral_price, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
+
+
+@pytest.fixture(scope="session")
+def collateral_clip(mcd):
+    return mcd.collaterals['ETH-B']
 
 
 @pytest.fixture()
@@ -239,6 +243,38 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         our_take = self.last_log()
         assert isinstance(our_take, Clipper.TakeLog)
         assert Wad(0) < our_take.lot <= lot
+
+    def test_should_take_if_model_price_updated(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+        (needs_redo, price, initial_lot, initial_tab) = self.clipper.status(kick)
+
+        # when initial model price is too low
+        bad_price = price - Ray.from_number(30)
+        self.simulate_model_bid(model, bad_price)
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+
+        # then ensure no bid was submitted
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
+        assert lot == initial_lot
+        assert tab == initial_tab
+
+        # when model price becomes appropriate
+        good_price = price + Ray.from_number(30)
+        self.simulate_model_bid(model, good_price)
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+
+        # then ensure our bid was submitted
+        our_take: Clipper.TakeLog = self.last_log()
+        assert our_take.id == kick
+        assert our_take.price <= good_price
+        # and that the auction finished
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
+        assert lot == Wad(0)
 
     @classmethod
     def teardown_class(cls):

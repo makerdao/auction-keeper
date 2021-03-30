@@ -112,16 +112,6 @@ def mcd(web3):
     return DssDeployment.from_node(web3=web3)
 
 
-@pytest.fixture(scope="session")
-def c(mcd):
-    return mcd.collaterals['ETH-A']
-
-
-@pytest.fixture(scope="session")
-def collateral_clip(mcd):
-    return mcd.collaterals['ETH-B']
-
-
 def get_collateral_price(collateral: Collateral):
     assert isinstance(collateral, Collateral)
     return Wad(Web3.toInt(collateral.pip.read()))

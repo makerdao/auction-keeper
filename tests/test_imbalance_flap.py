@@ -23,13 +23,12 @@ from pymaker.numeric import Wad, Rad
 from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
 from auction_keeper.model import Parameters
-from tests.conftest import c, mcd, mint_mkr, web3, \
-    gal_address, keeper_address, other_address, our_address, \
-    create_cdp_with_surplus, get_node_gas_price, liquidate_urn, models, repay_urn, simulate_model_output
+from tests.conftest import create_cdp_with_surplus, gal_address, get_node_gas_price, keeper_address, liquidate_urn, \
+    mcd, mint_mkr, models, other_address, our_address, repay_urn, simulate_model_output, web3
 from tests.helper import args, kill_other_threads, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def c(mcd):
     return mcd.collaterals['ETH-C']
 
@@ -255,7 +254,6 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
     def test_should_terminate_model_if_auction_is_dealt(self, kick):
         # given
-        kick = self.flapper.kicks()
         (model, model_factory) = models(self.keeper, kick)
 
         # when
@@ -298,6 +296,7 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
 
     def test_should_not_do_anything_if_no_output_from_model(self, kick):
         # given
+        assert kick
         previous_block_number = self.web3.eth.blockNumber
 
         # when
@@ -583,7 +582,8 @@ class TestAuctionKeeperFlapper(TransactionIgnoringTest):
         assert self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice == \
                self.default_gas_price
 
-        print(f"tx gas price is {self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice}, web3.eth.gasPrice is {self.web3.eth.gasPrice}")
+        print(f"tx gas price is {self.web3.eth.getBlock('latest', full_transactions=True).transactions[0].gasPrice}, "
+              f"web3.eth.gasPrice is {self.web3.eth.gasPrice}")
 
         # cleanup
         time_travel_by(self.web3, self.flapper.ttl() + 1)

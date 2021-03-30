@@ -28,7 +28,7 @@ from pymaker.auctions import Flipper
 from pymaker.collateral import Collateral
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, get_collateral_price, keeper_address, \
+from tests.conftest import bite, create_unsafe_cdp, gal_address, get_collateral_price, keeper_address, \
     liquidate_urn, mcd, models, purchase_dai, repay_urn, reserve_dai, set_collateral_price, simulate_model_output, web3
 from tests.helper import args, kill_other_threads, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 from typing import Optional
@@ -37,16 +37,88 @@ from typing import Optional
 tend_lot = Wad.from_number(1.2)
 
 
+@pytest.fixture(scope="session")
+def collateral_flip(mcd):
+    return mcd.collaterals['ETH-A']
+
+
 @pytest.fixture()
-def kick(mcd, c: Collateral, gal_address) -> int:
+def kick(mcd, collateral_flip: Collateral, gal_address) -> int:
     # Ensure we start with a clean urn
-    urn = mcd.vat.urn(c.ilk, gal_address)
+    urn = mcd.vat.urn(collateral_flip.ilk, gal_address)
     assert urn.ink == Wad(0)
     assert urn.art == Wad(0)
 
     # Bite gal CDP
-    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
-    return bite(mcd, c, unsafe_cdp)
+    unsafe_cdp = create_unsafe_cdp(mcd, collateral_flip, tend_lot, gal_address)
+    return bite(mcd, collateral_flip, unsafe_cdp)
+
+
+@pytest.mark.timeout(60)
+class TestAuctionKeeperBite(TransactionIgnoringTest):
+    @classmethod
+    def setup_class(cls):
+        cls.web3 = web3()
+        cls.mcd = mcd(cls.web3)
+        cls.collateral = collateral_flip(cls.mcd)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
+                                     f"--type flip "
+                                     f"--from-block 1 "
+                                     f"--ilk {cls.collateral.ilk.name} "
+                                     f"--model ./bogus-model.sh"), web3=cls.mcd.web3)
+        cls.keeper.approve()
+
+        assert get_collateral_price(cls.collateral) == Wad.from_number(200)
+        if not repay_urn(cls.mcd, cls.collateral, cls.keeper_address):
+            liquidate_urn(cls.mcd, cls.collateral, cls.keeper_address, cls.keeper_address)
+
+        # Keeper won't bid with a 0 Dai balance
+        if cls.mcd.vat.dai(cls.keeper_address) == Rad(0):
+            purchase_dai(Wad.from_number(20), cls.keeper_address)
+        assert cls.mcd.dai_adapter.join(cls.keeper_address, Wad.from_number(20)).transact(
+            from_address=cls.keeper_address)
+
+    def test_bite_and_flip(self, mcd, gal_address):
+        # setup
+        repay_urn(mcd, self.collateral, gal_address)
+
+        # given 21 Dai / (200 price * 1.5 mat) == 0.1575 vault size
+        unsafe_cdp = create_unsafe_cdp(mcd, self.collateral, Wad.from_number(0.1575), gal_address, draw_dai=False)
+        assert len(mcd.active_auctions()["flips"][self.collateral.ilk.name]) == 0
+        kicks_before = self.collateral.flipper.kicks()
+
+        # when
+        self.keeper.check_vaults()
+        wait_for_other_threads()
+
+        # then
+        print(mcd.cat.past_bites(10))
+        assert len(mcd.cat.past_bites(10)) > 0
+        urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
+        assert urn.art == Wad(0)  # unsafe cdp has been bitten
+        assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
+        assert self.collateral.flipper.kicks() == kicks_before + 1  # One auction started
+
+    def test_should_not_bite_dusty_urns(self, mcd, gal_address):
+        # given a lot smaller than the dust limit
+        urn = mcd.vat.urn(self.collateral.ilk, gal_address)
+        assert urn.art < Wad(self.collateral.ilk.dust)
+        kicks_before = self.collateral.flipper.kicks()
+
+        # when a small unsafe urn is created
+        assert not mcd.cat.can_bite(self.collateral.ilk, urn)
+
+        # then ensure the keeper does not bite it
+        self.keeper.check_vaults()
+        wait_for_other_threads()
+        kicks_after = self.collateral.flipper.kicks()
+        assert kicks_before == kicks_after
+
+    @classmethod
+    def teardown_class(cls):
+        set_collateral_price(cls.mcd, cls.collateral, Wad.from_number(200.00))
+        assert threading.active_count() == 1
 
 
 @pytest.mark.timeout(500)
@@ -57,7 +129,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         cls.mcd = mcd(cls.web3)
         cls.gal_address = gal_address(cls.web3)
         cls.keeper_address = keeper_address(cls.web3)
-        cls.collateral = cls.mcd.collaterals['ETH-A']
+        cls.collateral = collateral_flip(cls.mcd)
         assert not cls.collateral.clipper
         assert cls.collateral.flipper
         cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
@@ -68,7 +140,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         cls.keeper.approve()
 
         # Clean up the urn used for imbalance testing such that it doesn't impact our flip tests
-        # TODO: Move this to the flop cleanup
         assert get_collateral_price(cls.collateral) == Wad.from_number(200)
         if not repay_urn(cls.mcd, cls.collateral, cls.gal_address):
             liquidate_urn(cls.mcd, cls.collateral, cls.gal_address, cls.keeper_address)
@@ -360,7 +431,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         time_travel_by(self.web3, flipper.ttl() + 1)
         # and
-        flipper.deal(kick).transact(from_address=other_address)
+        assert flipper.deal(kick).transact(from_address=other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -377,7 +448,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         time_travel_by(self.web3, flipper.ttl() + 1)
         # and
-        flipper.deal(kick).transact(from_address=other_address)
+        assert flipper.deal(kick).transact(from_address=other_address)
 
         # when
         self.keeper.check_all_auctions()
