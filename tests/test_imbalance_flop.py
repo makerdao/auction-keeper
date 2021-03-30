@@ -676,8 +676,8 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         c = cls.mcd.collaterals['ETH-A']
         # TODO: Should probably reset collateral price after each kick or test
         set_collateral_price(cls.mcd, c, Wad.from_number(200.00))
-        # if not repay_urn(cls.mcd, c, cls.gal_address):
-        #     liquidate_urn(cls.mcd, c, cls.gal_address, cls.keeper_address)
+        if not repay_urn(cls.mcd, c, cls.gal_address):
+            liquidate_urn(cls.mcd, c, cls.gal_address, cls.keeper_address)
         assert threading.active_count() == 1
 
 

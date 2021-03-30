@@ -221,7 +221,6 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, ex
     spot = ilk.spot  # Ray
     assert rate >= Ray.from_number(1)
     urn = mcd.vat.urn(ilk, usr)
-    # FIXME: using vat.dai probably wasn't the right move
     tab: Rad = (Rad(mcd.vat.dai(usr)) + Rad(amount)) * ilk.rate
     assert tab > Rad(0)
     print(f"attempting to reserve {amount} Dai using urn {urn}")
@@ -342,7 +341,7 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     joy_before = mcd.vat.dai(mcd.vow.address)
 
     ink = Wad.from_number(10)
-    art = max_dart_for_ink(mcd, c, ink) - Wad.from_number(10)  # FIXME: not sure why art needs to be fudged
+    art = max_dart_for_ink(mcd, c, ink) - Wad(1)
     assert art > Wad(0)
     wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)

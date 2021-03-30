@@ -92,32 +92,6 @@ class TestAuctionKeeperBite(TransactionIgnoringTest):
         assert kicks_before == kicks_after
 
     @classmethod
-    def eliminate_queued_debt(cls):
-        # given the existence of queued debt
-        kick = cls.c.flipper.kicks()
-        last_bite = cls.mcd.cat.past_bites(10)[0]
-
-        # when a bid covers the CDP debt
-        auction = cls.c.flipper.bids(kick)
-        reserve_dai(cls.mcd, cls.c, cls.keeper_address, Wad(auction.tab) + Wad(1))
-        cls.c.flipper.approve(cls.c.flipper.vat(), approval_function=hope_directly(from_address=cls.keeper_address))
-        cls.c.approve(cls.keeper_address)
-        assert cls.c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=cls.keeper_address)
-        time_travel_by(cls.web3, cls.c.flipper.ttl() + 1)
-        assert cls.c.flipper.deal(kick).transact()
-
-        # when a bid covers the vow debt
-        assert cls.mcd.vow.sin_of(last_bite.era(cls.web3)) > Rad(0)
-        assert cls.mcd.vow.flog(last_bite.era(cls.web3)).transact(from_address=cls.keeper_address)
-        # FIXME: This blows up after renaming/reordering tests, presumably because there's joy now
-        assert cls.mcd.vow.heal(cls.mcd.vat.sin(cls.mcd.vow.address)).transact(from_address=cls.keeper_address)
-
-        # then ensure queued debt has been auctioned off
-        assert cls.mcd.vat.sin(cls.mcd.vow.address) == Rad(0)
-
-    @classmethod
     def teardown_class(cls):
-        # if cls.mcd.vat.sin(cls.mcd.vow.address) > Rad(0):
-        #     cls.eliminate_queued_debt()
         set_collateral_price(cls.mcd, cls.c, Wad.from_number(200.00))
         assert threading.active_count() == 1

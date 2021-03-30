@@ -29,8 +29,8 @@ from pymaker.auctions import Clipper
 from pymaker.collateral import Collateral
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import collateral_clip, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
-    models, other_address, reserve_dai, simulate_model_output, web3
+from tests.conftest import collateral_clip, create_unsafe_cdp, gal_address, keeper_address, mcd, \
+    models, other_address, reserve_dai, set_collateral_price, simulate_model_output, web3
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 
 
@@ -49,7 +49,6 @@ def kick(mcd, collateral_clip: Collateral, gal_address) -> int:
     return collateral_clip.clipper.kicks()
 
 
-@pytest.mark.skip("testing file rename effects")
 @pytest.mark.timeout(500)
 class TestAuctionKeeperClipper(TransactionIgnoringTest):
     @classmethod
@@ -63,7 +62,6 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert cls.collateral.clipper
         assert not cls.collateral.flipper
         cls.clipper = cls.collateral.clipper
-        # FIXME: Shouldn't need to set --min-auction 1 instead of 0
         cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
                                               f"--type clip "
                                               f"--from-block 1 "
@@ -242,46 +240,7 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert isinstance(our_take, Clipper.TakeLog)
         assert Wad(0) < our_take.lot <= lot
 
-    @staticmethod
-    def print_imbalance(mcd: DssDeployment):
-        awe = mcd.vat.sin(mcd.vow.address)
-        woe = awe - mcd.vow.sin() - mcd.vow.ash()
-        joy = mcd.vat.dai(mcd.vow.address)
-        balance = joy - awe
-        sump = mcd.vow.sump()
-        print(f"balance={float(balance)}, sump={float(sump)}, woe={float(woe)}, joy={float(joy)}, awe={float(awe)}")
-
     @classmethod
     def teardown_class(cls):
-        cls.print_imbalance(cls.mcd)
-        # FIXME: Because sump is so low, we can't easily kill bad debt by flopping
-
-        # # Start a flop auction
-        # self.mcd.flopper.approve(self.mcd.vat.address, hope_directly())
-        # self.keeper.check_flop()  # easy way to heal; won't start an auction
-        # # assert self.mcd.vow.flop().transact()
-        # self.print_imbalance(self.mcd)
-        # kick = self.mcd.flopper.kicks()
-        # assert kick > 0
-        #
-        # # Bid on and finish the flop auction
-        # lot = Wad.from_number(0.0000001)
-        # sump = self.mcd.vow.sump()
-        # print(f"reserving {float(sump)} Dai to dent")
-        # reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.keeper_address, max(Wad(sump), Wad.from_number(20)))
-        # assert self.mcd.flopper.dent(kick, lot, sump).transact(from_address=self.keeper_address)
-        # time_travel_by(self.web3, self.mcd.flopper.ttl() + 1)
-        # assert self.mcd.flopper.deal(kick).transact()
-        # self.print_imbalance(self.mcd)
-
-        joy = cls.mcd.vat.dai(cls.mcd.vow.address)
-        ash = cls.mcd.vow.ash()
-        woe = cls.mcd.vow.woe()
-        if joy > Rad(0):
-            cls.keeper.reconcile_debt(joy, ash, woe)
-
-        cls.print_imbalance(cls.mcd)
-        # FIXME: sin left after this test will break the flap tests
-        # assert self.mcd.vat.sin(self.mcd.vow.address) == Rad(0)
-
+        set_collateral_price(cls.mcd, cls.collateral, Wad.from_number(200.00))
         assert threading.active_count() == 1

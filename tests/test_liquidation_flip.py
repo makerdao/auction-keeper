@@ -454,8 +454,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert auction.lot == tend_lot
 
         # when
-        # FIXME: something be fucky here
-        print(f"tab={auction.tab}, auction={auction}")
         reserve_dai(self.mcd, self.collateral, keeper_address, Wad(auction.tab))
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
@@ -607,23 +605,17 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # when
         bid_price = Wad.from_number(20.0)
         reserve_dai(self.mcd, self.collateral, self.keeper_address, bid_price * tend_lot * 2)
-        print("calling simulate_model_output first time")
         simulate_model_output(model=model, price=bid_price, gas_price=10)
         # and
         self.start_ignoring_transactions()
         # and
-        print("calling check_all_auctions")
         self.keeper.check_all_auctions()
-        print("calling check_for_bids")
         self.keeper.check_for_bids()
         # and
-        print("calling end_ignoring_transactions")
         self.end_ignoring_transactions()
         # and
-        print("calling simulate_model_output second time")
         simulate_model_output(model=model, price=bid_price, gas_price=15)
         # and
-        print("calling check_for_bids again")
         self.keeper.check_for_bids()
         wait_for_other_threads()
         # then
@@ -812,7 +804,5 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     @classmethod
     def teardown_class(cls):
-        flog_and_heal(cls.web3, cls.mcd, past_blocks=1200, require_heal=False)
         set_collateral_price(cls.mcd, cls.collateral, Wad.from_number(200.00))
-        kill_other_threads()
         assert threading.active_count() == 1
