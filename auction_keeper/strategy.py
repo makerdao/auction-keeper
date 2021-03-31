@@ -44,6 +44,9 @@ class Strategy:
     def get_input(self, id: int):
         raise NotImplementedError
 
+    def bid(self, id: int, price: Wad):
+        raise NotImplementedError
+
     def deal(self, id: int) -> Transact:
         return self.contract.deal(id)
 
@@ -51,7 +54,12 @@ class Strategy:
         return self.contract.tick(id)
 
 
-class ClipperStrategy(Strategy):
+class StrategyTakeAvailable(Strategy):
+    def bid_available(self, id: int, price: Wad, available_dai: Rad):
+        raise NotImplementedError
+
+
+class ClipperStrategy(StrategyTakeAvailable):
     def __init__(self, clipper: Clipper):
         assert isinstance(clipper, Clipper)
 
@@ -86,17 +94,26 @@ class ClipperStrategy(Strategy):
                       end=None,
                       price=auction_price)             # Current price of auction
 
-    def bid(self, id: int, our_price: Wad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
+    def bid_available(self, id: int, our_price: Wad, available_dai: Rad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
         assert isinstance(id, int)
         assert isinstance(our_price, Wad)
 
         (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
 
-        # TODO: Calculate how much of the lot we can afford with Dai available, don't bid for more than that
-
         if Ray(our_price) >= auction_price:
+            if Wad(available_dai) > Wad(0):  # TODO: Perhaps compare it with some dust amount?
+                # Calculate how much of the lot we can afford with Dai available, don't bid for more than that
+                lot_we_can_afford: Wad = Wad(available_dai) / our_price
+                if lot_we_can_afford < lot:
+                    self.logger.debug(
+                        f"we can afford to bid on {float(lot_we_can_afford)} out of {float(lot)} on auction {id}")
+                    lot = lot_we_can_afford
+            # else calculate cost based on full lot size, such that keeper joins Dai upon starvation
+
             self.logger.debug(f"taking {lot} from auction {id} at {our_price}")
             cost = Rad(lot) * Rad(our_price)
+            # TODO: consider making pymaker enforce this
+            self.clipper.validate_take(id, Wad(lot), Ray(our_price))
             return Wad(our_price), self.clipper.take(id, Wad(lot), Ray(our_price)), cost
         else:
             self.logger.debug(f"auction {id} price is {auction_price}; cannot take at {our_price}")

@@ -40,7 +40,8 @@ from pymaker.numeric import Wad, Ray, Rad
 from auction_keeper.gas import DynamicGasPrice, UpdatableGasPrice
 from auction_keeper.logic import Auction, Auctions, Reservoir
 from auction_keeper.model import ModelFactory
-from auction_keeper.strategy import ClipperStrategy, FlipperStrategy, FlopperStrategy, FlapperStrategy
+from auction_keeper.strategy import ClipperStrategy, FlipperStrategy, FlopperStrategy, FlapperStrategy, \
+    StrategyTakeAvailable
 from auction_keeper.urn_history import ChainUrnHistoryProvider
 from auction_keeper.urn_history_tokenflow import TokenFlowUrnHistoryProvider
 from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
@@ -723,7 +724,10 @@ class AuctionKeeper:
         if output is None:
             return
 
-        bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
+        if isinstance(self.strategy, StrategyTakeAvailable):
+            bid_price, bid_transact, cost = self.strategy.bid_available(id, output.price, reservoir.level)
+        else:
+            bid_price, bid_transact, cost = self.strategy.bid(id, output.price)
         # If we can't afford the bid, log a warning/error and back out.
         # By continuing, we'll burn through gas fees while the keeper pointlessly retries the bid.
         if cost is not None:

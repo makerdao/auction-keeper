@@ -99,13 +99,12 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert self.mcd.vat.dai(address) >= Rad(price)
 
         logging.debug(f"attempting to take clip {id} at {price}")
-        assert id == 1
         lot = self.clipper.sales(id).lot
         assert lot > Wad(0)
         self.clipper.validate_take(id, lot, price, address)
         assert self.clipper.take(id, lot, price, address).transact(from_address=address)
 
-    def simulate_model_bid(self, model, price: Ray):
+    def simulate_model_bid(self, model, price: Ray, reserve_dai_for_bid=True):
         assert isinstance(price, Ray)
         assert price > Ray(0)
 
@@ -114,7 +113,8 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert sale.lot > Wad(0)
 
         our_bid = Ray(sale.lot) * price
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, Wad(our_bid) + Wad(1))
+        if reserve_dai_for_bid:
+            reserve_dai(self.mcd, self.collateral, self.keeper_address, Wad(our_bid) + Wad(1))
         simulate_model_output(model=model, price=Wad(price))
 
     def take_below_price(self, id: int, our_price: Ray, address: Address):
@@ -276,7 +276,56 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         (needs_redo, price, lot, tab) = self.clipper.status(kick)
         assert lot == Wad(0)
 
+    def test_should_take_partial_if_insufficient_dai_available(self, kick):
+        # given
+        (model, model_factory) = models(self.keeper, kick)
+        (needs_redo, price, initial_lot, initial_tab) = self.clipper.status(kick)
+        assert initial_lot == Wad.from_number(1)
+        # and we exit all Dai out of the Vat
+        assert self.mcd.dai_adapter.exit(self.keeper_address, Wad(self.mcd.vat.dai(self.keeper_address)))\
+            .transact(from_address=self.keeper_address)
+
+        # when we have less Dai than we need to cover the auction
+        our_price = Ray.from_number(136)
+        assert our_price < price
+        dai_needed = initial_lot * Wad(our_price)
+        initial_dai_available = dai_needed / Wad.from_number(2)
+        reserve_dai(self.mcd, self.collateral, self.keeper_address, initial_dai_available)
+        assert Wad(self.mcd.vat.dai(self.keeper_address)) < dai_needed
+
+        # then ensure we don't bid when the price is too high
+        self.simulate_model_bid(model, our_price, reserve_dai_for_bid=False)
+        self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
+        assert lot == initial_lot
+        assert tab == initial_tab
+
+        # when we wait for the price to become appropriate
+        while lot > Wad(0):
+            time_travel_by(self.web3, 1)
+            (needs_redo, auction_price, lot, tab) = self.clipper.status(kick)
+            if auction_price < our_price:
+                break
+
+        # then ensure our bid is submitted using available Dai
+        # self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
+        wait_for_other_threads()
+        (needs_redo, price, lot, tab) = self.clipper.status(kick)
+        assert lot < initial_lot
+        our_take = self.last_log()
+        assert isinstance(our_take, Clipper.TakeLog)
+        assert our_take.lot == initial_lot / Wad.from_number(2)
+        assert Wad(self.mcd.vat.dai(self.keeper_address)) < initial_dai_available
+
+        # cleanup
+        self.take_below_price(kick, price, self.keeper_address)
+
+    def teardown_method(self):
+        set_collateral_price(self.mcd, self.collateral, Wad.from_number(200.00))
+
     @classmethod
     def teardown_class(cls):
-        set_collateral_price(cls.mcd, cls.collateral, Wad.from_number(200.00))
         assert threading.active_count() == 1
