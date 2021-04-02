@@ -47,7 +47,7 @@ def kick(mcd, c: Collateral, gal_address) -> int:
     return kick
 
 
-@pytest.mark.timeout(1000)
+@pytest.mark.timeout(800)
 class TestAuctionKeeperFlapper(TransactionIgnoringTest):
     def setup_method(self):
         self.web3 = web3()

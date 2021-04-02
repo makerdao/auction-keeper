@@ -515,6 +515,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.start_ignoring_transactions()
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         # and
         time.sleep(2)
         # and

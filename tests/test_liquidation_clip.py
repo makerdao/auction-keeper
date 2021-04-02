@@ -94,13 +94,15 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert isinstance(price, Ray)
         assert isinstance(address, Address)
 
-        logging.debug("reserving Dai")
-        reserve_dai(self.mcd, self.collateral, address, Wad(price))
-        assert self.mcd.vat.dai(address) >= Rad(price)
-
-        logging.debug(f"attempting to take clip {id} at {price}")
         lot = self.clipper.sales(id).lot
         assert lot > Wad(0)
+
+        logging.debug("reserving Dai")
+        cost = Wad(price * Ray(lot))
+        reserve_dai(self.mcd, self.collateral, address, cost)
+        assert self.mcd.vat.dai(address) >= Rad(cost)
+
+        logging.debug(f"attempting to take clip {id} at {price}")
         self.clipper.validate_take(id, lot, price, address)
         assert self.clipper.take(id, lot, price, address).transact(from_address=address)
 
@@ -123,12 +125,12 @@ class TestAuctionKeeperClipper(TransactionIgnoringTest):
         assert isinstance(address, Address)
 
         (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
-        while lot > Wad(0):
-            time_travel_by(self.web3, 1)
-            (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
+        while lot > Wad(0) and not needs_redo:
             if auction_price < our_price:
                 self.take_with_dai(id, our_price, address)
                 break
+            time_travel_by(self.web3, 1)
+            (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
         assert self.clipper.sales(id).lot == Wad(0)
 
     def test_keeper_config(self):

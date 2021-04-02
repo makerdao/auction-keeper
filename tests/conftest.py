@@ -148,7 +148,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     # change in debt must also take the rate into account
     dart = Wad(Ray(dart) / ilk.rate)
 
-    print(f"max_dart for urn with ink={float(urn.ink)} and art={float(urn.art)} calculated as dart={float(dart)}")
+    print(f"max_dart for urn with ink={urn.ink} and art={urn.art} calculated as dart={dart}")
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
@@ -212,7 +212,7 @@ def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
     urn = mcd.vat.urn(ilk, usr)
     tab: Rad = (Rad(mcd.vat.dai(usr)) + Rad(amount)) * ilk.rate
     assert tab > Rad(0)
-    print(f"attempting to reserve {amount} Dai using urn {urn}")
+    print(f"attempting to reserve {amount} Dai using {c.ilk.name} urn {urn}")
     ink_required = Wad(tab) + Wad(1)  # extra to prevent Rad-to-Wad rounding issues
     dink = max(Wad(0), ink_required - urn.ink)
     if dink > Wad(0):
@@ -284,11 +284,12 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
         print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
         assert vat_balance >= dink
         assert mcd.vat.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
+        urn = mcd.vat.urn(c.ilk, gal_address)
 
     # Put gal CDP at max possible debt
     dart = max_dart(mcd, c, gal_address) - Wad(1)
     if dart > Wad(0):
-        print(f"Attempting to frob with dart={dart}")
+        print(f"Frobbing {c.ilk.name} with ink={urn.ink} and dart={dart}")
         assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
     # Draw our Dai, simulating the usual behavior
@@ -359,6 +360,8 @@ def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
     bites = mcd.cat.past_bites(1)
     assert len(bites) == 1
+    assert bites[0].id == c.flipper.kicks()
+    print(f"bit {c.ilk.name} urn {unsafe_cdp.address} creating flip auction {bites[0].id}")
     return c.flipper.kicks()
 
 
@@ -385,12 +388,13 @@ def repay_urn(mcd, c: Collateral, address: Address) -> bool:
             print(f"{address} has no Dai to repay tab of {float(tab)}")
     else:
         print(f"{c.ilk.name} urn {address} has no debt")
-    if urn.art == Wad(0):
-        # withdraw all collateral if there's no debt
-        if urn.ink > Wad(0):
-            print(f"withdrawing {float(urn.ink)} {c.ilk.name} from urn {address}")
-            assert mcd.vat.frob(c.ilk, address, urn.ink*-1, Wad(0)).transact(from_address=address)
-            urn = mcd.vat.urn(c.ilk, address)
+
+    min_ink = Wad(Ray(urn.art) * c.ilk.rate / c.ilk.spot) + Wad(1)
+    if urn.ink > min_ink:
+        ink_to_withdraw = urn.ink - min_ink
+        print(f"withdrawing {float(ink_to_withdraw)} {c.ilk.name} from urn {address}")
+        assert mcd.vat.frob(c.ilk, address, ink_to_withdraw*-1, Wad(0)).transact(from_address=address)
+        urn = mcd.vat.urn(c.ilk, address)
 
     if urn.ink == Wad(0) and urn.art == Wad(0):
         print(f"{c.ilk.name} urn {address} was fully repaid")
@@ -400,20 +404,23 @@ def repay_urn(mcd, c: Collateral, address: Address) -> bool:
         return False
 
 
-def liquidate_urn(mcd, c: Collateral, address: Address, bidder: Address):
+def liquidate_urn(mcd, c: Collateral, address: Address, bidder: Address, c_dai: Collateral = None):
     assert isinstance(c, Collateral)
     assert isinstance(address, Address)
     assert isinstance(bidder, Address)
     c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=bidder))
 
+    if c_dai is None:
+        c_dai = c
+
     # Ensure the CDP isn't safe
     urn = mcd.vat.urn(c.ilk, address)
-    dart = max_dart(mcd, c, address) - Wad.from_number(1)
-    assert mcd.vat.frob(c.ilk, address, Wad(0), dart).transact(from_address=address)
-    set_collateral_price(mcd, c, Wad.from_number(66))
-    if is_cdp_safe(mcd.vat.ilk(c.ilk.name), urn):
-        print(f"{c.ilk.name} urn {address} remains safe after dropping collateral price; not liquidating")
-        return
+    if is_cdp_safe(c.ilk, urn):
+        safe_price = urn.art / Wad(mcd.spotter.mat(c.ilk)) / urn.ink
+        print(f"current_price={float(get_collateral_price(c))}, safe_price={float(safe_price)}")
+        set_collateral_price(mcd, c, safe_price / Wad.from_number(2))
+        c.ilk = mcd.vat.ilk(c.ilk.name)
+        assert not is_cdp_safe(c.ilk, urn)
 
     # Determine how many bites will be required
     dunk: Rad = mcd.cat.dunk(c.ilk)
@@ -423,30 +430,28 @@ def liquidate_urn(mcd, c: Collateral, address: Address, bidder: Address):
     print(f"art={float(urn.art)} and dunk={float(dunk)} so {bites_required} bites are required")
     first_kick = c.flipper.kicks() + 1
 
-    while urn.art > Wad(0):
+    while mcd.cat.can_bite(c.ilk, urn):
         box_kick = c.flipper.kicks() + 1
-        print(f"art={float(urn.art)} litter={float(mcd.cat.litter())} next bite will be for {float(min(Rad(urn.art), dunk))} Dai")
 
-        while mcd.cat.litter() + min(Rad(urn.art), dunk) < box and urn.art > Wad(0):
+        while mcd.cat.can_bite(c.ilk, urn):
             # Bite and bid on each auction
-            print(f"biting {(c.flipper.kicks() + 1)} ({(c.flipper.kicks() + 1) - first_kick} of {bites_required})")
+            next_kick = c.flipper.kicks() + 1
+            print(f"biting {next_kick} ({next_kick - first_kick + 1} of {bites_required})")
             kick = bite(mcd, c, urn)
             auction = c.flipper.bids(kick)
-            reserve_dai(mcd, c, bidder, Wad(auction.tab))
+            reserve_dai(mcd, c_dai, bidder, Wad(auction.tab)+Wad(1))
             print(f"bidding tab {auction.tab} on auction {kick} for {auction.lot} with {mcd.vat.dai(bidder)} Dai remaining")
             assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=bidder)
             urn = mcd.vat.urn(c.ilk, address)
 
-        time_travel_by(mcd.web3, c.flipper.ttl())
+        time_travel_by(mcd.web3, c.flipper.ttl() + 3)
         for kick in range(box_kick, c.flipper.kicks() + 1):
-            print(f"dealing {kick} ({kick - first_kick} of {bites_required})")
+            print(f"dealing {kick} ({kick - first_kick + 1} of {bites_required})")
             assert c.flipper.deal(kick).transact()
 
     set_collateral_price(mcd, c, Wad.from_number(200))
+    repay_urn(mcd, c, address)
     assert urn.art == Wad(0)
-    if urn.ink > Wad(0):
-        print(f"withdrawing {float(urn.ink)} {c.ilk.name} from urn {address}")
-        assert mcd.vat.frob(c.ilk, address, urn.ink * -1, Wad(0)).transact(from_address=address)
     assert urn.ink == Wad(0)
 
 
