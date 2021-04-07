@@ -408,7 +408,6 @@ def liquidate_urn(mcd, c: Collateral, address: Address, bidder: Address, c_dai: 
     assert isinstance(c, Collateral)
     assert isinstance(address, Address)
     assert isinstance(bidder, Address)
-    c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=bidder))
 
     if c_dai is None:
         c_dai = c
@@ -416,38 +415,57 @@ def liquidate_urn(mcd, c: Collateral, address: Address, bidder: Address, c_dai: 
     # Ensure the CDP isn't safe
     urn = mcd.vat.urn(c.ilk, address)
     if is_cdp_safe(c.ilk, urn):
+        assert urn.ink > Wad(0)
         safe_price = urn.art / Wad(mcd.spotter.mat(c.ilk)) / urn.ink
         print(f"current_price={float(get_collateral_price(c))}, safe_price={float(safe_price)}")
         set_collateral_price(mcd, c, safe_price / Wad.from_number(2))
         c.ilk = mcd.vat.ilk(c.ilk.name)
         assert not is_cdp_safe(c.ilk, urn)
 
-    # Determine how many bites will be required
-    dunk: Rad = mcd.cat.dunk(c.ilk)
-    box: Rad = mcd.cat.box()
-    urn = mcd.vat.urn(c.ilk, address)
-    bites_required = math.ceil(urn.art / Wad(dunk))
-    print(f"art={float(urn.art)} and dunk={float(dunk)} so {bites_required} bites are required")
-    first_kick = c.flipper.kicks() + 1
+    if c.clipper:
+        c.clipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=bidder))
+        # Bark to kick the auction
+        assert mcd.dog.bark(c.ilk, urn).transact()
+        kick = c.clipper.kicks()
+        (needs_redo, auction_price, lot, tab) = c.clipper.status(kick)
+        purchase_dai(Wad(tab) + Wad(1), address)
+        assert mcd.dai_adapter.join(address, Wad(tab) + Wad(1)).transact(from_address=address)
+        assert mcd.vat.dai(address) >= tab
+        bid_price = tab / Rad(lot)
+        while auction_price > bid_price:
+            time_travel_by(mcd.web3, 1)
+            (needs_redo, auction_price, lot, tab) = c.clipper.status(kick)
+        print(f"taking lot {lot} on auction {kick} at {bid_price} with {mcd.vat.dai(bidder)} Dai remaining")
+        assert c.clipper.take(kick, lot, bid_price).transact(from_address=address)
 
-    while mcd.cat.can_bite(c.ilk, urn):
-        box_kick = c.flipper.kicks() + 1
+    elif c.flipper:
+        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=bidder))
+        # Determine how many bites will be required
+        dunk: Rad = mcd.cat.dunk(c.ilk)
+        box: Rad = mcd.cat.box()
+        urn = mcd.vat.urn(c.ilk, address)
+        bites_required = math.ceil(urn.art / Wad(dunk))
+        print(f"art={float(urn.art)} and dunk={float(dunk)} so {bites_required} bites are required")
+        first_kick = c.flipper.kicks() + 1
 
         while mcd.cat.can_bite(c.ilk, urn):
-            # Bite and bid on each auction
-            next_kick = c.flipper.kicks() + 1
-            print(f"biting {next_kick} ({next_kick - first_kick + 1} of {bites_required})")
-            kick = bite(mcd, c, urn)
-            auction = c.flipper.bids(kick)
-            reserve_dai(mcd, c_dai, bidder, Wad(auction.tab)+Wad(1))
-            print(f"bidding tab {auction.tab} on auction {kick} for {auction.lot} with {mcd.vat.dai(bidder)} Dai remaining")
-            assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=bidder)
-            urn = mcd.vat.urn(c.ilk, address)
+            box_kick = c.flipper.kicks() + 1
 
-        time_travel_by(mcd.web3, c.flipper.ttl() + 3)
-        for kick in range(box_kick, c.flipper.kicks() + 1):
-            print(f"dealing {kick} ({kick - first_kick + 1} of {bites_required})")
-            assert c.flipper.deal(kick).transact()
+            while mcd.cat.can_bite(c.ilk, urn):
+                # Bite and bid on each auction
+                next_kick = c.flipper.kicks() + 1
+                print(f"biting {next_kick} ({next_kick - first_kick + 1} of {bites_required})")
+                kick = bite(mcd, c, urn)
+                auction = c.flipper.bids(kick)
+                reserve_dai(mcd, c_dai, bidder, Wad(auction.tab)+Wad(1))
+                print(f"bidding tab {auction.tab} on auction {kick} for {auction.lot} with {mcd.vat.dai(bidder)} Dai remaining")
+                assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=bidder)
+                urn = mcd.vat.urn(c.ilk, address)
+
+            time_travel_by(mcd.web3, c.flipper.ttl() + 3)
+            for kick in range(box_kick, c.flipper.kicks() + 1):
+                print(f"dealing {kick} ({kick - first_kick + 1} of {bites_required})")
+                assert c.flipper.deal(kick).transact()
 
     set_collateral_price(mcd, c, Wad.from_number(200))
     repay_urn(mcd, c, address)
