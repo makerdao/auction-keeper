@@ -164,7 +164,7 @@ class TestConfig:
                                          f"--model ./bogus-model.sh"), web3=web3)
 
         assert isinstance(keeper.get_contract(), Flipper)
-        assert keeper.collateral.flipper == keeper.get_contract()
+        assert keeper.collateral.flipper == keeper.auction_contract
         assert keeper.collateral.ilk.name == 'USDC-A'
         assert isinstance(keeper.dai_join, DaiJoin)
         assert isinstance(keeper.gem_join, GemJoin)
@@ -199,7 +199,7 @@ class TestConfig:
                                          f"--from-block 1 "
                                          f"--model ./bogus-model.sh"), web3=web3)
 
-        assert isinstance(keeper.get_contract(), Flopper)
+        assert isinstance(keeper.auction_contract, Flopper)
         assert isinstance(keeper.dai_join, DaiJoin)
         assert isinstance(keeper.mkr, DSToken)
         assert isinstance(keeper.vow, Vow)

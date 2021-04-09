@@ -85,7 +85,7 @@ class ClipperStrategy(StrategyTakeAvailable):
                       flapper=None,
                       flopper=None,
                       bid=auction_price * Ray(lot),    # Cost to take rest of auction at current price
-                      lot=lot,                 # Wad
+                      lot=lot,                         # Wad
                       tab=tab,
                       beg=None,
                       guy=None,

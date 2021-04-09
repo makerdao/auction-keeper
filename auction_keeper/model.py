@@ -195,13 +195,13 @@ class Model:
             "guy": str(input.guy),
             "era": int(input.era),
             "tic": int(input.tic),
-            "end": int(input.end),
             "price": str(input.price) if input.price is not None else None,
         }
 
+        if input.end:
+            record['end'] = int(input.end)
         if input.tab:
             record['tab'] = str(input.tab)
-
         if input.beg:
             record['beg'] = str(input.beg)
 

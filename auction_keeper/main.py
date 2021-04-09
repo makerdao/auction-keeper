@@ -47,6 +47,9 @@ from auction_keeper.urn_history_tokenflow import TokenFlowUrnHistoryProvider
 from auction_keeper.urn_history_vulcanize import VulcanizeUrnHistoryProvider
 
 
+# from pymaker import Transact
+# Transact.gas_estimate_for_bad_txs = 200000
+
 class AuctionKeeper:
     logger = logging.getLogger()
     dead_after = 10  # Assume block reorgs cannot resurrect an auction id after this many blocks
@@ -173,21 +176,28 @@ class AuctionKeeper:
             self.gem_join = None
 
         # Configure auction contracts
-        auction_contract = self.get_contract()
+        self.auction_contract = self.get_contract()
+        self.auction_type = None
         is_collateral_auction = False
         self.urn_history = None
 
-        if isinstance(auction_contract, Clipper):
+        if isinstance(self.auction_contract, Clipper):
+            self.auction_type = 'clip'
             is_collateral_auction = True
-            self.strategy = ClipperStrategy(auction_contract)
-        elif isinstance(auction_contract, Flipper):
+            self.strategy = ClipperStrategy(self.auction_contract)
+        elif isinstance(self.auction_contract, Flipper):
+            self.auction_type = 'flip'
             is_collateral_auction = True
             self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
-            self.strategy = FlipperStrategy(auction_contract, self.min_flip_lot)
-        elif isinstance(auction_contract, Flapper):
-            self.strategy = FlapperStrategy(auction_contract, self.mkr.address)
-        elif isinstance(auction_contract, Flopper):
-            self.strategy = FlopperStrategy(auction_contract)
+            self.strategy = FlipperStrategy(self.auction_contract, self.min_flip_lot)
+        elif isinstance(self.auction_contract, Flapper):
+            self.auction_type = 'flap'
+            self.strategy = FlapperStrategy(self.auction_contract, self.mkr.address)
+        elif isinstance(self.auction_contract, Flopper):
+            self.auction_type = 'flop'
+            self.strategy = FlopperStrategy(self.auction_contract)
+        else:
+            raise RuntimeError(f"{self.auction_contract} auction contract is not supported")
 
         if is_collateral_auction and self.arguments.create_auctions:
             if self.arguments.vulcanize_endpoint:
@@ -211,7 +221,7 @@ class AuctionKeeper:
                 raise RuntimeError("--model must be specified to bid on auctions")
             else:
                 model_command = ":"
-        self.auctions = Auctions(auction_contract=auction_contract, model_factory=ModelFactory(model_command))
+        self.auctions = Auctions(auction_contract=self.auction_contract, model_factory=ModelFactory(model_command))
         self.auctions_lock = threading.Lock()
         # Since we don't want periodically-pollled bidding threads to back up, use a flag instead of a lock.
         self.is_joining_dai = False
@@ -264,11 +274,11 @@ class AuctionKeeper:
             self.lifecycle = lifecycle
             lifecycle.on_startup(self.startup)
             lifecycle.on_shutdown(self.shutdown)
-            if self.arguments.type in ['clip', 'flip']:
+            if self.auction_type in ['clip', 'flip']:
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_vaults))
-            elif self.arguments.type == 'flap':
+            elif self.auction_type == 'flap':
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
-            elif self.arguments.type == 'flip':
+            elif self.auction_type == 'flip':
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flop))
             else:  # unusual corner case
                 lifecycle.on_block(self.check_all_auctions)
@@ -279,17 +289,17 @@ class AuctionKeeper:
                 lifecycle.every(self.arguments.return_gem_interval, self.exit_gem)
 
     def auction_notice(self) -> str:
-        if self.arguments.type in ['clip', 'flip']:
+        if self.auction_type in ['clip', 'flip']:
             return "--> Check all urns and kick off new auctions if unsafe urns need to be bitten"
         else:
             return "--> Check thresholds in Vow Contract and kick off new" + \
-                  f" {self.arguments.type} auctions once reached"
+                  f" {self.auction_type} auctions once reached"
 
     def startup(self):
         self.plunge()
         self.approve()
         self.rebalance_dai()
-        if self.arguments.type == 'flap':
+        if self.auction_type == 'flap':
             self.logger.info(f"MKR balance is {self.mkr.balance_of(self.our_address)}")
 
         notice_string = []
@@ -316,7 +326,7 @@ class AuctionKeeper:
             logging.info("Keeper will perform the following operation(s) in parallel:")
             [logging.info(line) for line in notice_string]
 
-            if (self.arguments.type in ['clip', 'flip']) and self.ilk and self.ilk.name == "ETH-A":
+            if (self.auction_type in ['clip', 'flip']) and self.ilk and self.ilk.name == "ETH-A":
                 logging.info("*** When Keeper is dealing/bidding, the initial evaluation of auctions will likely take > 45 minutes without setting a lower boundary via '--min-auction' ***")
                 logging.info("*** When Keeper is kicking, initializing urn history may take > 30 minutes without using VulcanizeDB via `--vulcanize-endpoint` ***")
         else:
@@ -420,10 +430,6 @@ class AuctionKeeper:
         return dart > Wad(0) and dink > Wad(0)
 
     def check_vaults(self):
-        auction_contract = self.get_contract()
-        is_clipper = isinstance(auction_contract, Clipper)
-        is_flipper = isinstance(auction_contract, Flipper)
-        assert is_clipper != is_flipper
         started = datetime.now()
         available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
         box = self.mcd.cat.box()
@@ -431,10 +437,10 @@ class AuctionKeeper:
         chop = self.mcd.cat.chop(self.ilk)
 
         # Handle new collaterals and circuit breakers
-        if is_clipper and not self.collateral.clipper.wards(self.mcd.dog.address):
+        if self.auction_type == 'clip' and not self.collateral.clipper.wards(self.mcd.dog.address):
             self.logger.warning(f"Dog is not authorized to kick on this clipper")
             return
-        if is_flipper and not self.collateral.flipper.wards(self.mcd.cat.address):
+        if self.auction_type == 'flip' and not self.collateral.flipper.wards(self.mcd.cat.address):
             self.logger.warning(f"Cat is not authorized to kick on this flipper")
             return
 
@@ -449,20 +455,19 @@ class AuctionKeeper:
                 time.sleep(1)
                 ilk = self.vat.ilk(self.ilk.name)  # ilk.rate changes every block
 
-            if is_clipper and self.can_bark(ilk, urn):
+            if self.auction_type == 'clip' and self.can_bark(ilk, urn):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bark urn {urn.address} "
                                         "because there is no Dai to bid")
                     break
                 self.mcd.dog.bark(ilk, urn).transact(gas_price=self.gas_price)
 
-            if is_flipper and self.can_bite(ilk, urn, box, dunk, chop):
+            if self.auction_type == 'flip' and self.can_bite(ilk, urn, box, dunk, chop):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bite urn {urn.address} "
                                         "because there is no Dai to bid")
                     break
 
-                # TODO: There's only one clip.kick for each urn; is the `min_flip_lot` mechanism still useful?
                 if urn.ink < self.min_flip_lot:
                     self.logger.info(f"Ignoring urn {urn.address.address} with ink={urn.ink} < "
                                      f"min_lot={self.min_flip_lot}")
@@ -626,9 +631,9 @@ class AuctionKeeper:
         # Initialize the reservoir with Dai/MKR balance for this round of bid submissions.
         # This isn't a perfect solution as it omits the cost of bids submitted from the last round.
         # Recreating the reservoir preserves the stateless design of this keeper.
-        if self.arguments.type in ['clip', 'flip', 'flop']:
+        if self.auction_type in ['clip', 'flip', 'flop']:
             reservoir = Reservoir(self.vat.dai(self.our_address))
-        elif self.arguments.type == 'flap':
+        elif self.auction_type == 'flap':
             reservoir = Reservoir(Rad(self.mkr.balance_of(self.our_address)))
         else:
             raise RuntimeError("Unsupported auction type")
@@ -660,8 +665,8 @@ class AuctionKeeper:
         input = self.strategy.get_input(id)
 
         # Determine if the auction has ended
-        if self.arguments.type == 'clip':
-            clipper: Clipper = self.get_contract()
+        if self.auction_type == 'clip':
+            clipper: Clipper = self.auction_contract
             (needs_redo, price, lot, tab) = clipper.status(id)
             auction_deleted = id < 1 or lot <= Wad(0) or needs_redo
             auction_finished = (lot <= Wad(0) or needs_redo) and input.tic != 0
@@ -795,7 +800,7 @@ class AuctionKeeper:
         assert isinstance(cost, Rad)
 
         # If this is an auction where we bid with Dai...
-        if self.arguments.type in ['clip', 'flip', 'flop']:
+        if self.auction_type in ['clip', 'flip', 'flop']:
             if not reservoir.check_bid_cost(id, cost):
                 if not already_rebalanced:
                     # Try to synchronously join Dai the Vat
@@ -813,7 +818,7 @@ class AuctionKeeper:
                                   "bid will not be submitted")
                 return False
         # If this is an auction where we bid with MKR...
-        elif self.arguments.type == 'flap':
+        elif self.auction_type == 'flap':
             mkr_balance = self.mkr.balance_of(self.our_address)
             if cost > Rad(mkr_balance):
                 self.logger.debug(f"Bid cost {str(cost)} exceeds reservoir level of {reservoir.level}; "

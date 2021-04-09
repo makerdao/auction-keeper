@@ -233,7 +233,7 @@ class TestAuctionKeeperClipper(ClipperTest):
 
     def test_keeper_config(self):
         assert self.keeper.arguments.type == 'clip'
-        assert self.keeper.get_contract().address == self.clipper.address
+        assert self.keeper.auction_contract.address == self.clipper.address
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick):
         # given

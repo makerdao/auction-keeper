@@ -244,7 +244,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     def test_flipper_address(self):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
-        assert self.keeper.get_contract().address == self.collateral.flipper.address
+        assert self.keeper.auction_contract.address == self.collateral.flipper.address
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
         # given
