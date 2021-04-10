@@ -395,7 +395,7 @@ class AuctionKeeper:
             logging.debug(f"Auction {id} is not handled by shard {self.arguments.shard_id}")
             return False
 
-    def can_bark(self, ilk: Ilk, urn: Urn) -> bool:
+    def can_bark(self, ilk: Ilk, urn: Urn, dog_hole: Rad, milk_hole: Rad, chop: Wad) -> bool:
         # Typechecking intentionally omitted to improve performance
         rate = ilk.rate
 
@@ -404,7 +404,24 @@ class AuctionKeeper:
         if safe:
             return False
 
-        # TODO: Ensure there's room in the dog.hole and collateral-specific hole
+        # Ensure there's room in the dog.hole
+        dog_dirt: Rad = self.mcd.dog.dog_dirt()
+        dog_room: Rad = dog_hole - dog_dirt
+        if dog_hole <= dog_dirt:
+            return False
+
+        # Ensure there's room in the collateral-specific hole
+        milk_dirt: Rad = self.mcd.dog.dirt(ilk)
+        milk_room: Rad = milk_hole - milk_dirt
+        if milk_hole <= milk_dirt:
+            return False
+
+        # Prevent dusty partial liquidation
+        room: Rad = min(dog_room, milk_room)
+        dart: Wad = min(urn.art, Wad(room / Rad(ilk.rate) / Rad(chop)))
+        if urn.art > dart and Rad(urn.art - dart) * Rad(ilk.rate) >= ilk.dust and Rad(dart) * Rad(ilk.rate) < ilk.dust:
+            return False
+
         return True
 
     def can_bite(self, ilk: Ilk, urn: Urn, box: Rad, dunk: Rad, chop: Wad) -> bool:
@@ -432,9 +449,20 @@ class AuctionKeeper:
     def check_vaults(self):
         started = datetime.now()
         available_dai = self.mcd.dai.balance_of(self.our_address) + Wad(self.vat.dai(self.our_address))
-        box = self.mcd.cat.box()
-        dunk = self.mcd.cat.dunk(self.ilk)
-        chop = self.mcd.cat.chop(self.ilk)
+
+        # Load auction parameters once for each iteration through vaults
+        if self.auction_type == 'clip':
+            dog_hole = self.mcd.dog.dog_hole()
+            milk_hole = self.mcd.dog.hole(self.ilk)
+            box = None
+            dunk = None
+            chop = self.mcd.dog.chop(self.ilk)
+        else:  # self.auction_type == 'flip'
+            box = self.mcd.cat.box()
+            dunk = self.mcd.cat.dunk(self.ilk)
+            dog_hole = None
+            milk_hole = None
+            chop = self.mcd.cat.chop(self.ilk)
 
         # Handle new collaterals and circuit breakers
         if self.auction_type == 'clip' and not self.collateral.clipper.wards(self.mcd.dog.address):
@@ -455,7 +483,7 @@ class AuctionKeeper:
                 time.sleep(1)
                 ilk = self.vat.ilk(self.ilk.name)  # ilk.rate changes every block
 
-            if self.auction_type == 'clip' and self.can_bark(ilk, urn):
+            if self.auction_type == 'clip' and self.can_bark(ilk, urn, dog_hole, milk_hole, chop):
                 if self.arguments.bid_on_auctions and available_dai == Wad(0):
                     self.logger.warning(f"Skipping opportunity to bark urn {urn.address} "
                                         "because there is no Dai to bid")
