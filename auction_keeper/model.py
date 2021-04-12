@@ -192,12 +192,13 @@ class Model:
             "id": str(input.id),
             "bid": str(input.bid),
             "lot": str(input.lot),
-            "guy": str(input.guy),
             "era": int(input.era),
             "tic": int(input.tic),
             "price": str(input.price) if input.price is not None else None,
         }
 
+        if input.guy:
+            record['guy'] = str(input.guy)
         if input.end:
             record['end'] = int(input.end)
         if input.tab:

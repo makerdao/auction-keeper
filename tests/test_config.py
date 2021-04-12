@@ -245,7 +245,7 @@ class TestConfig:
 
         default_behavior = AuctionKeeper(args=args(f"--eth-from {keeper_address} "
                                                    f"--type flip --from-block 1 "
-                                                   f"--ilk ETH-B "
+                                                   f"--ilk ETH-A "
                                                    f"--model ./bogus-model.sh"), web3=web3)
         assert 1 == len(default_behavior.deal_for)
         assert keeper_address == list(default_behavior.deal_for)[0]

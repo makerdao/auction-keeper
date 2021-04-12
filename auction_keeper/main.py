@@ -29,7 +29,7 @@ from typing import Optional
 from web3 import Web3
 
 from pymaker import Address, get_pending_transactions, web3_via_http
-from pymaker.auctions import Clipper, Flipper, Flapper, Flopper
+from pymaker.auctions import Clipper, Flapper, Flipper, Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.dss import Ilk, Urn
 from pymaker.keys import register_keys
@@ -85,8 +85,8 @@ class AuctionKeeper:
         parser.add_argument('--max-auctions', type=int, default=1000,
                             help="Maximum number of auctions to simultaneously interact with, "
                                  "used to manage OS and hardware limitations")
-        parser.add_argument('--min-flip-lot', type=float, default=0,
-                            help="Minimum lot size to create or bid upon a flip auction")
+        parser.add_argument('--min-collateral-lot', type=float, default=0,
+                            help="Minimum lot size to create or bid upon/take from a collateral auction")
         parser.add_argument('--bid-check-interval', type=float, default=4.0,
                             help="Period of timer [in seconds] used to check bidding models for changes")
         parser.add_argument('--bid-delay', type=float, default=0.0,
@@ -179,17 +179,20 @@ class AuctionKeeper:
         self.auction_contract = self.get_contract()
         self.auction_type = None
         is_collateral_auction = False
+        self.is_dealable = True
         self.urn_history = None
 
         if isinstance(self.auction_contract, Clipper):
             self.auction_type = 'clip'
             is_collateral_auction = True
-            self.strategy = ClipperStrategy(self.auction_contract)
+            self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
+            self.is_dealable = False
+            self.strategy = ClipperStrategy(self.auction_contract, self.min_collateral_lot)
         elif isinstance(self.auction_contract, Flipper):
             self.auction_type = 'flip'
             is_collateral_auction = True
-            self.min_flip_lot = Wad.from_number(self.arguments.min_flip_lot)
-            self.strategy = FlipperStrategy(self.auction_contract, self.min_flip_lot)
+            self.min_collateral_lot = Wad.from_number(self.arguments.min_collateral_lot)
+            self.strategy = FlipperStrategy(self.auction_contract, self.min_collateral_lot)
         elif isinstance(self.auction_contract, Flapper):
             self.auction_type = 'flap'
             self.strategy = FlapperStrategy(self.auction_contract, self.mkr.address)
@@ -237,15 +240,16 @@ class AuctionKeeper:
         # Configure account(s) for which we'll deal auctions
         self.deal_all = False
         self.deal_for = set()
-        if self.arguments.deal_for is None:
-            self.deal_for.add(self.our_address)
-        elif len(self.arguments.deal_for) == 1 and self.arguments.deal_for[0].upper() in ["ALL", "NONE"]:
-            if self.arguments.deal_for[0].upper() == "ALL":
-                self.deal_all = True
-            # else no auctions will be dealt
-        elif len(self.arguments.deal_for) > 0:
-            for account in self.arguments.deal_for:
-                self.deal_for.add(Address(account))
+        if self.is_dealable:
+            if self.arguments.deal_for is None:
+                self.deal_for.add(self.our_address)
+            elif len(self.arguments.deal_for) == 1 and self.arguments.deal_for[0].upper() in ["ALL", "NONE"]:
+                if self.arguments.deal_for[0].upper() == "ALL":
+                    self.deal_all = True
+                # else no auctions will be dealt
+            elif len(self.arguments.deal_for) > 0:
+                for account in self.arguments.deal_for:
+                    self.deal_for.add(Address(account))
 
         # reduce logspew
         logging.getLogger('urllib3').setLevel(logging.INFO)
@@ -419,8 +423,11 @@ class AuctionKeeper:
         # Prevent dusty partial liquidation
         room: Rad = min(dog_room, milk_room)
         dart: Wad = min(urn.art, Wad(room / Rad(ilk.rate) / Rad(chop)))
-        if urn.art > dart and Rad(urn.art - dart) * Rad(ilk.rate) >= ilk.dust and Rad(dart) * Rad(ilk.rate) < ilk.dust:
-            return False
+        if urn.art > dart:
+            if Rad(urn.art - dart) * Rad(ilk.rate) < ilk.dust:
+                return True
+            elif Rad(dart) * Rad(ilk.rate) < ilk.dust:
+                return False
 
         return True
 
@@ -496,9 +503,9 @@ class AuctionKeeper:
                                         "because there is no Dai to bid")
                     break
 
-                if urn.ink < self.min_flip_lot:
+                if urn.ink < self.min_collateral_lot:
                     self.logger.info(f"Ignoring urn {urn.address.address} with ink={urn.ink} < "
-                                     f"min_lot={self.min_flip_lot}")
+                                     f"min_lot={self.min_collateral_lot}")
                     continue
                 self.mcd.cat.bite(ilk, urn).transact(gas_price=self.gas_price)
 
@@ -696,11 +703,12 @@ class AuctionKeeper:
         if self.auction_type == 'clip':
             clipper: Clipper = self.auction_contract
             (needs_redo, price, lot, tab) = clipper.status(id)
-            auction_deleted = id < 1 or lot <= Wad(0) or needs_redo
-            auction_finished = (lot <= Wad(0) or needs_redo) and input.tic != 0
+            auction_deleted = (input.tic == 0)
+            auction_finished = lot <= Wad(0) or needs_redo
         else:
             auction_deleted = (input.end == 0)
             auction_finished = (input.tic < input.era and input.tic != 0) or (input.end < input.era)
+            needs_redo = not auction_deleted and auction_finished and input.tic == 0
 
         if auction_deleted:
             # Try to remove the auction so the model terminates and we stop tracking it.
@@ -712,19 +720,20 @@ class AuctionKeeper:
 
         # Check if the auction is finished.  If so configured, `tick` or `deal` the auction synchronously.
         elif auction_finished:
-            if input.tic == 0:
-                if self.arguments.create_auctions:
-                    logging.info(f"Auction {id} ended without bids; resurrecting auction")
-                    self.strategy.tick(id).transact(gas_price=self.gas_price)
-                    return True
-            elif self.deal_all or input.guy in self.deal_for:
-                self.strategy.deal(id).transact(gas_price=self.gas_price)
+            if needs_redo and self.arguments.create_auctions:
+                logging.info(f"Auction {id} ended without bids; resurrecting auction")
+                self.strategy.tick(id).transact(gas_price=self.gas_price)
+                return True
 
-                # Upon winning a clip, flip or flop auction, we may need to replenish Dai to the Vat.
-                # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
-                self.rebalance_dai()
-            else:
-                logging.debug(f"Not dealing {id} with guy={input.guy}")
+            if self.is_dealable:
+                if self.deal_all or input.guy in self.deal_for:
+                    self.strategy.deal(id).transact(gas_price=self.gas_price)
+
+                    # Upon winning a flip or flop auction, we may need to replenish Dai to the Vat.
+                    # Upon winning a flap auction, we may want to withdraw won Dai from the Vat.
+                    self.rebalance_dai()
+                else:
+                    logging.debug(f"Not dealing {id} with guy={input.guy}")
 
             # Remove the auction so the model terminates and we stop tracking it.
             # If auction has already been removed, nothing happens.

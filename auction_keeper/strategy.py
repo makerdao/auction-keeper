@@ -60,10 +60,12 @@ class StrategyTakeAvailable(Strategy):
 
 
 class ClipperStrategy(StrategyTakeAvailable):
-    def __init__(self, clipper: Clipper):
+    def __init__(self, clipper: Clipper, min_lot: Wad=Wad.from_number(0)):
         assert isinstance(clipper, Clipper)
+        assert isinstance(min_lot, Wad)
 
         self.clipper = clipper
+        self.min_lot = min_lot
 
     def approve(self, gas_price: GasPrice):
         assert isinstance(gas_price, GasPrice)
@@ -99,22 +101,28 @@ class ClipperStrategy(StrategyTakeAvailable):
         assert isinstance(our_price, Wad)
 
         (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
+        our_lot = lot
 
         if Ray(our_price) >= auction_price:
+
             if Wad(available_dai) > Wad(0):  # TODO: Perhaps compare it with some dust amount?
                 # Calculate how much of the lot we can afford with Dai available, don't bid for more than that
-                lot_we_can_afford: Wad = Wad(available_dai) / our_price
+                lot_we_can_afford: Wad = Wad(available_dai / Rad(auction_price))
                 if lot_we_can_afford < lot:
-                    self.logger.debug(
-                        f"we can afford to bid on {float(lot_we_can_afford)} out of {float(lot)} on auction {id}")
-                    lot = lot_we_can_afford
-            # else calculate cost based on full lot size, such that keeper joins Dai upon starvation
+                    self.logger.info(f"with {available_dai} Dai we can afford to bid on {float(lot_we_can_afford)} "
+                                     f"out of {float(lot)} at {float(auction_price)} on auction {id}")
+                    our_lot = lot_we_can_afford
 
-            self.logger.debug(f"taking {lot} from auction {id} at {our_price}")
-            cost = Rad(lot) * Rad(our_price)
+            if our_lot < self.min_lot:
+                self.logger.info(f"our lot {our_lot} less than minimum {self.min_lot} for auction {id}")
+                # even if we won't take, return cost of full lot at our_price to flag Dai starvation and rebalance Dai
+                return None, None, Rad(lot) * Rad(our_price)
+
+            self.logger.info(f"taking {our_lot} from auction {id} at {auction_price}")
             # TODO: consider making pymaker enforce this
-            self.clipper.validate_take(id, Wad(lot), Ray(our_price))
-            return Wad(our_price), self.clipper.take(id, Wad(lot), Ray(our_price)), cost
+            self.clipper.validate_take(id, Wad(our_lot), auction_price)
+            our_cost = Rad(our_lot) * auction_price
+            return Wad(our_price), self.clipper.take(id, Wad(our_lot), auction_price), our_cost
         else:
             self.logger.debug(f"auction {id} price is {auction_price}; cannot take at {our_price}")
             return None, None, None

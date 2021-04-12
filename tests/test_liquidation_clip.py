@@ -385,12 +385,20 @@ class TestAuctionKeeperClipper(ClipperTest):
             .transact(from_address=self.keeper_address)
 
         # when we have less Dai than we need to cover the auction
-        our_price = Ray.from_number(153)
+        our_price = Ray.from_number(187)
         assert our_price < price
         dai_needed = initial_lot * Wad(our_price)
-        initial_dai_available = dai_needed / Wad.from_number(2)
-        reserve_dai(self.mcd, self.collateral, self.keeper_address, initial_dai_available)
-        assert Wad(self.mcd.vat.dai(self.keeper_address)) < dai_needed
+        half_dai = dai_needed / Wad.from_number(2)
+        initial_dai_balance = Wad(self.mcd.vat.dai(self.keeper_address))
+        if initial_dai_balance < half_dai:
+            print(f"Reserving {half_dai - initial_dai_balance} Dai to get balance of {half_dai}")
+            reserve_dai(self.mcd, self.collateral, self.keeper_address, half_dai - initial_dai_balance)
+        else:
+            print(f"Abandoning {initial_dai_balance - half_dai} Dai to get balance of {half_dai}")
+            self.mcd.vat.move(self.keeper_address, self.gal_address, Rad(initial_dai_balance - half_dai))\
+                .transact(from_address=keeper_address)
+        dai_balance_before_take = Wad(self.mcd.vat.dai(self.keeper_address))
+        assert Wad(0) < dai_balance_before_take < dai_needed
 
         # then ensure we don't bid when the price is too high
         self.simulate_model_bid(model, our_price, reserve_dai_for_bid=False)
@@ -413,11 +421,10 @@ class TestAuctionKeeperClipper(ClipperTest):
         self.keeper.check_for_bids()
         wait_for_other_threads()
         (needs_redo, price, lot, tab) = self.clipper.status(kick)
-        assert lot < initial_lot
+        assert Wad(0) < lot < initial_lot
         our_take = self.last_log()
         assert isinstance(our_take, Clipper.TakeLog)
-        assert our_take.lot == initial_lot / Wad.from_number(2)
-        assert Wad(self.mcd.vat.dai(self.keeper_address)) < initial_dai_available
+        assert Wad(self.mcd.vat.dai(self.keeper_address)) < dai_balance_before_take
 
         # cleanup
         self.take_below_price(kick, price, self.keeper_address)
