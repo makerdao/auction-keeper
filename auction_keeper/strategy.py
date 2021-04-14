@@ -100,25 +100,29 @@ class ClipperStrategy(StrategyTakeAvailable):
         assert isinstance(id, int)
         assert isinstance(our_price, Wad)
 
+        # Handle case where model supplied a price before keeper removed it from active auction collection
         (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
-        our_lot = lot
+        if needs_redo or auction_price == Ray(0) or lot == Wad(0):
+            self.logger.debug(f"auction {id} is no longer available for taking")
+            return None, None, None
 
+        our_lot = lot
         if Ray(our_price) >= auction_price:
 
             if Wad(available_dai) > Wad(0):  # TODO: Perhaps compare it with some dust amount?
                 # Calculate how much of the lot we can afford with Dai available, don't bid for more than that
                 lot_we_can_afford: Wad = Wad(available_dai / Rad(auction_price))
                 if lot_we_can_afford < lot:
-                    self.logger.info(f"with {available_dai} Dai we can afford to bid on {float(lot_we_can_afford)} "
+                    self.logger.debug(f"with {available_dai} Dai we can afford to bid on {float(lot_we_can_afford)} "
                                      f"out of {float(lot)} at {float(auction_price)} on auction {id}")
                     our_lot = lot_we_can_afford
 
-            if our_lot < self.min_lot:
-                self.logger.info(f"our lot {our_lot} less than minimum {self.min_lot} for auction {id}")
+            if our_lot <= self.min_lot:
+                self.logger.debug(f"our lot {our_lot} less than minimum {self.min_lot} for auction {id}")
                 # even if we won't take, return cost of full lot at our_price to flag Dai starvation and rebalance Dai
                 return None, None, Rad(lot) * Rad(our_price)
 
-            self.logger.info(f"taking {our_lot} from auction {id} at {auction_price}")
+            self.logger.debug(f"taking {our_lot} from auction {id} at {auction_price}")
             # TODO: consider making pymaker enforce this
             self.clipper.validate_take(id, Wad(our_lot), auction_price)
             our_cost = Rad(our_lot) * auction_price
