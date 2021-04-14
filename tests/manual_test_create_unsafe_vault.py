@@ -47,6 +47,7 @@ logging.getLogger("requests").setLevel(logging.INFO)
 mcd = DssDeployment.from_node(web3)
 our_address = Address(web3.eth.defaultAccount)
 collateral = mcd.collaterals[str(sys.argv[3])] if len(sys.argv) > 3 else mcd.collaterals['ETH-A']
+multiplier = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0  # larger urns accumulate debt faster
 ilk = mcd.vat.ilk(collateral.ilk.name)
 token = Token(collateral.gem.symbol(), collateral.gem.address, collateral.adapter.dec())
 urn = mcd.vat.urn(collateral.ilk, our_address)
@@ -61,7 +62,6 @@ def r(value, decimals=1):
 
 logging.info(f"{ilk.name:<6}: dust={r(ilk.dust)} osm_price={r(osm_price)} mat={r(mcd.spotter.mat(ilk))} spot={r(ilk.spot)} ")
 logging.info(f"{'':<7} duty={mcd.jug.duty(ilk)} min_amount={token.min_amount}")
-
 
 if osm_price == Wad(0) and isinstance(collateral.pip, OSM):
     logging.warning("OSM price is 0; poking OSM")
@@ -93,7 +93,7 @@ def create_risky_vault():
     if not is_cdp_safe(mcd.vat.ilk(collateral.ilk.name), urn):
         logging.info("Vault is already unsafe; no action taken")
     else:
-        collateral_amount = Wad(ilk.dust / Rad(ilk.spot) * Rad(ilk.rate)) + flub_amount
+        collateral_amount = Wad(ilk.dust / Rad(ilk.spot) * Rad(ilk.rate)) * Wad.from_number(multiplier) + flub_amount
         logging.info(f"Opening/adjusting vault with {collateral_amount} {ilk.name}")
         create_risky_cdp(mcd, collateral, collateral_amount, our_address, False)
         logging.info("Created risky vault")
@@ -120,11 +120,12 @@ while True:
     debt = Ray(urn.art) * ilk.rate
     if debt > Ray(0):
         collat_ratio = float(Ray(urn.ink) * Ray(osm_price) / debt)
-        logging.info(f"urn has ink={r(urn.ink)} art={r(urn.art)} debt={r(debt)} and is at {collat_ratio * 100}% collateralization")
+        logging.info(f"urn has ink={r(urn.ink)} art={r(urn.art)} debt={debt} and is at {collat_ratio * 100}% collateralization")
     else:
-        logging.info(f"urn has ink={r(urn.ink)} art={r(urn.art)} debt={r(debt)}")
+        logging.info(f"urn has ink={r(urn.ink)} art={r(urn.art)} debt={debt}")
 
     if web3.eth.blockNumber % 33 == 0:
         mcd.jug.drip(ilk).transact()
+        ilk = mcd.vat.ilk(collateral.ilk.name)
 
     handle_returned_collateral()
