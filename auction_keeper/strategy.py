@@ -106,6 +106,10 @@ class ClipperStrategy(StrategyTakeAvailable):
             self.logger.debug(f"auction {id} is no longer available for taking")
             return None, None, None
 
+        if tab <= self.clipper.chost():
+            self.logger.debug(f"auction {id} does not have enough debt to take")
+            return None, None, None
+
         our_lot = lot
         if Ray(our_price) >= auction_price:
 
@@ -118,8 +122,13 @@ class ClipperStrategy(StrategyTakeAvailable):
                     our_lot = lot_we_can_afford
 
             if our_lot <= self.min_lot:
-                self.logger.debug(f"our lot {our_lot} less than minimum {self.min_lot} for auction {id}")
+                self.logger.debug(f"our lot {our_lot} less than configured minimum {self.min_lot} for auction {id}")
                 # even if we won't take, return cost of full lot at our_price to flag Dai starvation and rebalance Dai
+                return None, None, Rad(lot) * Rad(our_price)
+
+            if not self.debt_exceeds_chost(our_lot, auction_price, lot, tab):
+                self.logger.debug(f"slice {our_lot} won't cover enough debt to clear the chop*dust floor")
+                # again, return cost of full lot to flag Dai starvation and rebalance Dai
                 return None, None, Rad(lot) * Rad(our_price)
 
             self.logger.debug(f"taking {our_lot} from auction {id} at {auction_price}")
@@ -130,6 +139,20 @@ class ClipperStrategy(StrategyTakeAvailable):
         else:
             self.logger.debug(f"auction {id} price is {auction_price}; cannot take at {our_price}")
             return None, None, None
+
+    def debt_exceeds_chost(self, slice: Wad, price: Ray, lot: Wad, tab: Rad) -> bool:
+        assert isinstance(slice, Wad)
+        assert isinstance(price, Ray)
+        assert isinstance(lot, Wad)
+        assert isinstance(tab, Rad)
+
+        owe: Rad = Rad(slice) * Rad(price)
+        chost: Rad = self.clipper.chost()
+
+        if owe < tab and slice < lot:
+            if (tab - owe) < chost:
+                return tab > chost
+        return True
 
     def deal(self, id: int) -> Transact:
         raise RuntimeError("Clipper auctions cannot be dealt")
