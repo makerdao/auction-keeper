@@ -106,10 +106,6 @@ class ClipperStrategy(StrategyTakeAvailable):
             self.logger.debug(f"auction {id} is no longer available for taking")
             return None, None, None
 
-        if tab <= self.clipper.chost():
-            self.logger.debug(f"auction {id} does not have enough debt to take")
-            return None, None, None
-
         our_lot = lot
         if Ray(our_price) >= auction_price:
 
