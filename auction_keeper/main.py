@@ -282,7 +282,7 @@ class AuctionKeeper:
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_vaults))
             elif self.auction_type == 'flap':
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flap))
-            elif self.auction_type == 'flip':
+            elif self.auction_type == 'flop':
                 lifecycle.on_block(functools.partial(seq_func, check_func=self.check_flop))
             else:  # unusual corner case
                 lifecycle.on_block(self.check_all_auctions)
