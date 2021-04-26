@@ -23,7 +23,7 @@ from auction_keeper.logic import Reservoir
 from auction_keeper.main import AuctionKeeper
 from pymaker.numeric import Wad, Ray, Rad
 from tests.conftest import keeper_address, mcd, our_address, web3, wrap_eth, purchase_dai
-from tests.helper import args
+from tests.helper import args, kill_other_threads
 
 
 class TestVatDai:
@@ -34,7 +34,7 @@ class TestVatDai:
         self.mcd.approve_dai(self.keeper_address)
         self.our_address = our_address(web3())
         self.mcd.approve_dai(self.our_address)
-        self.collateral = self.mcd.collaterals['ETH-B']
+        self.collateral = self.mcd.collaterals['ETH-A']
 
     def get_dai_token_balance(self) -> Wad:
         return self.mcd.dai.balance_of(self.keeper_address)
@@ -253,7 +253,7 @@ class TestRebalance(TestVatDai):
         # Create a keeper
         mocker.patch("web3.net.Net.peer_count", return_value=1)
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
-                                         f"--type flip --ilk ETH-C --bid-only "
+                                         f"--type flip --ilk ETH-A --bid-only "
                                          f"--vat-dai-target {dai_target} "
                                          f"--return-gem-interval 3 "
                                          f"--model ./bogus-model.sh"), web3=self.web3)
@@ -261,7 +261,6 @@ class TestRebalance(TestVatDai):
         self.web3 = self.keeper.web3
         self.mcd = self.keeper.mcd
         assert self.keeper.auctions
-        # Changed the collateral to ETH-C because our testchain didn't have dust set for ETH-A or ETH-B
         self.collateral = self.keeper.collateral
         self.collateral.approve(self.keeper_address)
 
@@ -275,17 +274,7 @@ class TestRebalance(TestVatDai):
         self.thread.join()
 
         # HACK: Lifecycle leaks threads; this needs to be fixed in pymaker
-        import ctypes
-        while threading.active_count() > 1:
-            for thread in threading.enumerate():
-                if thread is not threading.current_thread():
-                    print(f"Attempting to kill thread {thread}")
-                    sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
-                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
-                    time.sleep(1)
-
-        # Ensure we don't leak threads, which would break wait_for_other_threads() later on
-        assert threading.active_count() == 1
+        kill_other_threads()
 
         assert self.get_dai_vat_balance() == Wad(0)
 

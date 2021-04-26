@@ -21,6 +21,7 @@ from typing import Optional
 from auction_keeper.gas import UpdatableGasPrice
 from auction_keeper.model import Stance, Parameters, Status, Model, ModelFactory
 from pymaker import Address, TransactStatus, Transact
+from pymaker.auctions import AuctionContract
 from pymaker.numeric import Rad
 
 
@@ -93,22 +94,14 @@ class Auction:
 class Auctions:
     logger = logging.getLogger()
 
-    def __init__(self, flipper: Optional[Address], flapper: Optional[Address], flopper: Optional[Address],
-                 model_factory: ModelFactory):
-        assert isinstance(flipper, Address) or (flipper is None)
-        assert isinstance(flapper, Address) or (flapper is None)
-        assert isinstance(flopper, Address) or (flopper is None)
-        assert isinstance(flipper, Address) or isinstance(flapper, Address) or isinstance(flopper, Address)
+    def __init__(self, auction_contract: AuctionContract, model_factory: ModelFactory):
+        assert isinstance(auction_contract, AuctionContract)
         assert isinstance(model_factory, ModelFactory)
 
         self.auctions = {}
-        self.flipper = flipper
-        self.flapper = flapper
-        self.flopper = flopper
+        self.auction_contract = auction_contract
         self.model_factory = model_factory
 
-    # TODO by passing `bid` and `lot` to this method it can actually check if the auction under this id hasn't changed,
-    # TODO and restart the model if so.
     def get_auction(self, id: int, create: bool = True) -> Optional[Auction]:
         assert isinstance(id, int)
         assert isinstance(create, bool)
@@ -118,10 +111,7 @@ class Auctions:
             self.logger.info(f"Started monitoring auction #{id}")
 
             # Prepare model startup parameters
-            model_parameters = Parameters(flipper=self.flipper,
-                                          flapper=self.flapper,
-                                          flopper=self.flopper,
-                                          id=id)
+            model_parameters = Parameters(auction_contract=self.auction_contract, id=id)
 
             # Start the model
             model = self.model_factory.create_model(model_parameters)

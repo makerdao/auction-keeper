@@ -12,7 +12,7 @@ Ethereum blockchain.  The purpose of `auction-keeper` is to:
 Check out the <a href="https://youtu.be/wevzK3ADEjo?t=733">July 23rd, 2019 community meeting</a>
 for some more information about MCD auctions and the purpose of this component.
 
-`auction-keeper` can participate in `flip` (collateral sale), `flap` (MKR buy-and-burn)
+`auction-keeper` can participate in `clip` and `flip` (collateral sale), `flap` (MKR buy-and-burn)
 and `flop` (MKR minting) auctions. Its unique feature is the ability to plug in external
 _bidding models_, which tell the keeper when and how high to bid. This keeper can be safely
 left running in background. The moment it notices or starts a new auction it will spawn a new instance
@@ -28,7 +28,7 @@ develop your own auction trading bot.
 
 ## Architecture
 
-`auction-keeper` directly interacts with `Flipper`, `Flapper` and `Flopper` auction contracts
+`auction-keeper` directly interacts with `Clipper`, `Flipper`, `Flapper` and `Flopper` auction contracts
 deployed to the Ethereum blockchain. Decisions which involve pricing are delegated to _bidding models_.
 
 _Bidding models_ are simple processes, external to the main `auction-keeper` process. As they do not have to know
@@ -76,13 +76,15 @@ Sample message sent from the keeper to the model looks like:
 
 The meaning of individual fields:
 * `id` - auction identifier.
+* `clipper` - Ethereum address of the `Clipper` contract (only for `clip` auctions).
 * `flipper` - Ethereum address of the `Flipper` contract (only for `flip` auctions).
 * `flapper` - Ethereum address of the `Flapper` contract (only for `flap` auctions).
 * `flopper` - Ethereum address of the `Flopper` contract (only for `flop` auctions).
 * `bid` - current highest bid (will go up for `flip` and `flap` auctions).
-* `lot` - amount being currently auctioned (will go down for `flip` and `flop` auctions).
+* `lot` - amount being currently auctioned (will go down for `clip`, `flip` and `flop` auctions).
 * `tab` - bid value which will cause the auction to enter the `dent` phase (only for `flip` auctions).
 * `beg` - minimum price increment (`1.05` means minimum 5% price increment).
+* `top` - starting price (for `clip` auctions)
 * `guy` - Ethereum address of the current highest bidder.
 * `era` - current time (in seconds since the UNIX epoch).
 * `tic` - time when the current bid will expire (`null` if no bids yet).
@@ -94,9 +96,9 @@ It is perfectly fine for the `auction-keeper` to periodically send the same mess
 
 At the same time, the `auction-keeper` reads one-line messages from the **standard output** of the _bidding model_
 process and tries to parse them as JSON documents. Then it extracts two fields from that document:
-* `price` - the maximum (for `flip` and `flop` auctions) or the minimum (for `flap` auctions) price
-  the model is willing to bid.
-* `gasPrice` (deprecated) - gas price in Wei to use when sending the bid.
+* `price` - the maximum (for `clip`, `flip` and `flop` auctions) or the minimum (for `flap` auctions) price
+  the model is willing to bid.  For `clip` auctions, the keeper waits for the current auction price to drop below 
+  the maximum price specified in your model before submitting a bid.
 
 A sample message sent from the model to the keeper may look like:
 ```json
@@ -104,7 +106,7 @@ A sample message sent from the model to the keeper may look like:
 ```
 
 Whenever the keeper and the model communicate in terms of prices, it is the MKR/DAI price (for `flap`
-and `flop` auctions) or the collateral price expressed in DAI e.g. DGX/DAI (for `flip` auctions).
+and `flop` auctions) or the collateral price expressed in DAI e.g. DGX/DAI (for `clip` or `flip` auctions).
 
 Any messages writen by a _bidding model_ to **stderr** will be passed through by the keeper to its logs.
 This is the most convenient way of implementing logging from _bidding models_.
@@ -126,7 +128,7 @@ while true; do
 done
 ```
 
-The stdout provides a price for the collateral (for `flip` auctions) or MKR (for `flap` and `flop` auctions).  The
+The stdout provides a price for the collateral (for `clip` and `flip` auctions) or MKR (for `flap` and `flop` auctions).  The
 sleep locks the price in place for the specified duration, after which the keeper will restart the price model and read a new price.  
 Consider this your price update interval.  To conserve system resources, take care not to set this too low.
 
@@ -178,10 +180,11 @@ For some known Ubuntu and macOS issues see the [pymaker](https://github.com/make
 
 Run `bin/auction-keeper -h` without arguments to see an up-to-date list of arguments and usage information.
 
-To participate in all auctions, a separate keeper must be configured for `flip` of each collateral type, as well as
-one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter
+To participate in all auctions, a separate keeper must be configured for `clip` or `flip` of each collateral type, 
+as well as one for `flap` and another for `flop`.  Collateral types (`ilk`s) combine the name of the token and a letter
 corresponding to a set of risk parameters.  For example, `ETH-A` and `ETH-B` are two different collateral types for the
-same underlying token (WETH).
+same underlying token (WETH).  Regardless of whether a keeper is configured for `--clip` or `--flip`, the keeper will 
+choose the appropriate collateral liquidation contract for the specified `--ilk` and addresses configured in `pymaker`.
 
 Configure `--from-block` to the block where MCD was deployed.  One way to find this is to look at the `MCD_DAI`
 contract of the deployment you are using and determine the block in which it was deployed.
@@ -218,7 +221,7 @@ generally advisable to allow the keeper to manage gas prices for bids, and _not_
 
 ### Accounting
 Key points:
-- Dai must be **joined** from a token balance to the `Vat` for bidding on `flip` and `flop` auctions.
+- Dai must be **joined** from a token balance to the `Vat` for bidding on `clip`, `flip` and `flop` auctions.
 - Won collateral can be **exited** from the `Vat` to a token balance after a won auction is dealt (closed).
 - MKR for/from `flap`/`flop` auctions is managed directly through token balances and is never joined to the `Vat`.
 
@@ -241,7 +244,7 @@ To avoid transaction spamming, small "dusty" Dai balances will be ignored (until
 By default, all Dai in your `eth-from` account is exited from the `Vat` and added to your token balance when the keeper
 is terminated normally.  This feature may be disabled using `--keep-dai-in-vat-on-exit`.
 
-#### Collateral (flip auctions)
+#### Collateral (clip and flip auctions)
 Won collateral is periodically exited by setting `--return-gem-interval` to the number of seconds between balance
 checks.  Collateral is exited from the `Vat` when the keeper is terminated normally unless `--keep-gem-in-vat-on-exit`
 is specified.
@@ -262,8 +265,8 @@ mcd -C kovan dai exit 300
 
 #### Minimize load on your node
 
-To start `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  There are
-two ways to retrieve the list of urns:
+To start `clip` and `flip` auctions, the keeper needs a list of urns and the collateralization ratio of each urn.  
+There are two ways to retrieve the list of urns:
  * **Set `--from-block` to the block where the first urn was created** to scrape the chain for `frob` events.  
     The application will spend significant time (>25 minutes for ETH-A) populating an initial list.  Afterward, events
     will be queried back to the last cached block to detect new urns.  The state of all urns will be queried
@@ -337,7 +340,7 @@ configuration and reduces gas-wasting transactions.
 
 #### Hardware and operating system resources
 
- * The most expensive keepers are `flip` and `flop` keepers configured to `kick` new auctions.
+ * The most expensive keepers are `clip`, `flip`, and `flop` keepers configured to `kick` new auctions.
  * To prevent process churn, ensure your pricing model stays running for a reasonable amount of time.
 
 
@@ -351,8 +354,8 @@ multiple threads awaiting a response from the websocket.  A _full_ or _archive_ 
 supported.
 
 If you don't wish to run your own Ethereum node, third-party providers are available.  This software has been tested
-with [ChainSafe](https://chainsafe.io/) and [QuikNode](https://v2.quiknode.io/).  When using 
-[Infura](https://infura.io/) and kicking off flip auctions, reduce `--chunk-size` to 1/10th of the default.
+with [ChainSafe](https://chainsafe.io/).  When using [Infura](https://infura.io/) and kicking off clip or flip auctions, 
+reduce `--chunk-size` to 1/10th of the default.
 
 ## Testing
 

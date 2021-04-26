@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import math
 import pytest
 
 from mock import MagicMock
@@ -25,14 +26,17 @@ from web3 import Web3
 from auction_keeper.logic import Stance
 from auction_keeper.main import AuctionKeeper
 from pymaker import Address, web3_via_http
+from pymaker.approval import hope_directly
+from pymaker.collateral import Collateral
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral, Ilk, Urn
+from pymaker.dss import Ilk, Urn
 from pymaker.feed import DSValue
 from pymaker.gas import NodeAwareGasPrice
 from pymaker.keys import register_keys
 from pymaker.model import Token
 from pymaker.numeric import Wad, Ray, Rad
 from pymaker.token import DSEthToken, DSToken
+from tests.helper import time_travel_by
 
 
 @pytest.fixture(scope="session")
@@ -57,21 +61,25 @@ def web3():
 
 @pytest.fixture(scope="session")
 def our_address(web3):
+    assert web3.eth.accounts[0] == "0x50FF810797f75f6bfbf2227442e0c961a8562F4C"
     return Address(web3.eth.accounts[0])
 
 
 @pytest.fixture(scope="session")
 def keeper_address(web3):
+    assert web3.eth.accounts[1] == "0x57Da1B8F38A5eCF91E9FEe8a047DF0F0A88716A1"
     return Address(web3.eth.accounts[1])
 
 
 @pytest.fixture(scope="session")
 def other_address(web3):
+    assert web3.eth.accounts[2] == "0x5BEB2D3aA2333A524703Af18310AcFf462c04723"
     return Address(web3.eth.accounts[2])
 
 
 @pytest.fixture(scope="session")
 def gal_address(web3):
+    assert web3.eth.accounts[3] == "0x6c626f45e3b7aE5A3998478753634790fd0E82EE"
     return Address(web3.eth.accounts[3])
 
 
@@ -104,11 +112,6 @@ def mcd(web3):
     return DssDeployment.from_node(web3=web3)
 
 
-@pytest.fixture(scope="session")
-def c(mcd):
-    return mcd.collaterals['ETH-B']
-
-
 def get_collateral_price(collateral: Collateral):
     assert isinstance(collateral, Collateral)
     return Wad(Web3.toInt(collateral.pip.read()))
@@ -136,6 +139,7 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     assert isinstance(our_address, Address)
 
     urn = mcd.vat.urn(collateral.ilk, our_address)
+    assert urn.ink > Wad(0)
     ilk = mcd.vat.ilk(collateral.ilk.name)
 
     # change in art = (collateral balance * collateral price with safety margin) - vault's existing stablecoin debt
@@ -143,6 +147,8 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
 
     # change in debt must also take the rate into account
     dart = Wad(Ray(dart) / ilk.rate)
+
+    print(f"max_dart for urn with ink={urn.ink} and art={urn.art} calculated as dart={dart}")
 
     # prevent the change in debt from exceeding the collateral debt ceiling
     if (Rad(urn.art) + Rad(dart)) >= ilk.line:
@@ -164,25 +170,59 @@ def max_dart(mcd: DssDeployment, collateral: Collateral, our_address: Address) -
     return dart
 
 
-def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad, extra_collateral=Wad.from_number(1)):
+def max_dart_for_ink(mcd: DssDeployment, collateral: Collateral, ink: Wad) -> Wad:
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(collateral, Collateral)
+    assert isinstance(ink, Wad)
+    assert ink > Wad(0)
+
+    ilk = mcd.vat.ilk(collateral.ilk.name)
+    dart = Wad(Ray(ink) * ilk.spot / ilk.rate) - Wad(1)
+    print(f"max_dart for ink={float(ink)} calculated as dart={float(dart)}; rate={float(ilk.rate)}")
+
+    # prevent the change in debt from exceeding the total debt ceiling
+    debt = mcd.vat.debt() + Rad(ilk.rate * dart)
+    line = Rad(mcd.vat.line())
+    if (debt + Rad(dart)) >= line:
+        print(f"debt {debt} + dart {dart} >= {line}; max_dart is avoiding total debt ceiling")
+        dart = Wad(debt - Rad(dart))
+
+    # ensure we've met the dust cutoff
+    if Rad(dart) < ilk.dust:
+        print(f"max_dart is being bumped from {dart} to {ilk.dust} to reach dust cutoff")
+        dart = Wad(ilk.dust)
+
+    return dart
+
+
+def reserve_dai(mcd: DssDeployment, c: Collateral, usr: Address, amount: Wad):
     assert isinstance(mcd, DssDeployment)
     assert isinstance(c, Collateral)
     assert isinstance(usr, Address)
     assert isinstance(amount, Wad)
     assert amount > Wad(0)
 
+    # Ensure dust limits are reached
+    amount: Wad = max(amount, Wad(c.ilk.dust))
+
     # Determine how much collateral is needed
     ilk = mcd.vat.ilk(c.ilk.name)
     rate = ilk.rate  # Ray
-    spot = ilk.spot  # Ray
     assert rate >= Ray.from_number(1)
-    collateral_required = Wad((Ray(amount) / spot) * rate) * extra_collateral + Wad(1)
-    print(f'collateral_required for {str(amount)} dai is {str(collateral_required)}')
-
-    wrap_eth(mcd, usr, collateral_required)
-    c.approve(usr)
-    assert c.adapter.join(usr, collateral_required).transact(from_address=usr)
-    assert mcd.vat.frob(c.ilk, usr, collateral_required, amount).transact(from_address=usr)
+    urn = mcd.vat.urn(ilk, usr)
+    tab: Rad = (Rad(mcd.vat.dai(usr)) + Rad(amount)) * ilk.rate
+    assert tab > Rad(0)
+    print(f"attempting to reserve {amount} Dai using {c.ilk.name} urn {urn}")
+    ink_required = Wad(tab) + Wad(1)  # extra to prevent Rad-to-Wad rounding issues
+    dink = max(Wad(0), ink_required - urn.ink)
+    if dink > Wad(0):
+        print(f'ink={str(urn.ink)} art={str(urn.art)}; {str(dink)} more {ilk.name} is required to draw {str(amount)} Dai')
+        wrap_eth(mcd, usr, dink)
+        c.approve(usr)
+        assert c.adapter.join(usr, dink).transact(from_address=usr)
+    else:
+        print(f"no additional collateral is required to draw {str(amount)} Dai")
+    assert mcd.vat.frob(c.ilk, usr, dink, amount).transact(from_address=usr)
     assert mcd.vat.urn(c.ilk, usr).art >= Wad(amount)
 
 
@@ -244,11 +284,12 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
         print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
         assert vat_balance >= dink
         assert mcd.vat.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
+        urn = mcd.vat.urn(c.ilk, gal_address)
 
     # Put gal CDP at max possible debt
     dart = max_dart(mcd, c, gal_address) - Wad(1)
     if dart > Wad(0):
-        print(f"Attempting to frob with dart={dart}")
+        print(f"Frobbing {c.ilk.name} with ink={urn.ink} and dart={dart}")
         assert mcd.vat.frob(c.ilk, gal_address, Wad(0), dart).transact(from_address=gal_address)
 
     # Draw our Dai, simulating the usual behavior
@@ -257,6 +298,7 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
         mcd.approve_dai(gal_address)
         assert mcd.dai_adapter.exit(gal_address, urn.art).transact(from_address=gal_address)
         print(f"Exited {urn.art} Dai from urn")
+    return urn
 
 
 def create_unsafe_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, gal_address: Address,
@@ -285,19 +327,27 @@ def create_cdp_with_surplus(mcd: DssDeployment, c: Collateral, gal_address: Addr
     # Ensure there is no debt which a previous test failed to clean up
     assert mcd.vat.sin(mcd.vow.address) == Rad(0)
 
-    ink = Wad.from_number(1)
-    art = Wad.from_number(50)
+    joy_before = mcd.vat.dai(mcd.vow.address)
+
+    ink = Wad.from_number(10)
+    art = max_dart_for_ink(mcd, c, ink) - Wad(1)
+    assert art > Wad(0)
     wrap_eth(mcd, gal_address, ink)
     c.approve(gal_address)
-    assert c.adapter.join(gal_address, ink).transact(
-        from_address=gal_address)
-    assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(
-        from_address=gal_address)
-    assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
+    print(f"collateral={c.ilk.name}, ink={float(ink)}, art={float(art)}, joy_before={float(joy_before)}")
+    assert c.adapter.join(gal_address, ink).transact(from_address=gal_address)
+    assert mcd.vat.frob(c.ilk, gal_address, dink=ink, dart=art).transact(from_address=gal_address)
+    joy = mcd.vat.dai(mcd.vow.address)
+    awe = mcd.vat.sin(mcd.vow.address)
     # total surplus > total debt + surplus auction lot size + surplus buffer
-    print(f"dai(vow)={str(mcd.vat.dai(mcd.vow.address))} >? sin(vow)={str(mcd.vat.sin(mcd.vow.address))} " 
-          f"+ vow.bump={str(mcd.vow.bump())} + vow.hump={str(mcd.vow.hump())}")
-    assert mcd.vat.dai(mcd.vow.address) > mcd.vat.sin(mcd.vow.address) + mcd.vow.bump() + mcd.vow.hump()
+    while float(joy) <= float(awe) + float(mcd.vow.bump()) + float(mcd.vow.hump()):
+        print(f"joy={float(joy)}; waiting for fees to accumulate")
+        time_travel_by(mcd.web3, 3)
+        assert mcd.jug.drip(c.ilk).transact(from_address=gal_address)
+        joy = mcd.vat.dai(mcd.vow.address)
+        awe = mcd.vat.sin(mcd.vow.address)
+    print(f"joy={float(joy)} > awe={float(awe)} + bump={float(mcd.vow.bump())} + hump={float(mcd.vow.hump())}")
+    assert joy >= joy_before
     return mcd.vat.urn(c.ilk, gal_address)
 
 
@@ -310,7 +360,117 @@ def bite(mcd: DssDeployment, c: Collateral, unsafe_cdp: Urn) -> int:
     assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
     bites = mcd.cat.past_bites(1)
     assert len(bites) == 1
+    assert bites[0].id == c.flipper.kicks()
+    print(f"bit {c.ilk.name} urn {unsafe_cdp.address} creating flip auction {bites[0].id}")
     return c.flipper.kicks()
+
+
+def repay_urn(mcd, c: Collateral, address: Address) -> bool:
+    assert isinstance(c, Collateral)
+    assert isinstance(address, Address)
+    mcd.approve_dai(address)
+
+    urn = mcd.vat.urn(c.ilk, address)
+    if urn.art > Wad(0):
+        vat_dai = mcd.vat.dai(address)
+        tab: Wad = urn.art * c.ilk.rate
+        wipe: Wad = mcd.vat.get_wipe_all_dart(c.ilk, address)
+        # if we have any Dai, repay all or part of the urn
+        if vat_dai > Rad(0):
+            vat_dai = vat_dai / Rad(c.ilk.rate)  # adjust for Dai available for repayment
+            repay_amount = min(wipe, tab, Wad(vat_dai))
+            print(f"wipe={wipe}, tab={tab}, vat_dai={vat_dai}")
+            print(f"{c.ilk.name} dust is {float(c.ilk.dust)}")
+            print(f"repaying {repay_amount} Dai on {c.ilk.name} urn {address}; art={urn.art}")
+            assert mcd.vat.frob(c.ilk, address, Wad(0), repay_amount*-1).transact(from_address=address)
+            urn = mcd.vat.urn(c.ilk, address)
+        else:
+            print(f"{address} has no Dai to repay tab of {float(tab)}")
+    else:
+        print(f"{c.ilk.name} urn {address} has no debt")
+
+    min_ink = Wad(Ray(urn.art) * c.ilk.rate / c.ilk.spot) + Wad(1)
+    if urn.ink > min_ink:
+        ink_to_withdraw = urn.ink - min_ink
+        print(f"withdrawing {float(ink_to_withdraw)} {c.ilk.name} from urn {address}")
+        assert mcd.vat.frob(c.ilk, address, ink_to_withdraw*-1, Wad(0)).transact(from_address=address)
+        urn = mcd.vat.urn(c.ilk, address)
+
+    if urn.ink == Wad(0) and urn.art == Wad(0):
+        print(f"{c.ilk.name} urn {address} was fully repaid")
+        return True
+    else:
+        print(f"{c.ilk.name} urn {address} left ink={urn.ink} art={urn.art}")
+        return False
+
+
+def liquidate_urn(mcd, c: Collateral, address: Address, bidder: Address, c_dai: Collateral = None):
+    assert isinstance(c, Collateral)
+    assert isinstance(address, Address)
+    assert isinstance(bidder, Address)
+
+    if c_dai is None:
+        c_dai = c
+
+    # Ensure the CDP isn't safe
+    urn = mcd.vat.urn(c.ilk, address)
+    if is_cdp_safe(c.ilk, urn):
+        assert urn.ink > Wad(0)
+        safe_price = urn.art / Wad(mcd.spotter.mat(c.ilk)) / urn.ink
+        print(f"current_price={float(get_collateral_price(c))}, safe_price={float(safe_price)}")
+        set_collateral_price(mcd, c, safe_price / Wad.from_number(2))
+        c.ilk = mcd.vat.ilk(c.ilk.name)
+        assert not is_cdp_safe(c.ilk, urn)
+
+    if c.clipper:
+        c.clipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=bidder))
+        # Bark to kick the auction
+        assert mcd.dog.bark(c.ilk, urn).transact()
+        kick = c.clipper.kicks()
+        (needs_redo, auction_price, lot, tab) = c.clipper.status(kick)
+        purchase_dai(Wad(tab) + Wad(1), address)
+        assert mcd.dai_adapter.join(address, Wad(tab) + Wad(1)).transact(from_address=address)
+        assert mcd.vat.dai(address) >= tab
+        bid_price = tab / Rad(lot)
+        while auction_price > bid_price:
+            time_travel_by(mcd.web3, 1)
+            (needs_redo, auction_price, lot, tab) = c.clipper.status(kick)
+        print(f"taking lot {lot} on auction {kick} at {bid_price} with {mcd.vat.dai(bidder)} Dai remaining")
+        assert c.clipper.take(kick, lot, bid_price).transact(from_address=address)
+
+    elif c.flipper:
+        c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=bidder))
+        # Determine how many bites will be required
+        dunk: Rad = mcd.cat.dunk(c.ilk)
+        box: Rad = mcd.cat.box()
+        urn = mcd.vat.urn(c.ilk, address)
+        bites_required = math.ceil(urn.art / Wad(dunk))
+        print(f"art={float(urn.art)} and dunk={float(dunk)} so {bites_required} bites are required")
+        first_kick = c.flipper.kicks() + 1
+
+        while mcd.cat.can_bite(c.ilk, urn):
+            box_kick = c.flipper.kicks() + 1
+
+            while mcd.cat.can_bite(c.ilk, urn):
+                # Bite and bid on each auction
+                next_kick = c.flipper.kicks() + 1
+                print(f"biting {next_kick} ({next_kick - first_kick + 1} of {bites_required})")
+                kick = bite(mcd, c, urn)
+                auction = c.flipper.bids(kick)
+                reserve_dai(mcd, c_dai, bidder, Wad(auction.tab)+Wad(1))
+                print(f"bidding tab {auction.tab} on auction {kick} for {auction.lot} with {mcd.vat.dai(bidder)} Dai remaining")
+                assert c.flipper.tend(kick, auction.lot, auction.tab).transact(from_address=bidder)
+                urn = mcd.vat.urn(c.ilk, address)
+
+            time_travel_by(mcd.web3, c.flipper.ttl() + 3)
+            for kick in range(box_kick, c.flipper.kicks() + 1):
+                print(f"dealing {kick} ({kick - first_kick + 1} of {bites_required})")
+                assert c.flipper.deal(kick).transact()
+
+    set_collateral_price(mcd, c, Wad.from_number(200))
+    repay_urn(mcd, c, address)
+    assert urn.art == Wad(0)
+    assert urn.ink == Wad(0)
 
 
 def flog_and_heal(web3: Web3, mcd: DssDeployment, past_blocks=8, kiss=True, require_heal=True):
@@ -351,9 +511,9 @@ def models(keeper: AuctionKeeper, id: int):
     return (model, model_factory)
 
 
-def simulate_model_output(model: object, price: Wad, gas_price: Optional[int] = None):
-    assert (isinstance(price, Wad))
-    assert (isinstance(gas_price, int)) or gas_price is None
+def simulate_model_output(model: object, price, gas_price: Optional[int] = None):
+    assert isinstance(price, Wad) or isinstance(price, Ray)
+    assert isinstance(gas_price, int) or gas_price is None
     model.get_stance = MagicMock(return_value=Stance(price=price, gas_price=gas_price))
 
 

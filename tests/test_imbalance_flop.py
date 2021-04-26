@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import threading
 import time
 
 from auction_keeper.gas import DynamicGasPrice
@@ -28,10 +29,17 @@ from pymaker.approval import hope_directly
 from pymaker.auctions import Flopper
 from pymaker.deployment import DssDeployment
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, keeper_address, mcd, \
-    models, our_address, other_address, reserve_dai, simulate_model_output, web3
+from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, gal_address, get_collateral_price, keeper_address, \
+    liquidate_urn, mcd, models, our_address, other_address, repay_urn, reserve_dai, set_collateral_price, \
+    simulate_model_output, web3
+
 from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
 from web3 import Web3
+
+
+@pytest.fixture(scope="session")
+def c(mcd):
+    return mcd.collaterals['ETH-A']
 
 
 @pytest.fixture()
@@ -42,12 +50,12 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
 
     if woe < joy:
         # Bite gal CDP
-        c = mcd.collaterals['ETH-B']
+        c = mcd.collaterals['ETH-A']
         unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(2), other_address, draw_dai=False)
         flip_kick = bite(mcd, c, unsafe_cdp)
 
         # Generate some Dai, bid on and win the flip auction without covering all the debt
-        reserve_dai(mcd, c, gal_address, Wad.from_number(100), extra_collateral=Wad.from_number(1.1))
+        reserve_dai(mcd, c, gal_address, Wad.from_number(100))
         c.flipper.approve(mcd.vat.address, approval_function=hope_directly(from_address=gal_address))
         current_bid = c.flipper.bids(flip_kick)
         bid = Rad.from_number(1.9)
@@ -68,17 +76,19 @@ def kick(web3: Web3, mcd: DssDeployment, gal_address, other_address) -> int:
 
 @pytest.mark.timeout(600)
 class TestAuctionKeeperFlopper(TransactionIgnoringTest):
+    @classmethod
+    def setup_class(cls):
+        cls.web3 = web3()
+        cls.our_address = our_address(cls.web3)
+        cls.gal_address = gal_address(cls.web3)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.other_address = other_address(cls.web3)
+        cls.mcd = mcd(cls.web3)
+        cls.flopper = cls.mcd.flopper
+        cls.flopper.approve(cls.mcd.vat.address, approval_function=hope_directly(from_address=cls.keeper_address))
+        cls.flopper.approve(cls.mcd.vat.address, approval_function=hope_directly(from_address=cls.other_address))
+    
     def setup_method(self):
-        self.web3 = web3()
-        self.our_address = our_address(self.web3)
-        self.keeper_address = keeper_address(self.web3)
-        self.other_address = other_address(self.web3)
-        self.gal_address = gal_address(self.web3)
-        self.mcd = mcd(self.web3)
-        self.flopper = self.mcd.flopper
-        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(from_address=self.keeper_address))
-        self.flopper.approve(self.mcd.vat.address, approval_function=hope_directly(from_address=self.other_address))
-
         self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address} "
                                               f"--type flop "
                                               f"--from-block 1 "
@@ -92,6 +102,10 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         reserve_dai(self.mcd, self.mcd.collaterals['ETH-C'], self.other_address, Wad.from_number(200.00000))
 
         self.sump = self.mcd.vow.sump()  # Rad
+
+    def teardown_method(self):
+        c = self.mcd.collaterals['ETH-A']
+        set_collateral_price(self.mcd, c, Wad.from_number(200.00))
 
     def dent(self, id: int, address: Address, lot: Wad, bid: Rad):
         assert (isinstance(id, int))
@@ -157,10 +171,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.keeper.check_all_auctions()
         wait_for_other_threads()
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=None,
-                                                                      flapper=None,
-                                                                      flopper=self.flopper.address,
-                                                                      id=kick))
+        model_factory.create_model.assert_called_once_with(Parameters(auction_contract=self.keeper.mcd.flopper, id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
@@ -504,6 +515,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         self.start_ignoring_transactions()
         # and
         self.keeper.check_all_auctions()
+        self.keeper.check_for_bids()
         # and
         time.sleep(2)
         # and
@@ -662,15 +674,20 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         assert self.flopper.deal(kick).transact()
 
     @classmethod
-    def teardown_class(cls):
-        cls.cleanup_debt(web3(), mcd(web3()), other_address(web3()))
-
-    @classmethod
-    def cleanup_debt(cls, web3, mcd, address):
+    def cleanup_debt(cls, web3, mcd):
         # Cancel out surplus and debt
         dai_vow = mcd.vat.dai(mcd.vow.address)
         assert dai_vow <= mcd.vow.woe()
         assert mcd.vow.heal(dai_vow).transact()
+
+    @classmethod
+    def teardown_class(cls):
+        cls.cleanup_debt(cls.web3, cls.mcd)
+        c = cls.mcd.collaterals['ETH-A']
+        assert get_collateral_price(c) == Wad.from_number(200.00)
+        if not repay_urn(cls.mcd, c, cls.gal_address):
+            liquidate_urn(cls.mcd, c, cls.gal_address, cls.keeper_address)
+        assert threading.active_count() == 1
 
 
 class MockFlopper:
@@ -693,10 +710,10 @@ class MockFlopper:
 
 
 class TestFlopStrategy:
-    def setup_class(self):
-        self.mcd = mcd(web3())
-        self.strategy = FlopperStrategy(self.mcd.flopper)
-        self.mock_flopper = MockFlopper()
+    def setup_class(cls):
+        cls.mcd = mcd(web3())
+        cls.strategy = FlopperStrategy(cls.mcd.flopper)
+        cls.mock_flopper = MockFlopper()
 
     def test_price(self, mocker):
         mocker.patch("pymaker.auctions.Flopper.bids", return_value=self.mock_flopper.bids(1))

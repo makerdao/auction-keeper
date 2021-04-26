@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pytest
+import threading
 
 from auction_keeper.gas import DynamicGasPrice
 from auction_keeper.main import AuctionKeeper
@@ -24,48 +25,149 @@ from datetime import datetime
 from pymaker import Address
 from pymaker.approval import hope_directly
 from pymaker.auctions import Flipper
+from pymaker.collateral import Collateral
 from pymaker.deployment import DssDeployment
-from pymaker.dss import Collateral
 from pymaker.numeric import Wad, Ray, Rad
-from tests.conftest import bite, create_unsafe_cdp, flog_and_heal, keeper_address, mcd, models, \
-                           reserve_dai, simulate_model_output, web3
-from tests.helper import args, time_travel_by, wait_for_other_threads, TransactionIgnoringTest
+from tests.conftest import bite, create_unsafe_cdp, gal_address, get_collateral_price, keeper_address, \
+    liquidate_urn, mcd, models, purchase_dai, repay_urn, reserve_dai, set_collateral_price, simulate_model_output, web3
+from tests.helper import args, kill_other_threads, time_travel_by, TransactionIgnoringTest, wait_for_other_threads
 from typing import Optional
 
 
 tend_lot = Wad.from_number(1.2)
 
 
+@pytest.fixture(scope="session")
+def collateral_flip(mcd):
+    return mcd.collaterals['ETH-A']
+
+
 @pytest.fixture()
-def kick(mcd, c: Collateral, gal_address) -> int:
+def kick(mcd, collateral_flip: Collateral, gal_address) -> int:
     # Ensure we start with a clean urn
-    urn = mcd.vat.urn(c.ilk, gal_address)
+    urn = mcd.vat.urn(collateral_flip.ilk, gal_address)
     assert urn.ink == Wad(0)
     assert urn.art == Wad(0)
 
     # Bite gal CDP
-    unsafe_cdp = create_unsafe_cdp(mcd, c, tend_lot, gal_address)
-    return bite(mcd, c, unsafe_cdp)
+    unsafe_cdp = create_unsafe_cdp(mcd, collateral_flip, tend_lot, gal_address)
+    return bite(mcd, collateral_flip, unsafe_cdp)
+
+
+def clean_up_dead_auctions(mcd: DssDeployment, collateral: Collateral, address: Address):
+    assert isinstance(mcd, DssDeployment)
+    assert isinstance(collateral, Collateral)
+    assert isinstance(address, Address)
+
+    flipper = collateral.flipper
+    for kick in range(1, flipper.kicks()+1):
+        auction = flipper.bids(kick)
+        if auction.tab > Rad(0) and auction.bid == Rad(0) and auction.tic == 0:
+            print(f"Cleaning up dangling {collateral.ilk.name} flip auction {auction}")
+            purchase_dai(Wad(auction.tab) + Wad(1), address)
+            assert mcd.dai_adapter.join(address, Wad(auction.tab) + Wad(1)) \
+                .transact(from_address=address)
+            assert mcd.vat.dai(address) >= auction.tab
+            assert flipper.tick(kick).transact()
+            assert flipper.tend(kick, auction.lot, auction.tab).transact(from_address=address)
+            time_travel_by(mcd.web3, flipper.ttl())
+            assert flipper.deal(kick)
+
+
+@pytest.mark.timeout(60)
+class TestAuctionKeeperBite(TransactionIgnoringTest):
+    @classmethod
+    def setup_class(cls):
+        cls.web3 = web3()
+        cls.mcd = mcd(cls.web3)
+        cls.collateral = collateral_flip(cls.mcd)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
+                                     f"--type flip "
+                                     f"--from-block 1 "
+                                     f"--ilk {cls.collateral.ilk.name} "
+                                     f"--model ./bogus-model.sh"), web3=cls.mcd.web3)
+        cls.keeper.approve()
+
+        assert get_collateral_price(cls.collateral) == Wad.from_number(200)
+        if not repay_urn(cls.mcd, cls.collateral, cls.keeper_address):
+            liquidate_urn(cls.mcd, cls.collateral, cls.keeper_address, cls.keeper_address,
+                          c_dai=cls.mcd.collaterals['ETH-C'])
+
+        # Keeper won't bid with a 0 Dai balance
+        if cls.mcd.vat.dai(cls.keeper_address) == Rad(0):
+            purchase_dai(Wad.from_number(20), cls.keeper_address)
+        assert cls.mcd.dai_adapter.join(cls.keeper_address, Wad.from_number(20)).transact(
+            from_address=cls.keeper_address)
+
+    def test_bite_and_flip(self, mcd, gal_address):
+        # setup
+        repay_urn(mcd, self.collateral, gal_address)
+
+        # given 21 Dai / (200 price * 1.5 mat) == 0.1575 vault size
+        unsafe_cdp = create_unsafe_cdp(mcd, self.collateral, Wad.from_number(0.1575), gal_address, draw_dai=False)
+        assert len(mcd.active_auctions()["flips"][self.collateral.ilk.name]) == 0
+        kicks_before = self.collateral.flipper.kicks()
+
+        # when
+        self.keeper.check_vaults()
+        wait_for_other_threads()
+
+        # then
+        print(mcd.cat.past_bites(10))
+        assert len(mcd.cat.past_bites(10)) > 0
+        urn = mcd.vat.urn(unsafe_cdp.ilk, unsafe_cdp.address)
+        assert urn.art == Wad(0)  # unsafe cdp has been bitten
+        assert urn.ink == Wad(0)  # unsafe cdp is now safe ...
+        assert self.collateral.flipper.kicks() == kicks_before + 1  # One auction started
+
+    def test_should_not_bite_dusty_urns(self, mcd, gal_address):
+        # given a lot smaller than the dust limit
+        urn = mcd.vat.urn(self.collateral.ilk, gal_address)
+        assert urn.art < Wad(self.collateral.ilk.dust)
+        kicks_before = self.collateral.flipper.kicks()
+
+        # when a small unsafe urn is created
+        assert not mcd.cat.can_bite(self.collateral.ilk, urn)
+
+        # then ensure the keeper does not bite it
+        self.keeper.check_vaults()
+        wait_for_other_threads()
+        kicks_after = self.collateral.flipper.kicks()
+        assert kicks_before == kicks_after
+
+    @classmethod
+    def teardown_class(cls):
+        set_collateral_price(cls.mcd, cls.collateral, Wad.from_number(200.00))
+        clean_up_dead_auctions(cls.mcd, cls.collateral, cls.keeper_address)
+        assert threading.active_count() == 1
 
 
 @pytest.mark.timeout(500)
 class TestAuctionKeeperFlipper(TransactionIgnoringTest):
-    def setup_class(self):
-        """ I'm excluding initialization of a specific collateral perchance we use multiple collaterals
-        to improve test speeds.  This prevents us from instantiating the keeper as a class member. """
-        self.web3 = web3()
-        self.mcd = mcd(self.web3)
-        self.keeper_address = keeper_address(self.web3)
-        self.collateral = self.mcd.collaterals['ETH-B']
-        self.keeper = AuctionKeeper(args=args(f"--eth-from {self.keeper_address.address} "
+    @classmethod
+    def setup_class(cls):
+        cls.web3 = web3()
+        cls.mcd = mcd(cls.web3)
+        cls.gal_address = gal_address(cls.web3)
+        cls.keeper_address = keeper_address(cls.web3)
+        cls.collateral = collateral_flip(cls.mcd)
+        assert not cls.collateral.clipper
+        assert cls.collateral.flipper
+        cls.keeper = AuctionKeeper(args=args(f"--eth-from {cls.keeper_address.address} "
                                      f"--type flip "
                                      f"--from-block 1 "
-                                     f"--ilk {self.collateral.ilk.name} "
-                                     f"--model ./bogus-model.sh"), web3=self.mcd.web3)
-        self.keeper.approve()
+                                     f"--ilk {cls.collateral.ilk.name} "
+                                     f"--model ./bogus-model.sh"), web3=cls.mcd.web3)
+        cls.keeper.approve()
 
-        assert isinstance(self.keeper.gas_price, DynamicGasPrice)
-        self.default_gas_price = self.keeper.gas_price.get_gas_price(0)
+        # Clean up the urn used for imbalance testing such that it doesn't impact our flip tests
+        assert get_collateral_price(cls.collateral) == Wad.from_number(200)
+        if not repay_urn(cls.mcd, cls.collateral, cls.gal_address):
+            liquidate_urn(cls.mcd, cls.collateral, cls.gal_address, cls.keeper_address)
+
+        assert isinstance(cls.keeper.gas_price, DynamicGasPrice)
+        cls.default_gas_price = cls.keeper.gas_price.get_gas_price(0)
 
     @staticmethod
     def gem_balance(address: Address, c: Collateral) -> Wad:
@@ -85,7 +187,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         initial_bid = flipper.bids(model.id)
         assert initial_bid.lot > Wad(0)
         our_bid = price * initial_bid.lot
-        reserve_dai(mcd, c, self.keeper_address, our_bid, extra_collateral=Wad.from_number(2))
+        reserve_dai(mcd, c, self.keeper_address, our_bid)
         simulate_model_output(model=model, price=price, gas_price=gas_price)
 
     @staticmethod
@@ -137,12 +239,12 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         flipper.approve(flipper.vat(), approval_function=hope_directly(from_address=address))
         previous_bid = flipper.bids(id)
         c.approve(address)
-        reserve_dai(mcd, c, address, Wad(bid), extra_collateral=Wad.from_number(2))
+        reserve_dai(mcd, c, address, Wad(bid))
         TestAuctionKeeperFlipper.tend(flipper, id, address, previous_bid.lot, bid)
 
     def test_flipper_address(self):
         """ Sanity check ensures the keeper fixture is looking at the correct collateral """
-        assert self.keeper.flipper.address == self.collateral.flipper.address
+        assert self.keeper.auction_contract.address == self.collateral.flipper.address
 
     def test_should_start_a_new_model_and_provide_it_with_info_on_auction_kick(self, kick, other_address):
         # given
@@ -154,10 +256,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         wait_for_other_threads()
         initial_bid = self.collateral.flipper.bids(kick)
         # then
-        model_factory.create_model.assert_called_once_with(Parameters(flipper=flipper.address,
-                                                                      flapper=None,
-                                                                      flopper=None,
-                                                                      id=kick))
+        model_factory.create_model.assert_called_with(Parameters(auction_contract=self.keeper.collateral.flipper, id=kick))
         # and
         status = model.send_status.call_args[0][0]
         assert status.id == kick
@@ -341,7 +440,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         time_travel_by(self.web3, flipper.ttl() + 1)
         # and
-        flipper.deal(kick).transact(from_address=other_address)
+        assert flipper.deal(kick).transact(from_address=other_address)
         # and
         self.keeper.check_all_auctions()
         wait_for_other_threads()
@@ -358,7 +457,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         time_travel_by(self.web3, flipper.ttl() + 1)
         # and
-        flipper.deal(kick).transact(from_address=other_address)
+        assert flipper.deal(kick).transact(from_address=other_address)
 
         # when
         self.keeper.check_all_auctions()
@@ -421,7 +520,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         (model, model_factory) = models(self.keeper, kick)
 
         # when
-        our_bid_price = Wad.from_number(150)
+        our_bid_price = Wad.from_number(160)
         assert our_bid_price * flipper.bids(kick).lot > Wad(flipper.bids(1).tab)
 
         self.simulate_model_bid(self.mcd, self.collateral, model, our_bid_price)
@@ -455,7 +554,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         flipper = self.collateral.flipper
 
         # when
-        first_bid_price = Wad.from_number(140)
+        first_bid_price = Wad.from_number(150)
         self.simulate_model_bid(self.mcd, self.collateral, model, first_bid_price)
         # and
         self.keeper.check_all_auctions()
@@ -467,7 +566,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         assert auction.lot == tend_lot
 
         # when
-        second_bid_price = Wad.from_number(150)
+        second_bid_price = Wad.from_number(160)
         self.simulate_model_bid(self.mcd, self.collateral, model, second_bid_price)
         # and
         self.keeper.check_all_auctions()
@@ -586,6 +685,7 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         bid_price = Wad.from_number(20.0)
         reserve_dai(self.mcd, self.collateral, self.keeper_address, bid_price * tend_lot * 2)
         simulate_model_output(model=model, price=bid_price, gas_price=10)
+        print(f"test_should_increase_gas_price_of_pending_transactions_if_model_increases_gas_price kick is {kick}")
         # and
         self.start_ignoring_transactions()
         # and
@@ -651,6 +751,8 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
         # and
         self.keeper.check_all_auctions()
         self.keeper.check_for_bids()
+        import time
+        time.sleep(2)
         # and
         self.end_ignoring_transactions()
         # and
@@ -784,4 +886,6 @@ class TestAuctionKeeperFlipper(TransactionIgnoringTest):
 
     @classmethod
     def teardown_class(cls):
-        flog_and_heal(web3(), mcd(web3()), past_blocks=1200, require_heal=False)
+        pass
+        # set_collateral_price(cls.mcd, cls.collateral, Wad.from_number(200.00))
+        # assert threading.active_count() == 1

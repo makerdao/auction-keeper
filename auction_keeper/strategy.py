@@ -1,6 +1,6 @@
 # This file is part of Maker Keeper Framework.
 #
-# Copyright (C) 2018 reverendus, bargst
+# Copyright (C) 2018-2021 reverendus, bargst, EdNoepel
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -22,7 +22,7 @@ from web3 import Web3
 from auction_keeper.model import Status
 from pymaker import Address, Transact
 from pymaker.approval import directly, hope_directly
-from pymaker.auctions import AuctionContract, Flopper, Flapper, Flipper
+from pymaker.auctions import AuctionContract, Clipper, Flapper, Flipper, Flopper
 from pymaker.gas import GasPrice
 from pymaker.numeric import Wad, Ray, Rad
 
@@ -44,11 +44,117 @@ class Strategy:
     def get_input(self, id: int):
         raise NotImplementedError
 
+    def bid(self, id: int, price: Wad):
+        raise NotImplementedError
+
     def deal(self, id: int) -> Transact:
         return self.contract.deal(id)
 
     def tick(self, id: int) -> Transact:
         return self.contract.tick(id)
+
+
+class StrategyTakeAvailable(Strategy):
+    def bid_available(self, id: int, price: Wad, available_dai: Rad):
+        raise NotImplementedError
+
+
+class ClipperStrategy(StrategyTakeAvailable):
+    def __init__(self, clipper: Clipper, min_lot: Wad=Wad.from_number(0)):
+        assert isinstance(clipper, Clipper)
+        assert isinstance(min_lot, Wad)
+
+        self.clipper = clipper
+        self.min_lot = min_lot
+
+    def approve(self, gas_price: GasPrice):
+        assert isinstance(gas_price, GasPrice)
+        self.clipper.approve(self.clipper.vat.address, hope_directly(gas_price=gas_price))
+
+    def kicks(self) -> int:
+        return self.clipper.kicks()
+
+    def get_input(self, id: int) -> Status:
+        assert isinstance(id, int)
+
+        # Read auction state
+        (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
+
+        # Prepare the model input from auction state
+        return Status(id=id,
+                      clipper=self.clipper.address,
+                      flipper=None,
+                      flapper=None,
+                      flopper=None,
+                      bid=auction_price * Ray(lot),    # Cost to take rest of auction at current price
+                      lot=lot,                         # Wad
+                      tab=tab,
+                      beg=None,
+                      guy=None,
+                      era=era(self.clipper.web3),
+                      tic=self.clipper.sales(id).tic,
+                      end=None,
+                      price=auction_price)             # Current price of auction
+
+    def bid_available(self, id: int, our_price: Wad, available_dai: Rad) -> Tuple[Optional[Wad], Optional[Transact], Optional[Rad]]:
+        assert isinstance(id, int)
+        assert isinstance(our_price, Wad)
+
+        # Handle case where model supplied a price before keeper removed it from active auction collection
+        (needs_redo, auction_price, lot, tab) = self.clipper.status(id)
+        if needs_redo or auction_price == Ray(0) or lot == Wad(0):
+            self.logger.debug(f"auction {id} is no longer available for taking")
+            return None, None, None
+
+        our_lot = lot
+        if Ray(our_price) >= auction_price:
+
+            if Wad(available_dai) > Wad(0):  # TODO: Perhaps compare it with some dust amount?
+                # Calculate how much of the lot we can afford with Dai available, don't bid for more than that
+                lot_we_can_afford: Wad = Wad(available_dai / Rad(auction_price))
+                if lot_we_can_afford < lot:
+                    self.logger.debug(f"with {available_dai} Dai we can afford to bid on {float(lot_we_can_afford)} "
+                                     f"out of {float(lot)} at {float(auction_price)} on auction {id}")
+                    our_lot = lot_we_can_afford
+
+            if our_lot <= self.min_lot:
+                self.logger.debug(f"our lot {our_lot} less than configured minimum {self.min_lot} for auction {id}")
+                # even if we won't take, return cost of full lot at our_price to flag Dai starvation and rebalance Dai
+                return None, None, Rad(lot) * Rad(our_price)
+
+            if not self.debt_exceeds_chost(our_lot, auction_price, lot, tab):
+                self.logger.debug(f"slice {our_lot} won't cover enough debt to clear the chop*dust floor")
+                # again, return cost of full lot to flag Dai starvation and rebalance Dai
+                return None, None, Rad(lot) * Rad(our_price)
+
+            self.logger.debug(f"taking {our_lot} from auction {id} at {auction_price}")
+            # TODO: consider making pymaker enforce this
+            self.clipper.validate_take(id, Wad(our_lot), auction_price)
+            our_cost = Rad(our_lot) * auction_price
+            return Wad(our_price), self.clipper.take(id, Wad(our_lot), auction_price), our_cost
+        else:
+            self.logger.debug(f"auction {id} price is {auction_price}; cannot take at {our_price}")
+            return None, None, None
+
+    def debt_exceeds_chost(self, slice: Wad, price: Ray, lot: Wad, tab: Rad) -> bool:
+        assert isinstance(slice, Wad)
+        assert isinstance(price, Ray)
+        assert isinstance(lot, Wad)
+        assert isinstance(tab, Rad)
+
+        owe: Rad = Rad(slice) * Rad(price)
+        chost: Rad = self.clipper.chost()
+
+        if owe < tab and slice < lot:
+            if (tab - owe) < chost:
+                return tab > chost
+        return True
+
+    def deal(self, id: int) -> Transact:
+        raise RuntimeError("Clipper auctions cannot be dealt")
+
+    def tick(self, id: int) -> Transact:
+        return self.clipper.redo(id, None)
 
 
 class FlipperStrategy(Strategy):
@@ -76,6 +182,7 @@ class FlipperStrategy(Strategy):
 
         # Prepare the model input from auction state
         return Status(id=id,
+                      clipper=None,
                       flipper=self.flipper.address,
                       flapper=None,
                       flopper=None,
@@ -118,7 +225,7 @@ class FlipperStrategy(Strategy):
             our_price = price if our_bid < bid.tab else Wad(bid.bid) / bid.lot
 
             if (our_bid >= bid.bid * self.beg or our_bid == bid.tab) and our_bid > bid.bid:
-                return our_price, self.flipper.tend(id, bid.lot, our_bid), our_bid
+                return our_price, self.flipper.tend(id, bid.lot, our_bid), Rad(our_bid)
             else:
                 self.logger.debug(f"tend bid {our_bid} would not exceed the bid increment for auction {id}")
                 return None, None, None
@@ -148,6 +255,7 @@ class FlapperStrategy(Strategy):
 
         # Prepare the model input from auction state
         return Status(id=id,
+                      clipper=None,
                       flipper=None,
                       flapper=self.flapper.address,
                       flopper=None,
@@ -197,6 +305,7 @@ class FlopperStrategy(Strategy):
 
         # Prepare the model input from auction state
         return Status(id=id,
+                      clipper=None,
                       flipper=None,
                       flapper=None,
                       flopper=self.flopper.address,

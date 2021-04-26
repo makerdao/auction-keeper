@@ -22,7 +22,7 @@ from pygasprice_client.aggregator import Aggregator
 
 from auction_keeper.gas import DynamicGasPrice
 from tests.conftest import get_node_gas_price
-from tests.helper import args
+from tests.helper import args, kill_other_threads
 
 
 GWEI = 1000000000
@@ -103,3 +103,4 @@ class TestGasStrategy:
                                                    f"--type flop --from-block 1 "
                                                    f"--gas-reactive-multiplier "
                                                    f"--model ./bogus-model.sh"), web3=web3)
+        kill_other_threads()

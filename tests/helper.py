@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import asyncio
+import ctypes
 import sys
 import logging
 import threading
@@ -66,6 +66,19 @@ def wait_for_other_threads(max_secs=60):
         if (datetime.now() - started).total_seconds() > max_secs:
             raise TimeoutError("Worker threads took too long to complete")
         time.sleep(0.5)
+    return  # To manually break out of debugger
+
+
+def kill_other_threads():
+    while threading.active_count() > 1:
+        for thread in threading.enumerate():
+            if thread is not threading.current_thread():
+                print(f"Attempting to kill thread {thread}")
+                sysexit = ctypes.py_object(SystemExit)  # Creates a C pointer to a Python "SystemExit" exception
+                ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread.ident), sysexit)
+                time.sleep(1)
+    # Ensure we don't leak threads, which would break wait_for_other_threads() later on
+    assert threading.active_count() == 1
 
 
 class TransactionIgnoringTest:
