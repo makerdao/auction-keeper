@@ -80,7 +80,7 @@ class AuctionKeeper:
         parser.add_argument('--deal-for', type=str, nargs="+",
                             help="List of addresses for which auctions will be dealt")
 
-        parser.add_argument('--min-auction', type=int, default=0,
+        parser.add_argument('--min-auction', type=int, default=1,
                             help="Lowest auction id to consider")
         parser.add_argument('--max-auctions', type=int, default=1000,
                             help="Maximum number of auctions to simultaneously interact with, "
