@@ -270,17 +270,16 @@ def create_risky_cdp(mcd: DssDeployment, c: Collateral, collateral_amount: Wad, 
         balance = token.normalize_amount(c.gem.balance_of(gal_address))
         print(f"before join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
         if vat_balance < dink:
-            vat_gap = dink - vat_balance
+            # handle dusty balances with non-18-decimal tokens
+            vat_gap = dink - vat_balance + token.min_amount
             if balance < vat_gap:
                 if c.ilk.name.startswith("ETH"):
                     wrap_eth(mcd, gal_address, vat_gap)
                 else:
                     raise RuntimeError("Insufficient collateral balance")
-            amount_to_join = token.unnormalize_amount(vat_gap)
-            if amount_to_join == Wad(0):  # handle dusty balances with non-18-decimal tokens
-                amount_to_join += token.unnormalize_amount(token.min_amount)
-            assert c.adapter.join(gal_address, amount_to_join).transact(from_address=gal_address)
+            assert c.adapter.join(gal_address, token.unnormalize_amount(vat_gap)).transact(from_address=gal_address)
         vat_balance = mcd.vat.gem(c.ilk, gal_address)
+        balance = token.normalize_amount(c.gem.balance_of(gal_address))
         print(f"after join: dink={dink} vat_balance={vat_balance} balance={balance} vat_gap={dink - vat_balance}")
         assert vat_balance >= dink
         assert mcd.vat.frob(c.ilk, gal_address, dink, Wad(0)).transact(from_address=gal_address)
