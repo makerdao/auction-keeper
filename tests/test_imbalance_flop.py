@@ -134,7 +134,7 @@ class TestAuctionKeeperFlopper(TransactionIgnoringTest):
         kicks = mcd.flopper.kicks()
 
         # and an undercollateralized CDP is bitten
-        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(1), other_address, draw_dai=False)
+        unsafe_cdp = create_unsafe_cdp(mcd, c, Wad.from_number(10), other_address, draw_dai=False)
         assert mcd.cat.bite(unsafe_cdp.ilk, unsafe_cdp).transact()
 
         # when the auction ends without debt being covered
