@@ -1,6 +1,6 @@
 # auction-keeper
 
-[![Build Status](https://travis-ci.com/makerdao/auction-keeper.svg?branch=master)](https://travis-ci.com/makerdao/auction-keeper)
+![Build Status](https://github.com/makerdao/auction-keeper/actions/workflows/.github/workflows/tests.yaml/badge.svg?branch=master)
 [![codecov](https://codecov.io/gh/makerdao/auction-keeper/branch/master/graph/badge.svg)](https://codecov.io/gh/makerdao/auction-keeper)
 
 The _DAI Stablecoin System_ incentivizes external agents, called _keepers_, to automate certain operations around the
