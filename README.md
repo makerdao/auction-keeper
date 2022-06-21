@@ -1,3 +1,7 @@
+# Attention
+
+## This repo is no longer active , please check this out https://discord.com/channels/893112320329396265/899667556418351194/988679692938805249 Instedad visit https://github.com/makerdao/auction-demo-keeper
+
 # auction-keeper
 
 ![Build Status](https://github.com/makerdao/auction-keeper/actions/workflows/.github/workflows/tests.yaml/badge.svg?branch=master)
